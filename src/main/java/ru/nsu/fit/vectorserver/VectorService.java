@@ -21,10 +21,13 @@ import java.util.PriorityQueue;
 @Service
 public class VectorService {
     private final ClientCache<Long, VectorObject> cache;
-
+    private final int dimension;
     public VectorService(IgniteClient igniteClient,
-                         @Value("${ignite.cache.name}") String cacheName){
+                         @Value("${ignite.cache.name}") String cacheName,
+                         @Value("${vector.dimension}") int dimension
+    ){
         this.cache = igniteClient.getOrCreateCache(cacheName);
+        this.dimension = dimension;
     }
 
     public VectorObject save(AddRequest request) {
@@ -46,19 +49,6 @@ public class VectorService {
         return cache.get(id);
     }
 
-    private void validateSaveRequest(AddRequest request) { //TODO
-        if (request.id() == null || request.id() <= 0) {
-            throw new IllegalArgumentException("id is required");
-        }
-
-        if (request.url() == null || request.url().isBlank()) {
-            throw new IllegalArgumentException("url is required");
-        }
-
-        if (request.vector() == null || request.vector().length == 0) {
-            throw new IllegalArgumentException("vector is required");
-        }
-    }
 
     public List<VectorResponse> search(SearchRequest request) {
         validateSearchRequest(request);
@@ -118,12 +108,40 @@ public class VectorService {
         return result;
     }
 
-    private void validateSearchRequest(SearchRequest request) { //TODO
-        if (request.vector() == null || request.vector().length == 0) {
+    private void validateSaveRequest(AddRequest request) {
+        if (request.id() == null || request.id() <= 0) {
+            throw new IllegalArgumentException("id is required");
+        }
+
+        if (request.url() == null || request.url().isBlank()) {
+            throw new IllegalArgumentException("url is required");
+        }
+
+        if (request.vector() == null) {
             throw new IllegalArgumentException("vector is required");
         }
 
-        if (request.count() != null && request.count() <= 0) {
+        if (request.vector().length != dimension){
+            throw new IllegalArgumentException("incorrect vector dimension (" +
+                    request.vector().length + "), required: " + dimension);
+        }
+    }
+
+    private void validateSearchRequest(SearchRequest request) {
+        if (request.vector() == null) {
+            throw new IllegalArgumentException("vector is required");
+        }
+
+        if (request.vector().length != dimension){
+            throw new IllegalArgumentException("incorrect vector dimension (" +
+                    request.vector().length + "), required: " + dimension);
+        }
+
+        if (request.count() == null) {
+            throw new IllegalArgumentException("count is required");
+        }
+
+        if (request.count() <= 0) {
             throw new IllegalArgumentException("count must be positive");
         }
     }

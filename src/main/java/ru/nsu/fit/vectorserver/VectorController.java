@@ -17,30 +17,44 @@ public class VectorController {
     }
 
     @PostMapping
-    public ResponseEntity<VectorResponse> saveVector(@RequestBody AddRequest request) {
-        VectorObject savedObject = vectorService.save(request);
-        VectorResponse response = new VectorResponse(
-                request.id(), savedObject.getVector(), savedObject.getUrl()
-        );
-        return ResponseEntity.ok(response);
+    public ResponseEntity<?> saveVector(@RequestBody AddRequest request) {
+        try {
+            VectorObject savedObject = vectorService.save(request);
+            VectorResponse response = new VectorResponse(
+                    request.id(), savedObject.getVector(), savedObject.getUrl()
+            );
+            return ResponseEntity.ok(response);
+        }catch (IllegalArgumentException e){
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<VectorResponse> getVector(@PathVariable Long id) {
-        VectorObject object = vectorService.get(id);
-        VectorResponse response = new VectorResponse(
-                id, object.getVector(), object.getUrl()
-        );
-        if (object == null) {
-            return ResponseEntity.notFound().build();
-        }
+    public ResponseEntity<?> getVector(@PathVariable Long id) {
+        try{
+            VectorObject object = vectorService.get(id);
 
-        return ResponseEntity.ok(response);
+            VectorResponse response = new VectorResponse(
+                    id, object.getVector(), object.getUrl()
+            );
+
+            if (object == null) {
+                return ResponseEntity.notFound().build();
+            }
+            return ResponseEntity.ok(response);
+
+        }catch (IllegalArgumentException e){
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
     }
 
     @PostMapping("/search")
-    public ResponseEntity<List<VectorResponse>> search(@RequestBody SearchRequest request){
-        List<VectorResponse> result = vectorService.search(request);
-        return ResponseEntity.ok(result);
+    public ResponseEntity<?> search(@RequestBody SearchRequest request){
+        try{
+            List<VectorResponse> result = vectorService.search(request);
+            return ResponseEntity.ok(result);
+        }catch (IllegalArgumentException e){
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
     }
 }
