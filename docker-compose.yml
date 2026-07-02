@@ -1,0 +1,29 @@
+name: ignite2
+
+services:
+  ignite1:
+    image: apacheignite/ignite:2.17.0
+    container_name: ignite2-node1
+    environment:
+      - JVM_OPTS=-Xms1g -Xmx1g -Djava.net.preferIPv4Stack=true
+      - CONFIG_URI=/opt/ignite/config/ignite.xml
+    volumes:
+      - ./ignite.xml:/opt/ignite/config/ignite.xml
+    ports:
+      - "10800:10800"
+      - "11211:11211"
+      - "47100:47100"
+      - "47500:47500"
+      - "49112:49112"
+      - "8080:8080"
+
+  ignite2:
+    image: apacheignite/ignite:2.17.0
+    container_name: ignite2-node2
+    environment:
+      - JVM_OPTS=-Xms1g -Xmx1g -Djava.net.preferIPv4Stack=true
+      - CONFIG_URI=/opt/ignite/config/ignite.xml
+    volumes:
+      - ./ignite.xml:/opt/ignite/config/ignite.xml
+    depends_on:
+      - ignite1
