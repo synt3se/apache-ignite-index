@@ -40,6 +40,7 @@ public class VectorController {
 
     @PostMapping("/search")
     public ResponseEntity<List<VectorResponse>> search(@RequestBody SearchRequest request){
-
+        List<VectorResponse> result = vectorService.search(request);
+        return ResponseEntity.ok(result);
     }
 }
