@@ -1,0 +1,8 @@
+# CLIP embedding service
+fastapi
+uvicorn[standard]
+python-multipart          # обязателен для приёма multipart-файлов в FastAPI
+pillow
+# тяжёлые (не нужны при CLIP_FAKE=1):
+sentence-transformers
+torch

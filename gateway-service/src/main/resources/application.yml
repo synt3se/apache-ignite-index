@@ -1,0 +1,14 @@
+server:
+  port: 8080
+
+# Адреса зависимых сервисов (переопределяются CLIP_URL / INDEX_URL).
+clip:
+  url: http://127.0.0.1:8000     # CLIP-сервис (Python, FastAPI)
+index:
+  url: http://127.0.0.1:8081     # Index-сервис (Java)
+
+spring:
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 20MB
