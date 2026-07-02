@@ -1,0 +1,38 @@
+version: '3.8'
+
+# Кластер Ignite для проекта.
+# Для ПЕРВОГО взаимодействия достаточно поднять только ignite-node-1:
+#   docker compose -f docker/docker-compose.yml up -d ignite-node-1
+# Оба узла + рабочую discovery включим на фазе распределённого поиска.
+services:
+  ignite-node-1:
+    image: apacheignite/ignite:2.18.0
+    container_name: ignite-node-1
+    environment:
+      # Образ apacheignite/ignite стартует узел с этим конфигом.
+      # Статическая discovery (см. config/ignite-config.xml) — иначе multicast
+      # в Docker bridge не работает и узлы не видят друг друга.
+      - CONFIG_URI=/config/ignite-config.xml
+    volumes:
+      - ./config:/config:ro
+    ports:
+      - "10800:10800"   # thin client (сюда ходит приложение)
+      - "47100:47100"   # communication SPI
+      - "47500:47500"   # discovery SPI
+    networks:
+      - ignite-net
+
+  ignite-node-2:
+    image: apacheignite/ignite:2.18.0
+    container_name: ignite-node-2
+    environment:
+      - CONFIG_URI=/config/ignite-config.xml
+    volumes:
+      - ./config:/config:ro
+    networks:
+      - ignite-net
+
+networks:
+  ignite-net:
+    name: ignite-net      # фикс. имя сети, чтобы легко подключать клиентский контейнер
+    driver: bridge
