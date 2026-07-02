@@ -1,4 +1,3 @@
 package ru.nsu.fit.vectorserver.dto;
 
-public class SearchRequest {
-}
+public record SearchRequest(float[] vector, Integer count){}

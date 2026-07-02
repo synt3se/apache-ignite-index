@@ -18,7 +18,7 @@ public class VectorService {
         this.cache = igniteClient.getOrCreateCache(cacheName);
     }
 
-    public Map.Entry<Long, VectorObject> save(AddRequest request) {
+    public VectorObject save(AddRequest request) {
         validateSaveRequest(request);
 
         float[] vector = request.vector();
@@ -30,7 +30,7 @@ public class VectorService {
 
         cache.put(request.id(), object);
 
-        return Map.entry(request.id(), object);
+        return object;
     }
 
     public VectorObject get(Long id) {

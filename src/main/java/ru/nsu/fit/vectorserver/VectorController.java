@@ -4,7 +4,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import ru.nsu.fit.vectorserver.dto.*;
 
-import java.util.Map;
+import java.util.List;
+
 
 @RestController
 @RequestMapping("/vectors")
@@ -16,24 +17,29 @@ public class VectorController {
     }
 
     @PostMapping
-    public ResponseEntity<Map.Entry<Long, VectorObject>> saveVector(@RequestBody AddRequest request) {
-        Map.Entry<Long, VectorObject> savedObject = vectorService.save(request);
-        return ResponseEntity.ok(savedObject); //TODO vector response
+    public ResponseEntity<VectorResponse> saveVector(@RequestBody AddRequest request) {
+        VectorObject savedObject = vectorService.save(request);
+        VectorResponse response = new VectorResponse(
+                request.id(), savedObject.getVector(), savedObject.getUrl()
+        );
+        return ResponseEntity.ok(response);
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<VectorObject> getVector(@PathVariable Long id) {
+    public ResponseEntity<VectorResponse> getVector(@PathVariable Long id) {
         VectorObject object = vectorService.get(id);
-        //TODO vector response
+        VectorResponse response = new VectorResponse(
+                id, object.getVector(), object.getUrl()
+        );
         if (object == null) {
             return ResponseEntity.notFound().build();
         }
 
-        return ResponseEntity.ok(object);
+        return ResponseEntity.ok(response);
     }
 
     @PostMapping("/search")
-    public void search(@RequestBody AddRequest request){
+    public ResponseEntity<List<VectorResponse>> search(@RequestBody SearchRequest request){
 
     }
 }
