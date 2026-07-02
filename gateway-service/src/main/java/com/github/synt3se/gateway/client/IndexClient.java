@@ -44,6 +44,7 @@ public class IndexClient {
     public List<Dto.Neighbor> search(float[] vector, int k) {
         return http.post()
                 .uri("/vectors/search")
+                .contentType(MediaType.APPLICATION_JSON)
                 .body(new Dto.IndexSearchRequest(vector, k))
                 .retrieve()
                 .body(new ParameterizedTypeReference<List<Dto.Neighbor>>() {});

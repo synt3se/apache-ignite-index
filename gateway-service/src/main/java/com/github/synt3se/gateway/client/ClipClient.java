@@ -3,13 +3,13 @@ package com.github.synt3se.gateway.client;
 import com.github.synt3se.gateway.web.Dto;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ByteArrayResource;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
-
-import java.util.Map;
+import org.springframework.web.server.ResponseStatusException;
 
 @Component
 public class ClipClient {
@@ -40,10 +40,13 @@ public class ClipClient {
     }
 
     public float[] embedText(String text) {
+        if (text == null || text.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Поле 'text' обязательно");
+        }
         Dto.EmbeddingResponse response = http.post()
                 .uri("/embed/text")
                 .contentType(MediaType.APPLICATION_JSON)
-                .body(Map.of("text", text))
+                .body(new Dto.ClipTextRequest(text))
                 .retrieve()
                 .body(Dto.EmbeddingResponse.class);
         return response.vector();

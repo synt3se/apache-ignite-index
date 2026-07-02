@@ -12,6 +12,8 @@ public final class Dto {
 
     public record EmbeddingResponse(float[] vector) {}
 
+    public record ClipTextRequest(String text) {}
+
     public record IndexAddRequest(long id, float[] vector, String url, String metadata) {}
 
     public record IndexSearchRequest(float[] vector, Integer k) {}
