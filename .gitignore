@@ -1,0 +1,82 @@
+# ============================================================
+# Build output (Maven / Gradle)
+# ============================================================
+target/
+build/
+.gradle/
+*.class
+
+# ============================================================
+# Large generated data - DO NOT COMMIT
+# (embeddings.csv here is ~1.2 GB; GitHub rejects files > 100 MB)
+# ============================================================
+*.csv
+*.tsv
+*.npy
+*.npz
+*.parquet
+
+# ============================================================
+# Logs and runtime temp
+# ============================================================
+*.log
+logs/
+*.pid
+*.tmp
+# ad-hoc request bodies for manual curl tests
+body.json
+q.json
+
+# ============================================================
+# IDE: IntelliJ IDEA / Eclipse / VS Code
+# ============================================================
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+.classpath
+.project
+.settings/
+.vscode/
+bin/
+
+# ============================================================
+# Python (embedding service, bot)
+# ============================================================
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ipynb_checkpoints/
+
+# ML model weights / caches (CLIP downloads ~600 MB - keep out of git)
+*.pt
+*.bin
+*.onnx
+*.safetensors
+models/
+.cache/
+
+# ============================================================
+# Secrets / local environment
+# ============================================================
+.env
+.env.*
+*.local
+
+# ============================================================
+# OS junk
+# ============================================================
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ============================================================
+# Docker local overrides (compose files themselves ARE committed)
+# ============================================================
+docker-compose.override.yml
