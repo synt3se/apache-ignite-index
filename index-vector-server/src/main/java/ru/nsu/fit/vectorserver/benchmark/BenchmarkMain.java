@@ -11,6 +11,13 @@ import ru.nsu.fit.vectorserver.VectorService;
 import ru.nsu.fit.vectorserver.core.BruteForceIndex;
 import ru.nsu.fit.vectorserver.core.Index;
 
+/*
+======================== BEFORE RUNNING BENCHMARK =======================
+- restart database
+- set vector.dimension in application.properties to tasting db dimension
+- set path to tasting db file in the variable hdf5Path
+- set tasting db neighborCount in the variable neighborCount
+ */
 
 @SpringBootApplication
 public class BenchmarkMain {
@@ -24,7 +31,7 @@ public class BenchmarkMain {
             VectorService vectorService = context.getBean(VectorService.class);
             BenchmarkRunner runner = new BenchmarkRunner(vectorService);
             int neighborCount = 10;
-            String hdf5Path = "index-vector-server/src/main/resources/mnist-784-euclidean.hdf5";
+            String hdf5Path = "index-vector-server/src/main/resources/mini-metric.hdf5";
             runner.run(neighborCount, hdf5Path);
         }finally {
             context.close();

@@ -12,7 +12,6 @@ import java.util.ArrayList;
 import java.util.List;
 
 
-
 public class BenchmarkRunner{
     private final VectorService service;
 
@@ -37,6 +36,8 @@ public class BenchmarkRunner{
             Dataset testDataset = hdfFile.getDatasetByPath("test");
             int[] testDims = testDataset.getDimensions();
             int queryCount = testDims[0];
+            int maxNeighbors = hdfFile.getDatasetByPath("neighbors").getDimensions()[1];
+            neighborCount = Math.min(neighborCount, maxNeighbors);
 
             System.out.println("=== Brute force benchmark STARTED ===");
             System.out.println("Dataset: " + file.getName());
@@ -131,7 +132,7 @@ public class BenchmarkRunner{
     }
     private boolean contains(int[] array, int value) {
         for (int i : array) {
-            if (i == value) return true;
+            if (i + 1 == value) return true; // В файлах тестов id начинаются с 0
         }
         return false;
     }
@@ -139,9 +140,13 @@ public class BenchmarkRunner{
     private List<Integer> extractIndicesFromResponse(Object searchResponse) {
         List<Integer> indices = new ArrayList<>();
 
-        if (searchResponse instanceof List<?>) {
-            List<?> list = (List<?>) searchResponse;
+        Object body = searchResponse;
+        if (searchResponse instanceof org.springframework.http.ResponseEntity<?>) {
+            body = ((org.springframework.http.ResponseEntity<?>) searchResponse).getBody();
+        }
 
+        if (body instanceof List<?>) {
+            List<?> list = (List<?>) body;
             for (Object item : list) {
                 if (item instanceof Neighbor) {
                     Neighbor neighbor = (Neighbor) item;
