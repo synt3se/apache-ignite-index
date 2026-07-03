@@ -8,6 +8,7 @@ import ru.nsu.fit.vectorserver.dto.AddRequest;
 
 import org.apache.ignite.cache.query.QueryCursor;
 import org.apache.ignite.cache.query.ScanQuery;
+import ru.nsu.fit.vectorserver.dto.Neighbor;
 import ru.nsu.fit.vectorserver.dto.SearchRequest;
 import ru.nsu.fit.vectorserver.dto.VectorResponse;
 
@@ -37,7 +38,8 @@ public class VectorService {
 
         VectorObject object = new VectorObject(
                 vector,
-                request.url()
+                request.url(),
+                request.metadata()
         );
 
         cache.put(request.id(), object);
@@ -50,7 +52,7 @@ public class VectorService {
     }
 
 
-    public List<VectorResponse> search(SearchRequest request) {
+    public List<Neighbor> search(SearchRequest request) {
         validateSearchRequest(request);
 
         float[] queryVector = request.vector();
@@ -83,9 +85,12 @@ public class VectorService {
 
                 if (top.size() < count) {
                     top.add(candidate);
-                } else if (distance < top.peek().distance()) {
-                    top.poll();
-                    top.add(candidate);
+                } else {
+                    assert top.peek() != null;
+                    if (distance < top.peek().distance()) {
+                        top.poll();
+                        top.add(candidate);
+                    }
                 }
             }
         }
@@ -93,15 +98,16 @@ public class VectorService {
         List<SearchCandidate> candidates = new ArrayList<>(top);
         candidates.sort(Comparator.comparingDouble(SearchCandidate::distance));
 
-        List<VectorResponse> result = new ArrayList<>();
+        List<Neighbor> result = new ArrayList<>();
 
         for (SearchCandidate candidate : candidates) {
             VectorObject object = candidate.object();
 
-            result.add(new VectorResponse(
+            result.add(new Neighbor(
                     candidate.id(),
-                    object.getVector(),
-                    object.getUrl()
+                    candidate.distance,
+                    object.getUrl(),
+                    object.getMetadata()
             ));
         }
 

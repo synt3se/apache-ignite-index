@@ -8,7 +8,7 @@ public final class Dto {
     // GET /image/{id}
     public record VectorResponse(long id, float[] vector, String url, String metadata) {}
 
-    public record TextSearchRequest(String text, Integer k) {}
+    public record TextSearchRequest(String text, Integer count) {}
 
     public record EmbeddingResponse(float[] vector) {}
 
@@ -16,10 +16,10 @@ public final class Dto {
 
     public record IndexAddRequest(long id, float[] vector, String url, String metadata) {}
 
-    public record IndexSearchRequest(float[] vector, Integer k) {}
+    public record IndexSearchRequest(float[] vector, Integer count) {}
 
     public record AddImageUrlRequest(String url, String metadata) {}
 
-    public record SearchImageUrlRequest(String url, Integer k, String metadata) {}
-    public record SearchVectorRequest(float[] vector, Integer k) {}
+    public record SearchImageUrlRequest(String url, Integer count, String metadata) {}
+    public record SearchVectorRequest(float[] vector, Integer count) {}
 }

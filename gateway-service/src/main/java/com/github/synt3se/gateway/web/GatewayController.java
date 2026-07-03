@@ -57,18 +57,18 @@ public class GatewayController {
         }
 
         float[] vector = clipClient.embedImage(imageBytes, request.url());
-        return indexClient.search(vector, request.k() != null ? request.k() : 5);
+        return indexClient.search(vector, request.count() != null ? request.count() : 5);
     }
 
     @PostMapping("/search/text")
     public List<Dto.Neighbor> searchText(@RequestBody Dto.TextSearchRequest request) {
         float[] vec = clipClient.embedText(request.text());
-        return indexClient.search(vec, request.k() != null ? request.k() : 5);
+        return indexClient.search(vec, request.count() != null ? request.count() : 5);
     }
 
     @PostMapping("/search/vector")
     public List<Dto.Neighbor> searchVector(@RequestBody Dto.SearchVectorRequest request) {
-        return indexClient.search(request.vector(), request.k() != null ? request.k() : 5);
+        return indexClient.search(request.vector(), request.count() != null ? request.count() : 5);
     }
 
     @GetMapping("/images/{id}")

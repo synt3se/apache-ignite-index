@@ -20,7 +20,7 @@ public class IndexClient {
 
     public void add(long id, float[] vector, String url, String metadata) {
         http.post()
-                .uri("/images")
+                .uri("/vectors")
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(new Dto.IndexAddRequest(id, vector, url, metadata))
                 .retrieve()
@@ -29,23 +29,23 @@ public class IndexClient {
 
     public void delete(long id) {
         http.delete()
-                .uri("/images/" + id)
+                .uri("/vectors/" + id)
                 .retrieve()
                 .toBodilessEntity();
     }
 
     public Dto.VectorResponse get(long id) {
         return http.get()
-                .uri("/images/" + id)
+                .uri("/vectors/" + id)
                 .retrieve()
                 .body(Dto.VectorResponse.class);
     }
 
-    public List<Dto.Neighbor> search(float[] vector, int k) {
+    public List<Dto.Neighbor> search(float[] vector, int count) {
         return http.post()
                 .uri("/vectors/search")
                 .contentType(MediaType.APPLICATION_JSON)
-                .body(new Dto.IndexSearchRequest(vector, k))
+                .body(new Dto.IndexSearchRequest(vector, count))
                 .retrieve()
                 .body(new ParameterizedTypeReference<List<Dto.Neighbor>>() {});
     }

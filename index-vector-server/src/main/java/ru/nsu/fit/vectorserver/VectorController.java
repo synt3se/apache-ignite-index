@@ -46,7 +46,7 @@ public class VectorController {
     @PostMapping("/search")
     public ResponseEntity<?> search(@RequestBody SearchRequest request){
         try {
-            List<VectorResponse> result = vectorService.search(request);
+            List<Neighbor> result = vectorService.search(request);
             return ResponseEntity.ok(result);
         } catch (IllegalArgumentException e){
             return ResponseEntity.badRequest().body(e.getMessage());
