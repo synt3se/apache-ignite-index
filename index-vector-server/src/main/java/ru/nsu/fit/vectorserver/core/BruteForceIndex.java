@@ -45,6 +45,10 @@ public class BruteForceIndex implements Index {
         return cache.remove(id);
     }
 
+    public void clear(){
+        cache.clear();
+    }
+
     public List<Neighbor> search(float[] queryVector, int count) {
         validateSearchRequest(queryVector, count);
 
@@ -149,5 +153,4 @@ public class BruteForceIndex implements Index {
             VectorObject object,
             double distance
     ) {}
-
 }

@@ -10,6 +10,7 @@ public interface Index {
 
     void add(long id, AddRequest request);
     boolean delete(long id);
+    void clear();
     VectorObject get(long id);
     List<Neighbor> search(float[] vector, int count);
 }
