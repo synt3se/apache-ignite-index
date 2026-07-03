@@ -1,12 +1,15 @@
 package ru.nsu.fit.vectorserver.benchmark;
 
+import io.jhdf.HdfFile;
+import io.jhdf.api.Dataset;
 import ru.nsu.fit.vectorserver.VectorService;
-import ru.nsu.fit.vectorserver.core.Index;
 import ru.nsu.fit.vectorserver.dto.AddRequest;
+import ru.nsu.fit.vectorserver.dto.Neighbor;
 import ru.nsu.fit.vectorserver.dto.SearchRequest;
 
-import java.util.Map;
-import java.util.Random;
+import java.io.File;
+import java.util.ArrayList;
+import java.util.List;
 
 
 
@@ -18,91 +21,135 @@ public class BenchmarkRunner{
     }
 
     public void run(
-            int vectorCount,
-            int queryCount,
-            int dimension,
-            int neighborCount
+            int neighborCount,
+            String hdf5Path
     ){
-        System.out.println("=== Brute force benchmark STARTED ===");
-        System.out.println("vectors: " + vectorCount);
-        System.out.println("queries: " + queryCount);
-        System.out.println("dimension: " + dimension);
-        System.out.println("neighbors count: " + neighborCount);
-
-        Random random = new Random(42);
-
-        service.clear(); //TODO
-
-        float[][] train = new float[vectorCount][];
-        for (int i = 0; i < vectorCount; i++) {
-            train[i] = randomVector(random, dimension);
+        File file = new File(hdf5Path);
+        if (!file.exists()) {
+            throw new IllegalArgumentException("Incorrect dataset filepath: " + hdf5Path);
         }
+        try (HdfFile hdfFile = new HdfFile(file)) {
+            Dataset trainDataset = hdfFile.getDatasetByPath("train");
+            int[] trainDims = trainDataset.getDimensions();
+            int vectorCount = trainDims[0];
+            int dimension = trainDims[1];
 
-        long loadStart = System.nanoTime();
+            Dataset testDataset = hdfFile.getDatasetByPath("test");
+            int[] testDims = testDataset.getDimensions();
+            int queryCount = testDims[0];
 
-        for (int i = 0; i < vectorCount; i++) {
-            AddRequest request = new AddRequest(
-                    train[i],
-                    "benchmark://vector/" + i,
-                    "Source: benchmark"
-            );
-            service.add(request);
+            System.out.println("=== Brute force benchmark STARTED ===");
+            System.out.println("Dataset: " + file.getName());
+            System.out.println("vectors: " + vectorCount);
+            System.out.println("queries: " + queryCount);
+            System.out.println("dimension: " + dimension);
+            System.out.println("neighbors count: " + neighborCount);
+
+            service.clear();
+
+            long loadStart = System.nanoTime();
+
+            int batchSize = 10000;
+            for (int startIdx = 0; startIdx < vectorCount; startIdx += batchSize) {
+                int currentBatchSize = Math.min(batchSize, vectorCount - startIdx);
+                if (startIdx % 1000 ==0){
+                    System.out.println("(～￣▽￣)～ " + startIdx);
+                }
+                float[][] batchVectors = (float[][]) trainDataset.getData(
+                        new long[]{startIdx, 0},
+                        new int[]{currentBatchSize, dimension}
+                );
+
+                for (int i = 0; i < currentBatchSize; i++) {
+                    int globalIndex = startIdx + i;
+                    AddRequest request = new AddRequest(
+                            batchVectors[i],
+                            "benchmark://vector/" + globalIndex,
+                            "Source: benchmark"
+                    );
+                    service.add(request);
+                }
+            }
+
+            long loadEnd = System.nanoTime();
+
+            float[][] queries = (float[][]) testDataset.getData();
+            int[][] groundTruth = (int[][]) hdfFile.getDatasetByPath("neighbors").getData();
+
+            BenchmarkMetrics searchMetrics = new BenchmarkMetrics();
+
+            int warmupQueries = Math.min(10, queryCount);
+            for (int i = 0; i < warmupQueries; i++) {
+                service.search(new SearchRequest(queries[i], neighborCount));
+            }
+
+            long searchStartTotal = System.nanoTime();
+            double totalRecall = 0.0;
+
+            for (int i = 0; i < queryCount; i++) {
+                float[] query = queries[i];
+                int[] exactNeighbors = groundTruth[i];
+
+                long start = System.nanoTime();
+                var searchResponse = service.search(new SearchRequest(query, neighborCount));
+                long end = System.nanoTime();
+
+                int matches = 0;
+                List<Integer> foundIndices = extractIndicesFromResponse(searchResponse);
+                for (int foundIdx : foundIndices) {
+                    if (contains(exactNeighbors, foundIdx)) {
+                        matches++;
+                    }
+                }
+                totalRecall += (double) matches / neighborCount;
+
+                double searchMs = (end - start) / 1_000_000.0;
+                searchMetrics.add(searchMs);
+            }
+
+            long searchEndTotal = System.nanoTime();
+
+            double loadMs = (loadEnd - loadStart) / 1_000_000.0;
+            double totalSearchMs = (searchEndTotal - searchStartTotal) / 1_000_000.0;
+            double qps = queryCount / (totalSearchMs / 1000.0);
+            double avgRecall = (totalRecall / queryCount) * 100.0;
+
+            System.out.println();
+            System.out.println("=== Brute force benchmark result ===");
+            System.out.println("load_ms: " + loadMs);
+            System.out.println("total_search_ms: " + totalSearchMs);
+            System.out.println("avg_search_ms: " + searchMetrics.average());
+            System.out.println("p95_search_ms: " + searchMetrics.percentile(0.95));
+            System.out.println("p99_search_ms: " + searchMetrics.percentile(0.99));
+            System.out.println("measured_queries: " + searchMetrics.count());
+            System.out.println("qps: " + qps);
+            System.out.printf("Average RECALL: %.2f%%\n", avgRecall);
+            System.out.println("=== Brute force benchmark FINISHED ===");
+        } catch (Exception e) {
+            e.printStackTrace(); //TODO
         }
-
-        long loadEnd = System.nanoTime();
-
-        float[][] queries = new float[queryCount][];
-
-        for (int i = 0; i < queryCount; i++) {
-            queries[i] = randomVector(random, dimension);
+    }
+    private boolean contains(int[] array, int value) {
+        for (int i : array) {
+            if (i == value) return true;
         }
-
-        BenchmarkMetrics searchMetrics = new BenchmarkMetrics();
-
-
-        int warmupQueries = Math.min(10, queryCount);;
-        for (int i = 0; i < warmupQueries; i++) {
-            service.search(new SearchRequest(queries[i], neighborCount));
-        }
-
-
-        long searchStartTotal = System.nanoTime();
-
-        for (float[] query : queries) {
-            long start = System.nanoTime();
-
-            service.search(new SearchRequest(query, neighborCount));
-            long end = System.nanoTime();
-
-            double searchMs = (end - start) / 1_000_000.0;
-            searchMetrics.add(searchMs);
-        }
-
-        long searchEndTotal = System.nanoTime();
-
-        double loadMs = (loadEnd - loadStart) / 1_000_000.0;
-        double totalSearchMs = (searchEndTotal - searchStartTotal) / 1_000_000.0;
-        double qps = queryCount / (totalSearchMs / 1000.0);
-
-        System.out.println();
-        System.out.println("=== Brute force benchmark result ===");
-        System.out.println("load_ms: " + loadMs);
-        System.out.println("total_search_ms: " + totalSearchMs);
-        System.out.println("avg_search_ms: " + searchMetrics.average());
-        System.out.println("p95_search_ms: " + searchMetrics.percentile(0.95));
-        System.out.println("p99_search_ms: " + searchMetrics.percentile(0.99));
-        System.out.println("measured_queries: " + searchMetrics.count());
-        System.out.println("qps: " + qps); //queries per second
-        System.out.println("=== Brute force benchmark FINISHED ===");
+        return false;
     }
 
-    private float[] randomVector(Random random, int dimension) {
-        float[] vector = new float[dimension];
+    private List<Integer> extractIndicesFromResponse(Object searchResponse) {
+        List<Integer> indices = new ArrayList<>();
 
-        for (int i = 0; i < dimension; i++) {
-            vector[i] = random.nextFloat();
+        if (searchResponse instanceof List<?>) {
+            List<?> list = (List<?>) searchResponse;
+
+            for (Object item : list) {
+                if (item instanceof Neighbor) {
+                    Neighbor neighbor = (Neighbor) item;
+                    indices.add((int) neighbor.id());
+                }
+            }
         }
 
-        return vector;
+        return indices;
     }
 }

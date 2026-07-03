@@ -23,11 +23,9 @@ public class BenchmarkMain {
         try{
             VectorService vectorService = context.getBean(VectorService.class);
             BenchmarkRunner runner = new BenchmarkRunner(vectorService);
-            int vectorCount = 10;
-            int queryCount = 2;
-            int dimension = 512;
             int neighborCount = 10;
-            runner.run(vectorCount, queryCount, dimension, neighborCount);
+            String hdf5Path = "index-vector-server/src/main/resources/mnist-784-euclidean.hdf5";
+            runner.run(neighborCount, hdf5Path);
         }finally {
             context.close();
         }
