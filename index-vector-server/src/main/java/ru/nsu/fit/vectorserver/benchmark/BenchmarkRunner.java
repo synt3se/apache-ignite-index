@@ -1,7 +1,9 @@
 package ru.nsu.fit.vectorserver.benchmark;
 
+import ru.nsu.fit.vectorserver.VectorService;
 import ru.nsu.fit.vectorserver.core.Index;
 import ru.nsu.fit.vectorserver.dto.AddRequest;
+import ru.nsu.fit.vectorserver.dto.SearchRequest;
 
 import java.util.Map;
 import java.util.Random;
@@ -9,10 +11,10 @@ import java.util.Random;
 
 
 public class BenchmarkRunner{
-    private final Index index;
+    private final VectorService service;
 
-    public BenchmarkRunner(Index index){
-        this.index = index;
+    public BenchmarkRunner(VectorService service){
+        this.service = service;
     }
 
     public void run(
@@ -29,7 +31,7 @@ public class BenchmarkRunner{
 
         Random random = new Random(42);
 
-        index.clear();
+        service.clear(); //TODO
 
         float[][] train = new float[vectorCount][];
         for (int i = 0; i < vectorCount; i++) {
@@ -40,13 +42,11 @@ public class BenchmarkRunner{
 
         for (int i = 0; i < vectorCount; i++) {
             AddRequest request = new AddRequest(
-                    (long) (i+1),
                     train[i],
                     "benchmark://vector/" + i,
                     "Source: benchmark"
             );
-
-            index.add(request);
+            service.add(request);
         }
 
         long loadEnd = System.nanoTime();
@@ -62,7 +62,7 @@ public class BenchmarkRunner{
 
         int warmupQueries = Math.min(10, queryCount);;
         for (int i = 0; i < warmupQueries; i++) {
-            index.search(queries[i], neighborCount);
+            service.search(new SearchRequest(queries[i], neighborCount));
         }
 
 
@@ -71,8 +71,7 @@ public class BenchmarkRunner{
         for (float[] query : queries) {
             long start = System.nanoTime();
 
-            index.search(query, neighborCount);
-
+            service.search(new SearchRequest(query, neighborCount));
             long end = System.nanoTime();
 
             double searchMs = (end - start) / 1_000_000.0;

@@ -7,6 +7,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ConfigurableApplicationContext;
 import ru.nsu.fit.vectorserver.VectorServerApplication;
+import ru.nsu.fit.vectorserver.VectorService;
 import ru.nsu.fit.vectorserver.core.BruteForceIndex;
 import ru.nsu.fit.vectorserver.core.Index;
 
@@ -20,8 +21,8 @@ public class BenchmarkMain {
                         .web(WebApplicationType.NONE)
                         .run(args);
         try{
-            Index bruteForceIndex = context.getBean(BruteForceIndex.class);;
-            BenchmarkRunner runner = new BenchmarkRunner(bruteForceIndex);
+            VectorService vectorService = context.getBean(VectorService.class);
+            BenchmarkRunner runner = new BenchmarkRunner(vectorService);
             int vectorCount = 10;
             int queryCount = 2;
             int dimension = 512;

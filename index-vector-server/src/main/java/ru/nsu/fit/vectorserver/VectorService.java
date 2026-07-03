@@ -67,4 +67,7 @@ public class VectorService {
         }
     }
 
+    public void clear(){
+        index.clear();
+    }
 }
