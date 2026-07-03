@@ -18,13 +18,13 @@ public class IndexClient {
         this.http = builder.baseUrl(baseUrl).build();
     }
 
-    public void add(long id, float[] vector, String url, String metadata) {
-        http.post()
+    public Dto.VectorResponse add(float[] vector, String url, String metadata) {
+        return http.post()
                 .uri("/vectors")
                 .contentType(MediaType.APPLICATION_JSON)
-                .body(new Dto.IndexAddRequest(id, vector, url, metadata))
+                .body(new Dto.IndexAddRequest(vector, url, metadata))
                 .retrieve()
-                .toBodilessEntity();
+                .body(Dto.VectorResponse.class);
     }
 
     public void delete(long id) {
