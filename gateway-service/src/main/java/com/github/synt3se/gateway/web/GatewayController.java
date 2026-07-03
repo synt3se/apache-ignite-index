@@ -17,8 +17,6 @@ public class GatewayController {
     private final ClipClient clipClient;
     private final IndexClient indexClient;
 
-    private final AtomicLong idGen = new AtomicLong(System.currentTimeMillis());
-
     public GatewayController(ClipClient clipClient, IndexClient indexClient) {
         this.clipClient = clipClient;
         this.indexClient = indexClient;
@@ -38,9 +36,8 @@ public class GatewayController {
         }
 
         float[] vector = clipClient.embedImage(imageBytes, request.url());
-        long id = idGen.incrementAndGet();
-        indexClient.add(id, vector, request.url(), request.metadata());
-        return Map.of("id", id, "dim", vector.length, "url", request.url());
+        Dto.VectorResponse response = indexClient.add(vector, request.url(), request.metadata());
+        return Map.of("id", response.id(), "dim", vector.length, "url", request.url());
     }
 
     @PostMapping("/search/image")

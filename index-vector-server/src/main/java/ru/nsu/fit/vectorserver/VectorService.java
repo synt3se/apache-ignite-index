@@ -1,43 +1,36 @@
 package ru.nsu.fit.vectorserver;
 
-import org.apache.ignite.client.ClientCache;
-import org.apache.ignite.client.IgniteClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import ru.nsu.fit.vectorserver.core.Index;
 import ru.nsu.fit.vectorserver.dto.AddRequest;
 
-import org.apache.ignite.cache.query.QueryCursor;
-import org.apache.ignite.cache.query.ScanQuery;
 import ru.nsu.fit.vectorserver.dto.Neighbor;
 import ru.nsu.fit.vectorserver.dto.SearchRequest;
 import ru.nsu.fit.vectorserver.dto.VectorResponse;
 
-import javax.cache.Cache;
-import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
-import java.util.PriorityQueue;
-
 
 @Service
 public class VectorService {
     static final Logger log = LoggerFactory.getLogger(VectorService.class);
     private final Index index;
+    private final IdGenerator idGenerator;
 
-    public VectorService(Index index) { // new VectorService(new BruteForceIndex())
+    public VectorService(Index index, IdGenerator idGenerator) {
         this.index = index;
+        this.idGenerator = idGenerator;
     }
 
     public ResponseEntity<?> add(AddRequest request) {
         try {
             log.info("Received AddRequest");
-            index.add(request);
+            long id = idGenerator.nextId();
+            index.add(id, request);
             VectorResponse response = new VectorResponse(
-                    request.id(), request.vector(), request.url(), request.metadata());
+                    id, request.vector(), request.url(), request.metadata());
             log.info("AddRequest processed. VectorResponse: " + response);
             return ResponseEntity.ok(response);
         } catch (IllegalArgumentException e){

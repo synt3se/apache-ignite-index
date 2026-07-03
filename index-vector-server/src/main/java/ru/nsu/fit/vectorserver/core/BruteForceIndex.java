@@ -30,11 +30,11 @@ public class BruteForceIndex implements Index {
         this.dimension = dimension;
     }
 
-    public void add(AddRequest request) {
+    public void add(long id, AddRequest request) {
         validateSaveRequest(request);
         VectorObject object = new VectorObject(request.vector(), request.url(), request.metadata());
 
-        cache.put(request.id(), object);
+        cache.put(id, object);
     }
 
     public VectorObject get(long id) {
@@ -43,6 +43,10 @@ public class BruteForceIndex implements Index {
 
     public boolean delete(long id) {
         return cache.remove(id);
+    }
+
+    public void clear(){
+        cache.clear();
     }
 
     public List<Neighbor> search(float[] queryVector, int count) {
@@ -105,10 +109,6 @@ public class BruteForceIndex implements Index {
     }
 
     private void validateSaveRequest(AddRequest request) {
-        if (request.id() == null || request.id() <= 0) {
-            throw new IllegalArgumentException("id is required");
-        }
-
         if (request.url() == null || request.url().isBlank()) {
             throw new IllegalArgumentException("url is required");
         }
@@ -153,5 +153,4 @@ public class BruteForceIndex implements Index {
             VectorObject object,
             double distance
     ) {}
-
 }
