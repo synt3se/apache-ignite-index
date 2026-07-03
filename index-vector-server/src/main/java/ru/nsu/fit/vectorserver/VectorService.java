@@ -3,7 +3,9 @@ package ru.nsu.fit.vectorserver;
 import org.apache.ignite.client.ClientCache;
 import org.apache.ignite.client.IgniteClient;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import ru.nsu.fit.vectorserver.core.Index;
 import ru.nsu.fit.vectorserver.dto.AddRequest;
 
 import org.apache.ignite.cache.query.QueryCursor;
@@ -21,151 +23,44 @@ import java.util.PriorityQueue;
 
 @Service
 public class VectorService {
-    private final ClientCache<Long, VectorObject> cache;
-    private final int dimension;
-    public VectorService(IgniteClient igniteClient,
-                         @Value("${ignite.cache.name}") String cacheName,
-                         @Value("${vector.dimension}") int dimension
-    ){
-        this.cache = igniteClient.getOrCreateCache(cacheName);
-        this.dimension = dimension;
+
+    private final Index index;
+
+    public VectorService(Index index) { // new VectorService(new BruteForceIndex())
+        this.index = index;
     }
 
-    public VectorObject save(AddRequest request) {
-        validateSaveRequest(request);
-
-        float[] vector = request.vector();
-
-        VectorObject object = new VectorObject(
-                vector,
-                request.url(),
-                request.metadata()
-        );
-
-        cache.put(request.id(), object);
-
-        return object;
+    public ResponseEntity<?> add(AddRequest request) {
+        try {
+            index.add(request);
+            VectorResponse response = new VectorResponse(
+                    request.id(), request.vector(), request.url(), request.metadata());
+            return ResponseEntity.ok(response);
+        } catch (IllegalArgumentException e){
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
     }
 
-    public VectorObject get(Long id) {
-        return cache.get(id);
-    }
-
-
-    public List<Neighbor> search(SearchRequest request) {
-        validateSearchRequest(request);
-
-        float[] queryVector = request.vector();
-        int count = request.count();
-
-        PriorityQueue<SearchCandidate> top = new PriorityQueue<>(
-                Comparator.comparingDouble(SearchCandidate::distance).reversed()
-        );
-
-        try (QueryCursor<Cache.Entry<Long, VectorObject>> cursor =
-                     cache.query(new ScanQuery<>())) {
-
-            for (Cache.Entry<Long, VectorObject> entry : cursor) {
-                Long id = entry.getKey();
-                VectorObject object = entry.getValue();
-
-                if (object == null || object.getVector() == null) {
-                    continue;
-                }
-
-                float[] storedVector = object.getVector();
-
-                double distance = euclideanDistance(queryVector, storedVector);
-
-                SearchCandidate candidate = new SearchCandidate(
-                        id,
-                        object,
-                        distance
-                );
-
-                if (top.size() < count) {
-                    top.add(candidate);
-                } else {
-                    assert top.peek() != null;
-                    if (distance < top.peek().distance()) {
-                        top.poll();
-                        top.add(candidate);
-                    }
-                }
+    public ResponseEntity<?> get(Long id) {
+        try {
+            VectorObject obj = index.get(id);
+            if (obj == null) {
+                return ResponseEntity.notFound().build();
             }
-        }
-
-        List<SearchCandidate> candidates = new ArrayList<>(top);
-        candidates.sort(Comparator.comparingDouble(SearchCandidate::distance));
-
-        List<Neighbor> result = new ArrayList<>();
-
-        for (SearchCandidate candidate : candidates) {
-            VectorObject object = candidate.object();
-
-            result.add(new Neighbor(
-                    candidate.id(),
-                    candidate.distance,
-                    object.getUrl(),
-                    object.getMetadata()
-            ));
-        }
-
-        return result;
-    }
-
-    private void validateSaveRequest(AddRequest request) {
-        if (request.id() == null || request.id() <= 0) {
-            throw new IllegalArgumentException("id is required");
-        }
-
-        if (request.url() == null || request.url().isBlank()) {
-            throw new IllegalArgumentException("url is required");
-        }
-
-        if (request.vector() == null) {
-            throw new IllegalArgumentException("vector is required");
-        }
-
-        if (request.vector().length != dimension){
-            throw new IllegalArgumentException("incorrect vector dimension (" +
-                    request.vector().length + "), required: " + dimension);
+            VectorResponse response = new VectorResponse(id, obj.getVector(), obj.getUrl(), obj.getMetadata());
+            return ResponseEntity.ok(response);
+        } catch (IllegalArgumentException e){
+            return ResponseEntity.badRequest().body(e.getMessage());
         }
     }
 
-    private void validateSearchRequest(SearchRequest request) {
-        if (request.vector() == null) {
-            throw new IllegalArgumentException("vector is required");
-        }
-
-        if (request.vector().length != dimension){
-            throw new IllegalArgumentException("incorrect vector dimension (" +
-                    request.vector().length + "), required: " + dimension);
-        }
-
-        if (request.count() == null) {
-            throw new IllegalArgumentException("count is required");
-        }
-
-        if (request.count() <= 0) {
-            throw new IllegalArgumentException("count must be positive");
+    public ResponseEntity<?> search(SearchRequest request) {
+        try {
+            List<Neighbor> result = index.search(request.vector(), request.count());
+            return ResponseEntity.ok(result);
+        } catch (IllegalArgumentException e){
+            return ResponseEntity.badRequest().body(e.getMessage());
         }
     }
 
-    private double euclideanDistance(float[] a, float[] b) {
-        double sum = 0.0;
-
-        for (int i = 0; i < a.length; i++) {
-            double diff = a[i] - b[i];
-            sum += diff * diff;
-        }
-
-        return Math.sqrt(sum);
-    }
-    private record SearchCandidate(
-            Long id,
-            VectorObject object,
-            double distance
-    ) {
-    }
 }

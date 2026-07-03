@@ -2,6 +2,7 @@ package ru.nsu.fit.vectorserver;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import ru.nsu.fit.vectorserver.core.Index;
 import ru.nsu.fit.vectorserver.dto.*;
 
 import java.util.List;
@@ -18,38 +19,16 @@ public class VectorController {
 
     @PostMapping
     public ResponseEntity<?> saveVector(@RequestBody AddRequest request) {
-        try {
-            VectorObject savedObject = vectorService.save(request);
-            VectorResponse response = new VectorResponse(request.id(), savedObject.getVector(), savedObject.getUrl());
-            return ResponseEntity.ok(response);
-        }catch (IllegalArgumentException e){
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
+        return vectorService.add(request);
     }
 
     @GetMapping("/{id}")
     public ResponseEntity<?> getVector(@PathVariable Long id) {
-        try {
-            VectorObject object = vectorService.get(id);
-            if (object == null) {
-                return ResponseEntity.notFound().build();
-            }
-            VectorResponse response = new VectorResponse(id, object.getVector(), object.getUrl());
-
-            return ResponseEntity.ok(response);
-
-        } catch (IllegalArgumentException e){
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
+        return vectorService.get(id);
     }
 
     @PostMapping("/search")
     public ResponseEntity<?> search(@RequestBody SearchRequest request){
-        try {
-            List<Neighbor> result = vectorService.search(request);
-            return ResponseEntity.ok(result);
-        } catch (IllegalArgumentException e){
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
+        return vectorService.search(request);
     }
 }
