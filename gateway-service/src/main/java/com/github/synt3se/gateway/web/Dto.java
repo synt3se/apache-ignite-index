@@ -14,7 +14,7 @@ public final class Dto {
 
     public record ClipTextRequest(String text) {}
 
-    public record IndexAddRequest(long id, float[] vector, String url, String metadata) {}
+    public record IndexAddRequest(float[] vector, String url, String metadata) {}
 
     public record IndexSearchRequest(float[] vector, Integer count) {}
 
