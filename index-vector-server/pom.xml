@@ -41,6 +41,11 @@
             <artifactId>ignite-core</artifactId>
             <version>${ignite.version}</version>
         </dependency>
+        <dependency>
+            <groupId>io.jhdf</groupId>
+            <artifactId>jhdf</artifactId>
+            <version>0.8.3</version>
+        </dependency>
     </dependencies>
 
     <build>
