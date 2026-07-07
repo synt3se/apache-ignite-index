@@ -16,7 +16,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.PriorityQueue;
 
-@Component
+//@Component
 public class BruteForceIndex implements Index {
 
     private final ClientCache<Long, VectorObject> cache;
