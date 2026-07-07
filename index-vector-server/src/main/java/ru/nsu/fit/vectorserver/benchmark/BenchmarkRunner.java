@@ -1,9 +1,8 @@
 package ru.nsu.fit.vectorserver.benchmark;
 
 import ru.nsu.fit.vectorserver.core.Index;
-import ru.nsu.fit.vectorserver.dto.AddRequest;
+import ru.nsu.fit.vector.common.dto.AddRequest;
 
-import java.util.Map;
 import java.util.Random;
 
 
@@ -40,13 +39,12 @@ public class BenchmarkRunner{
 
         for (int i = 0; i < vectorCount; i++) {
             AddRequest request = new AddRequest(
-                    (long) (i+1),
                     train[i],
                     "benchmark://vector/" + i,
                     "Source: benchmark"
             );
 
-            index.add(request);
+            index.add(i, request); //TODO wtf
         }
 
         long loadEnd = System.nanoTime();

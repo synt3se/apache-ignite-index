@@ -6,7 +6,9 @@
         <sourceOutputDir name="target/generated-sources/annotations" />
         <sourceTestOutputDir name="target/generated-test-sources/test-annotations" />
         <outputRelativeToContentRoot value="true" />
+        <module name="vector-index-node" />
         <module name="vector-server" />
+        <module name="vector-index-common" />
         <module name="gateway-service" />
       </profile>
     </annotationProcessing>

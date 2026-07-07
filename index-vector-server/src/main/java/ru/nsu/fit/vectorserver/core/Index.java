@@ -1,8 +1,8 @@
 package ru.nsu.fit.vectorserver.core;
 
-import ru.nsu.fit.vectorserver.VectorObject;
-import ru.nsu.fit.vectorserver.dto.AddRequest;
-import ru.nsu.fit.vectorserver.dto.Neighbor;
+import ru.nsu.fit.vector.common.VectorObject;
+import ru.nsu.fit.vector.common.dto.AddRequest;
+import ru.nsu.fit.vector.common.dto.Neighbor;
 
 import java.util.List;
 

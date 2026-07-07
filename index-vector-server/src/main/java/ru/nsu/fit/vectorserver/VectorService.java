@@ -5,11 +5,12 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import ru.nsu.fit.vectorserver.core.Index;
-import ru.nsu.fit.vectorserver.dto.AddRequest;
+import ru.nsu.fit.vector.common.dto.AddRequest;
 
-import ru.nsu.fit.vectorserver.dto.Neighbor;
-import ru.nsu.fit.vectorserver.dto.SearchRequest;
-import ru.nsu.fit.vectorserver.dto.VectorResponse;
+import ru.nsu.fit.vector.common.dto.Neighbor;
+import ru.nsu.fit.vector.common.dto.SearchRequest;
+import ru.nsu.fit.vector.common.dto.VectorResponse;
+import ru.nsu.fit.vector.common.VectorObject;
 
 import java.util.List;
 

@@ -6,9 +6,9 @@ import org.apache.ignite.client.ClientCache;
 import org.apache.ignite.client.IgniteClient;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
-import ru.nsu.fit.vectorserver.VectorObject;
-import ru.nsu.fit.vectorserver.dto.AddRequest;
-import ru.nsu.fit.vectorserver.dto.Neighbor;
+import ru.nsu.fit.vector.common.VectorObject;
+import ru.nsu.fit.vector.common.dto.AddRequest;
+import ru.nsu.fit.vector.common.dto.Neighbor;
 
 import javax.cache.Cache;
 import java.util.ArrayList;

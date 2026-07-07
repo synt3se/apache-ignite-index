@@ -6,7 +6,7 @@
 
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>ru.danil</groupId>
+    <groupId>ru.nsu.fit</groupId>
     <artifactId>vector-server</artifactId>
     <version>1.0-SNAPSHOT</version>
 
@@ -40,6 +40,17 @@
             <groupId>org.apache.ignite</groupId>
             <artifactId>ignite-core</artifactId>
             <version>${ignite.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>ru.nsu.fit</groupId>
+            <artifactId>vector-index-common</artifactId>
+            <version>1.0-SNAPSHOT</version>
+            <scope>compile</scope>
+        </dependency>
+        <dependency>
+            <groupId>ru.nsu.fit</groupId>
+            <artifactId>vector-index-node</artifactId>
+            <version>1.0-SNAPSHOT</version>
         </dependency>
     </dependencies>
 
