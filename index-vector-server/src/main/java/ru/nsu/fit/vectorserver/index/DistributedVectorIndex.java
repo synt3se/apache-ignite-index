@@ -9,9 +9,7 @@ import ru.nsu.fit.vector.common.ScoredVector;
 import ru.nsu.fit.vector.common.VectorObject;
 import ru.nsu.fit.vector.common.dto.AddRequest;
 import ru.nsu.fit.vector.common.dto.Neighbor;
-import ru.nsu.fit.vector.node.compute.AddVectorTask;
 import ru.nsu.fit.vector.node.compute.ClearVectorTask;
-import ru.nsu.fit.vector.node.compute.DeleteVectorTask;
 import ru.nsu.fit.vector.node.compute.SearchVectorTask;
 
 import java.util.ArrayList;
@@ -37,28 +35,8 @@ public class DistributedVectorIndex implements Index {
     @Override
     public void add(long id, AddRequest request) {
         validateSaveRequest(request);
-
-        VectorObject object = new VectorObject(
-                request.vector(),
-                request.url(),
-                request.metadata()
-        );
-
-        try {
-            cache.put(id, object);
-
-            igniteClient.compute().execute(
-                    AddVectorTask.class.getName(),
-                    new AddVectorTask.Arg(id, request.vector())
-            );
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            cache.remove(id);
-            throw new RuntimeException("Add vector task was interrupted", e);
-        } catch (RuntimeException e) {
-            cache.remove(id);
-            throw e;
-        }
+        cache.put(id, new VectorObject(request.vector(), request.url(), request.metadata()));
+        // индекс — производная кэша: слушатель владельца сам добавит вектор
     }
 
     @Override
@@ -68,21 +46,7 @@ public class DistributedVectorIndex implements Index {
 
     @Override
     public boolean delete(long id) {
-        boolean removed = cache.remove(id);
-
-        if (removed) {
-            try {
-                igniteClient.compute().execute(
-                        DeleteVectorTask.class.getName(),
-                        new DeleteVectorTask.Arg(id)
-                );
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                throw new RuntimeException("Delete vector task was interrupted", e);
-            }
-        }
-
-        return removed;
+        return cache.remove(id);   // слушатель владельца сам поставит tombstone
     }
 
     @Override
