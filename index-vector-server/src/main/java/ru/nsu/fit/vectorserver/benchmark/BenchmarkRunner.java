@@ -1,6 +1,6 @@
 package ru.nsu.fit.vectorserver.benchmark;
 
-import ru.nsu.fit.vectorserver.core.Index;
+import ru.nsu.fit.vectorserver.index.Index;
 import ru.nsu.fit.vector.common.dto.AddRequest;
 
 import java.util.Random;

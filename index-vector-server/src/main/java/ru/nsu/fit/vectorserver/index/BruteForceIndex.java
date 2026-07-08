@@ -1,11 +1,10 @@
-package ru.nsu.fit.vectorserver.core;
+package ru.nsu.fit.vectorserver.index;
 
 import org.apache.ignite.cache.query.QueryCursor;
 import org.apache.ignite.cache.query.ScanQuery;
 import org.apache.ignite.client.ClientCache;
 import org.apache.ignite.client.IgniteClient;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Component;
 import ru.nsu.fit.vector.common.VectorObject;
 import ru.nsu.fit.vector.common.dto.AddRequest;
 import ru.nsu.fit.vector.common.dto.Neighbor;

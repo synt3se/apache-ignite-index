@@ -21,9 +21,19 @@ public class DeleteVectorTask
     @IgniteInstanceResource
     private transient Ignite ignite;
 
-    public record Arg(
-            long id
-    ) implements Serializable {
+    public static class Arg implements Serializable {
+        private long id;
+
+        public Arg() {
+        }
+
+        public Arg(long id) {
+            this.id = id;
+        }
+
+        public long id() {
+            return id;
+        }
     }
 
     @Override

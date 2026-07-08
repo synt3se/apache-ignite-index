@@ -21,10 +21,25 @@ public class AddVectorTask
     @IgniteInstanceResource
     private transient Ignite ignite;
 
-    public record Arg(
-            long id,
-            float[] vector
-    ) implements Serializable {
+    public static class Arg implements Serializable {
+        private long id;
+        private float[] vector;
+
+        public Arg() {
+        }
+
+        public Arg(long id, float[] vector) {
+            this.id = id;
+            this.vector = vector;
+        }
+
+        public long id() {
+            return id;
+        }
+
+        public float[] vector() {
+            return vector;
+        }
     }
 
     @Override

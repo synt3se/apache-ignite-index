@@ -4,7 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
-import ru.nsu.fit.vectorserver.core.Index;
+import ru.nsu.fit.vectorserver.index.Index;
 import ru.nsu.fit.vector.common.dto.AddRequest;
 
 import ru.nsu.fit.vector.common.dto.Neighbor;

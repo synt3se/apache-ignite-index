@@ -1,4 +1,4 @@
-package ru.nsu.fit.vectorserver.core;
+package ru.nsu.fit.vectorserver.index;
 
 import ru.nsu.fit.vector.common.VectorObject;
 import ru.nsu.fit.vector.common.dto.AddRequest;

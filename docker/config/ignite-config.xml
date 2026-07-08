@@ -1,19 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!--
-  Минимальный конфиг Ignite со СТАТИЧЕСКОЙ discovery для Docker.
-  TcpDiscoveryVmIpFinder перечисляет узлы по именам docker-сервисов
-  (ignite-node-1 / ignite-node-2), которые Docker резолвит внутри сети ignite-net.
-  Диапазон 47500..47509 — порты discovery (берётся первый свободный).
-
-  Persistence НЕ включён -> кластер in-memory и активируется автоматически
-  (для demo этого достаточно; данные не переживают рестарт контейнеров).
--->
 <beans xmlns="http://www.springframework.org/schema/beans"
        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
        xsi:schemaLocation="http://www.springframework.org/schema/beans
                            http://www.springframework.org/schema/beans/spring-beans.xsd">
 
     <bean class="org.apache.ignite.configuration.IgniteConfiguration">
+
         <property name="discoverySpi">
             <bean class="org.apache.ignite.spi.discovery.tcp.TcpDiscoverySpi">
                 <property name="ipFinder">
@@ -28,5 +20,18 @@
                 </property>
             </bean>
         </property>
+
+        <property name="clientConnectorConfiguration">
+            <bean class="org.apache.ignite.configuration.ClientConnectorConfiguration">
+                <property name="port" value="10800"/>
+
+                <property name="thinClientConfiguration">
+                    <bean class="org.apache.ignite.configuration.ThinClientConfiguration">
+                        <property name="maxActiveComputeTasksPerConnection" value="100"/>
+                    </bean>
+                </property>
+            </bean>
+        </property>
+
     </bean>
 </beans>

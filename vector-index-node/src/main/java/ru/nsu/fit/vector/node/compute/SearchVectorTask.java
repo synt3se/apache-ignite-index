@@ -20,10 +20,25 @@ public class SearchVectorTask
 
     private int searchCount;
 
-    public record Arg(
-            float[] queryVector,
-            int searchCount
-    ) implements Serializable {
+    public static class Arg implements Serializable {
+        private float[] queryVector;
+        private int searchCount;
+
+        public Arg() {
+        }
+
+        public Arg(float[] queryVector, int searchCount) {
+            this.queryVector = queryVector;
+            this.searchCount = searchCount;
+        }
+
+        public float[] queryVector() {
+            return queryVector;
+        }
+
+        public int searchCount() {
+            return searchCount;
+        }
     }
 
     @Override
