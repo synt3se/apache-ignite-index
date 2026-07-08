@@ -106,8 +106,6 @@ public class DistributedVectorIndex implements Index {
 
     @Override
     public List<Neighbor> search(float[] queryVector, int count) {
-        validateSearchRequest(queryVector, count);
-
         List<ScoredVector> scoredVectors;
 
         try {
@@ -237,40 +235,6 @@ public class DistributedVectorIndex implements Index {
 
         } catch (IOException e) {
             throw new RuntimeException("CSV load error: " + path, e);
-        }
-    }
-
-    private void validateAddRequest(AddRequest request) {
-        if (request.url() == null || request.url().isBlank()) {
-            throw new IllegalArgumentException("url is required");
-        }
-
-        if (request.vector() == null) {
-            throw new IllegalArgumentException("vector is required");
-        }
-
-        if (request.vector().length != dimension) {
-            throw new IllegalArgumentException(
-                    "incorrect vector dimension: " + request.vector().length
-                            + ", required: " + dimension
-            );
-        }
-    }
-
-    private void validateSearchRequest(float[] vector, int count) {
-        if (vector == null) {
-            throw new IllegalArgumentException("vector is required");
-        }
-
-        if (vector.length != dimension) {
-            throw new IllegalArgumentException(
-                    "incorrect vector dimension: " + vector.length
-                            + ", required: " + dimension
-            );
-        }
-
-        if (count <= 0) {
-            throw new IllegalArgumentException("count must be positive");
         }
     }
 }

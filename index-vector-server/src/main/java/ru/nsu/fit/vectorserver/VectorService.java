@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import ru.nsu.fit.vector.common.dto.*;
+import ru.nsu.fit.vectorserver.exception.ResourceNotFoundException;
 import ru.nsu.fit.vectorserver.index.Index;
 
 import ru.nsu.fit.vector.common.VectorObject;
@@ -22,7 +23,7 @@ public class VectorService {
         this.idGenerator = idGenerator;
     }
 
-    public ResponseEntity<?> add(AddRequest request) {
+    public ResponseEntity<VectorResponse> add(AddRequest request) {
         log.info("Received AddRequest");
         long id = idGenerator.nextId();
         index.add(id, request);
@@ -32,32 +33,32 @@ public class VectorService {
         return ResponseEntity.ok(response);
     }
 
-    public ResponseEntity<?> get(Long id) {
+    public ResponseEntity<VectorResponse> get(Long id) {
         log.info("Received GetRequest");
         VectorObject obj = index.get(id);
         if (obj == null) {
-            return ResponseEntity.notFound().build();
+            throw new ResourceNotFoundException("Vector with id " + id + " not found");
         }
         VectorResponse response = new VectorResponse(id, obj.getVector(), obj.getUrl(), obj.getMetadata());
         log.info("GetRequest processed. VectorResponse: " + response);
         return ResponseEntity.ok(response);
     }
 
-    public ResponseEntity<?> search(SearchRequest request) {
+    public ResponseEntity<List<Neighbor>> search(SearchRequest request) {
         log.info("Received SearchRequest");
         List<Neighbor> result = index.search(request.vector(), request.count());
         log.info("SearchRequest processed. Neighbors: " + result);
         return ResponseEntity.ok(result);
     }
 
-    public ResponseEntity<?> save(SaveRequest request) {
+    public ResponseEntity<String> save(SaveRequest request) {
         log.info("Received SaveRequest");
         index.save(request.file());
         log.info("SaveRequest processed");
         return ResponseEntity.ok("SaveRequest processed");
     }
 
-    public ResponseEntity<?> load(LoadRequest request) {
+    public ResponseEntity<String> load(LoadRequest request) {
         log.info("Received LoadRequest для пути: {}", request.file());
 
         clear();
