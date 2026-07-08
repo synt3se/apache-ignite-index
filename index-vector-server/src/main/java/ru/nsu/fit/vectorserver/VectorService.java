@@ -23,18 +23,13 @@ public class VectorService {
     }
 
     public ResponseEntity<?> add(AddRequest request) {
-        try {
-            log.info("Received AddRequest");
-            long id = idGenerator.nextId();
-            index.add(id, request);
-            VectorResponse response = new VectorResponse(
-                    id, request.vector(), request.url(), request.metadata());
-            log.info("AddRequest processed. VectorResponse: " + response);
-            return ResponseEntity.ok(response);
-        } catch (IllegalArgumentException e){
-            log.error("AddRequest process was broken", e);
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
+        log.info("Received AddRequest");
+        long id = idGenerator.nextId();
+        index.add(id, request);
+        VectorResponse response = new VectorResponse(
+                id, request.vector(), request.url(), request.metadata());
+        log.info("AddRequest processed. VectorResponse: " + response);
+        return ResponseEntity.ok(response);
     }
 
     public ResponseEntity<?> get(Long id) {
