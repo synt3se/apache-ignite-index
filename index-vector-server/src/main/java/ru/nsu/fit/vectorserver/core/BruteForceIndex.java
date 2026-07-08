@@ -134,7 +134,7 @@ public class BruteForceIndex implements Index {
         }
 
         if (count <= 0) {
-            throw new IllegalArgumentException("count must be positive");
+            throw new IllegalArgumentException("searchCount must be positive");
         }
     }
 

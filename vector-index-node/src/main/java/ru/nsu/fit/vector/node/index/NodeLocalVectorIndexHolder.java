@@ -25,6 +25,7 @@ public final class NodeLocalVectorIndexHolder {
     public static void clear() {
         if (index != null) {
             index.clearLocal();
+            index = null;
         }
     }
 }

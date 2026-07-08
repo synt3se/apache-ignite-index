@@ -24,7 +24,7 @@ public class BenchmarkRunner{
         System.out.println("vectors: " + vectorCount);
         System.out.println("queries: " + queryCount);
         System.out.println("dimension: " + dimension);
-        System.out.println("neighbors count: " + neighborCount);
+        System.out.println("neighbors searchCount: " + neighborCount);
 
         Random random = new Random(42);
 

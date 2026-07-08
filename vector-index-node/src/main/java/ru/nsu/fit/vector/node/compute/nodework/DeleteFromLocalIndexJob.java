@@ -1,13 +1,12 @@
-package ru.nsu.fit.vector.node.compute;
+package ru.nsu.fit.vector.node.compute.nodework;
 
 import org.apache.ignite.Ignite;
-import org.apache.ignite.lang.IgniteRunnable;
+import org.apache.ignite.compute.ComputeJobAdapter;
 import org.apache.ignite.resources.IgniteInstanceResource;
 import ru.nsu.fit.vector.node.index.NodeLocalVectorIndex;
 import ru.nsu.fit.vector.node.index.NodeLocalVectorIndexHolder;
 
-
-public class DeleteFromLocalIndexJob implements IgniteRunnable {
+public class DeleteFromLocalIndexJob extends ComputeJobAdapter {
     private final long id;
 
     @IgniteInstanceResource
@@ -18,10 +17,12 @@ public class DeleteFromLocalIndexJob implements IgniteRunnable {
     }
 
     @Override
-    public void run() {
+    public Object execute() {
         NodeLocalVectorIndex index =
                 NodeLocalVectorIndexHolder.getOrCreate(ignite);
 
         index.deleteLocal(id);
+
+        return null;
     }
 }
