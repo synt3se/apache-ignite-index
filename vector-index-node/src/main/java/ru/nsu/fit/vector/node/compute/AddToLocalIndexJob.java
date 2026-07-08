@@ -4,18 +4,16 @@ import org.apache.ignite.Ignite;
 import org.apache.ignite.lang.IgniteRunnable;
 import org.apache.ignite.resources.IgniteInstanceResource;
 import ru.nsu.fit.vector.node.index.NodeLocalVectorIndex;
-import ru.nsu.fit.vector.node.index.NodeLocalVectorIndexRegistry;
+import ru.nsu.fit.vector.node.index.NodeLocalVectorIndexHolder;
 
 public class AddToLocalIndexJob implements IgniteRunnable {
-    private final String cacheName;
     private final long id;
     private final float[] vector;
 
     @IgniteInstanceResource
     private transient Ignite ignite;
 
-    public AddToLocalIndexJob(String cacheName, long id, float[] vector) {
-        this.cacheName = cacheName;
+    public AddToLocalIndexJob(long id, float[] vector) {
         this.id = id;
         this.vector = vector;
     }
@@ -23,7 +21,7 @@ public class AddToLocalIndexJob implements IgniteRunnable {
     @Override
     public void run() {
         NodeLocalVectorIndex index =
-                NodeLocalVectorIndexRegistry.getOrCreate(ignite, cacheName);
+                NodeLocalVectorIndexHolder.getOrCreate(ignite);
 
         index.addLocal(id, vector);
     }
