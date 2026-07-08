@@ -1,16 +1,19 @@
 package ru.nsu.fit.vectorserver;
 
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import ru.nsu.fit.vector.common.dto.LoadRequest;
 import ru.nsu.fit.vector.common.dto.SaveRequest;
 import ru.nsu.fit.vector.common.dto.SearchRequest;
 
 import javax.validation.Valid;
+import javax.validation.constraints.Positive;
 
 
 @RestController
 @RequestMapping("/vectors")
+@Validated
 public class VectorController {
     private final VectorService vectorService;
 
@@ -24,7 +27,7 @@ public class VectorController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<?> getVector(@Valid @PathVariable Long id) {
+    public ResponseEntity<?> getVector(@Positive(message = "id must be greater than zero") @PathVariable Long id) {
         return vectorService.get(id);
     }
 

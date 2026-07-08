@@ -1,3 +1,8 @@
 package ru.nsu.fit.vector.common.dto;
 
-public record LoadRequest(String file){}
+import javax.validation.constraints.NotBlank;
+
+public record LoadRequest(
+        @NotBlank(message = "url is required")
+        String file
+){}

@@ -33,60 +33,40 @@ public class VectorService {
     }
 
     public ResponseEntity<?> get(Long id) {
-        try {
-            log.info("Received GetRequest");
-            VectorObject obj = index.get(id);
-            if (obj == null) {
-                return ResponseEntity.notFound().build();
-            }
-            VectorResponse response = new VectorResponse(id, obj.getVector(), obj.getUrl(), obj.getMetadata());
-            log.info("GetRequest processed. VectorResponse: " + response);
-            return ResponseEntity.ok(response);
-        } catch (IllegalArgumentException e){
-            log.error("GetRequest process was broken", e);
-            return ResponseEntity.badRequest().body(e.getMessage());
+        log.info("Received GetRequest");
+        VectorObject obj = index.get(id);
+        if (obj == null) {
+            return ResponseEntity.notFound().build();
         }
+        VectorResponse response = new VectorResponse(id, obj.getVector(), obj.getUrl(), obj.getMetadata());
+        log.info("GetRequest processed. VectorResponse: " + response);
+        return ResponseEntity.ok(response);
     }
 
     public ResponseEntity<?> search(SearchRequest request) {
-        try {
-            log.info("Received SearchRequest");
-            List<Neighbor> result = index.search(request.vector(), request.count());
-            log.info("SearchRequest processed. Neighbors: " + result);
-            return ResponseEntity.ok(result);
-        } catch (IllegalArgumentException e){
-            log.error("SearchRequest process was broken", e);
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
+        log.info("Received SearchRequest");
+        List<Neighbor> result = index.search(request.vector(), request.count());
+        log.info("SearchRequest processed. Neighbors: " + result);
+        return ResponseEntity.ok(result);
     }
 
     public ResponseEntity<?> save(SaveRequest request) {
-        try {
-            log.info("Received SaveRequest");
-            index.save(request.file());
-            log.info("SaveRequest processed");
-            return ResponseEntity.ok("SaveRequest processed");
-        } catch (IllegalArgumentException e){
-            log.error("SaveRequest process was broken", e);
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
+        log.info("Received SaveRequest");
+        index.save(request.file());
+        log.info("SaveRequest processed");
+        return ResponseEntity.ok("SaveRequest processed");
     }
 
     public ResponseEntity<?> load(LoadRequest request) {
-        try {
-            log.info("Received LoadRequest для пути: {}", request.file());
+        log.info("Received LoadRequest для пути: {}", request.file());
 
-            clear();
+        clear();
 
-            long maxId = index.load(request.file());
-            idGenerator.setCounter(maxId);
+        long maxId = index.load(request.file());
+        idGenerator.setCounter(maxId);
 
-            log.info("LoadRequest processed. New ID counter: {}", maxId);
-            return ResponseEntity.ok("LoadRequest processed.");
-        } catch (IllegalArgumentException e){
-            log.error("LoadRequest process was broken", e);
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
+        log.info("LoadRequest processed. New ID counter: {}", maxId);
+        return ResponseEntity.ok("LoadRequest processed.");
     }
 
     public void clear(){
