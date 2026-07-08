@@ -62,15 +62,24 @@ public class SearchVectorTask
 
     @Override
     public List<ScoredVector> reduce(List<ComputeJobResult> results) {
-        List<ScoredVector> candidates = new ArrayList<>();
-
+        Map<Long, Double> best = new HashMap<>();
         for (ComputeJobResult result : results) {
-            @SuppressWarnings("unchecked")
+            if (result.getException() != null) {
+                continue;                                  // упавший узел пропускаем
+            }
             List<ScoredVector> localResult = (List<ScoredVector>) result.getData();
-            candidates.addAll(localResult);
+            if (localResult == null) {
+                continue;
+            }
+            for (ScoredVector sv : localResult) {
+                best.merge(sv.id(), sv.distance(), Math::min);   // дедуп по id, минимальная дистанция
+            }
         }
-
-        return topK(candidates, searchCount);
+        List<ScoredVector> deduped = new ArrayList<>(best.size());
+        for (Map.Entry<Long, Double> e : best.entrySet()) {
+            deduped.add(new ScoredVector(e.getKey(), e.getValue()));
+        }
+        return topK(deduped, searchCount);
     }
 
     private List<ScoredVector> topK(
