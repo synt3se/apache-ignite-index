@@ -6,6 +6,8 @@ import ru.nsu.fit.vector.common.dto.LoadRequest;
 import ru.nsu.fit.vector.common.dto.SaveRequest;
 import ru.nsu.fit.vector.common.dto.SearchRequest;
 
+import javax.validation.Valid;
+
 
 @RestController
 @RequestMapping("/vectors")
@@ -17,26 +19,26 @@ public class VectorController {
     }
 
     @PostMapping
-    public ResponseEntity<?> saveVector(@RequestBody ru.nsu.fit.vector.common.dto.AddRequest request) {
+    public ResponseEntity<?> saveVector(@Valid @RequestBody ru.nsu.fit.vector.common.dto.AddRequest request) {
         return vectorService.add(request);
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<?> getVector(@PathVariable Long id) {
+    public ResponseEntity<?> getVector(@Valid @PathVariable Long id) {
         return vectorService.get(id);
     }
 
     @PostMapping("/search")
-    public ResponseEntity<?> search(@RequestBody SearchRequest request){
+    public ResponseEntity<?> search(@Valid @RequestBody SearchRequest request){
         return vectorService.search(request);
     }
 
     @PostMapping("/save")
-    public ResponseEntity<?> saveDatabase(@RequestBody SaveRequest request) {
+    public ResponseEntity<?> saveDatabase(@Valid @RequestBody SaveRequest request) {
         return vectorService.save(request);
     }
     @PostMapping("/load")
-    public ResponseEntity<?> saveDatabase(@RequestBody LoadRequest request) {
+    public ResponseEntity<?> saveDatabase(@Valid @RequestBody LoadRequest request) {
         return vectorService.load(request);
     }
 }

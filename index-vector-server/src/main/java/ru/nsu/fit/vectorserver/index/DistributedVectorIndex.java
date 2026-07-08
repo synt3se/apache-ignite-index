@@ -40,7 +40,7 @@ public class DistributedVectorIndex implements Index {
 
     @Override
     public void add(long id, AddRequest request) {
-        validateAddRequest(request);
+        //validateAddRequest(request);
 
         VectorObject object = new VectorObject(
                 request.vector(),
