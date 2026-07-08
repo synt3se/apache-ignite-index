@@ -1,13 +1,8 @@
 package ru.nsu.fit.vectorserver;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import ru.nsu.fit.vectorserver.core.Index;
-import ru.nsu.fit.vectorserver.dto.*;
-
-import java.util.List;
+import ru.nsu.fit.vector.common.dto.SearchRequest;
 
 
 @RestController
@@ -20,7 +15,7 @@ public class VectorController {
     }
 
     @PostMapping
-    public ResponseEntity<?> saveVector(@RequestBody AddRequest request) {
+    public ResponseEntity<?> saveVector(@RequestBody ru.nsu.fit.vector.common.dto.AddRequest request) {
         return vectorService.add(request);
     }
 

@@ -1,14 +1,13 @@
-package ru.nsu.fit.vectorserver.core;
+package ru.nsu.fit.vectorserver.index;
 
 import org.apache.ignite.cache.query.QueryCursor;
 import org.apache.ignite.cache.query.ScanQuery;
 import org.apache.ignite.client.ClientCache;
 import org.apache.ignite.client.IgniteClient;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Component;
-import ru.nsu.fit.vectorserver.VectorObject;
-import ru.nsu.fit.vectorserver.dto.AddRequest;
-import ru.nsu.fit.vectorserver.dto.Neighbor;
+import ru.nsu.fit.vector.common.VectorObject;
+import ru.nsu.fit.vector.common.dto.AddRequest;
+import ru.nsu.fit.vector.common.dto.Neighbor;
 
 import javax.cache.Cache;
 import java.util.ArrayList;
@@ -16,7 +15,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.PriorityQueue;
 
-@Component
+//@Component
 public class BruteForceIndex implements Index {
 
     private final ClientCache<Long, VectorObject> cache;
@@ -134,7 +133,7 @@ public class BruteForceIndex implements Index {
         }
 
         if (count <= 0) {
-            throw new IllegalArgumentException("count must be positive");
+            throw new IllegalArgumentException("searchCount must be positive");
         }
     }
 

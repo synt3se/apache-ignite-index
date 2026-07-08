@@ -1,29 +1,60 @@
-version: '3.8'
-
 services:
   ignite-node-1:
-    image: apacheignite/ignite:2.18.0
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM apacheignite/ignite:2.18.0
+
+        USER root
+
+        RUN apk add --no-cache openjdk17-jre
+
+        ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk
+        ENV PATH=/usr/lib/jvm/java-17-openjdk/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    image: ignite-java17:2.18.0
     container_name: ignite-node-1
     environment:
-      - CONFIG_URI=/config/ignite-config.xml
+      CONFIG_URI: /config/ignite-config.xml
+      JVM_OPTS: >-
+        --add-opens=java.base/java.nio=ALL-UNNAMED
+        --add-opens=java.base/sun.nio.ch=ALL-UNNAMED
+        --add-opens=java.base/java.lang=ALL-UNNAMED
+        --add-opens=java.base/java.lang.invoke=ALL-UNNAMED
+        --add-opens=java.base/java.util=ALL-UNNAMED
+        --add-opens=java.base/java.io=ALL-UNNAMED
+        --add-opens=java.base/jdk.internal.misc=ALL-UNNAMED
     volumes:
       - ./config:/config:ro
+      - ./ignite-libs/vector-index-common-1.0-SNAPSHOT.jar:/opt/ignite/apache-ignite/libs/vector-index-common-1.0-SNAPSHOT.jar:ro
+      - ./ignite-libs/vector-index-node-1.0-SNAPSHOT.jar:/opt/ignite/apache-ignite/libs/vector-index-node-1.0-SNAPSHOT.jar:ro
     ports:
-      - "10800:10800"   # thin client
-      - "47100:47100"   # communication SPI
-      - "47500:47500"   # discovery SPI
+      - "10800:10800"
+      - "47100:47100"
+      - "47500:47500"
     networks:
       - ignite-net
 
   ignite-node-2:
-    image: apacheignite/ignite:2.18.0
+    image: ignite-java17:2.18.0
     container_name: ignite-node-2
     environment:
-      - CONFIG_URI=/config/ignite-config.xml
+      CONFIG_URI: /config/ignite-config.xml
+      JVM_OPTS: >-
+        --add-opens=java.base/java.nio=ALL-UNNAMED
+        --add-opens=java.base/sun.nio.ch=ALL-UNNAMED
+        --add-opens=java.base/java.lang=ALL-UNNAMED
+        --add-opens=java.base/java.lang.invoke=ALL-UNNAMED
+        --add-opens=java.base/java.util=ALL-UNNAMED
+        --add-opens=java.base/java.io=ALL-UNNAMED
+        --add-opens=java.base/jdk.internal.misc=ALL-UNNAMED
     volumes:
       - ./config:/config:ro
+      - ./ignite-libs/vector-index-common-1.0-SNAPSHOT.jar:/opt/ignite/apache-ignite/libs/vector-index-common-1.0-SNAPSHOT.jar:ro
+      - ./ignite-libs/vector-index-node-1.0-SNAPSHOT.jar:/opt/ignite/apache-ignite/libs/vector-index-node-1.0-SNAPSHOT.jar:ro
     networks:
       - ignite-net
+    depends_on:
+      - ignite-node-1
 
 networks:
   ignite-net:

@@ -1,15 +1,10 @@
 package ru.nsu.fit.vectorserver.benchmark;
 
-import io.jhdf.HdfFile;
-import io.jhdf.api.Dataset;
-import ru.nsu.fit.vectorserver.VectorService;
-import ru.nsu.fit.vectorserver.dto.AddRequest;
-import ru.nsu.fit.vectorserver.dto.Neighbor;
-import ru.nsu.fit.vectorserver.dto.SearchRequest;
+import ru.nsu.fit.vectorserver.index.Index;
+import ru.nsu.fit.vector.common.dto.AddRequest;
 
-import java.io.File;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.Random;
+
 
 
 public class BenchmarkRunner{
@@ -23,9 +18,31 @@ public class BenchmarkRunner{
             int neighborCount,
             String hdf5Path
     ){
-        File file = new File(hdf5Path);
-        if (!file.exists()) {
-            throw new IllegalArgumentException("Incorrect dataset filepath: " + hdf5Path);
+        System.out.println("=== Brute force benchmark STARTED ===");
+        System.out.println("vectors: " + vectorCount);
+        System.out.println("queries: " + queryCount);
+        System.out.println("dimension: " + dimension);
+        System.out.println("neighbors searchCount: " + neighborCount);
+
+        Random random = new Random(42);
+
+        index.clear();
+
+        float[][] train = new float[vectorCount][];
+        for (int i = 0; i < vectorCount; i++) {
+            train[i] = randomVector(random, dimension);
+        }
+
+        long loadStart = System.nanoTime();
+
+        for (int i = 0; i < vectorCount; i++) {
+            AddRequest request = new AddRequest(
+                    train[i],
+                    "benchmark://vector/" + i,
+                    "Source: benchmark"
+            );
+
+            index.add(i, request); //TODO wtf
         }
         try (HdfFile hdfFile = new HdfFile(file)) {
             Dataset trainDataset = hdfFile.getDatasetByPath("train");

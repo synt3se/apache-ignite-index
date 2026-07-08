@@ -6,6 +6,8 @@
       <list>
         <option value="$PROJECT_DIR$/index-vector-server/pom.xml" />
         <option value="$PROJECT_DIR$/gateway-service/pom.xml" />
+        <option value="$PROJECT_DIR$/vector-index-common/pom.xml" />
+        <option value="$PROJECT_DIR$/vector-index-node/pom.xml" />
       </list>
     </option>
   </component>
