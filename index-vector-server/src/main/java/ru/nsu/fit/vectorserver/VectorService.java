@@ -4,12 +4,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import ru.nsu.fit.vector.common.dto.*;
 import ru.nsu.fit.vectorserver.index.Index;
-import ru.nsu.fit.vector.common.dto.AddRequest;
 
-import ru.nsu.fit.vector.common.dto.Neighbor;
-import ru.nsu.fit.vector.common.dto.SearchRequest;
-import ru.nsu.fit.vector.common.dto.VectorResponse;
 import ru.nsu.fit.vector.common.VectorObject;
 
 import java.util.List;
@@ -60,10 +57,22 @@ public class VectorService {
         try {
             log.info("Received SearchRequest");
             List<Neighbor> result = index.search(request.vector(), request.count());
-            log.info("GetRequest processed. Neighbors: " + result);
+            log.info("SearchRequest processed. Neighbors: " + result);
             return ResponseEntity.ok(result);
         } catch (IllegalArgumentException e){
             log.error("SearchRequest process was broken", e);
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    public ResponseEntity<?> save(SaveRequest request) {
+        try {
+            log.info("Received SaveRequest");
+            index.save(request.file());
+            log.info("SaveRequest processed");
+            return ResponseEntity.ok("SaveRequest processed");
+        } catch (IllegalArgumentException e){
+            log.error("SaveRequest process was broken", e);
             return ResponseEntity.badRequest().body(e.getMessage());
         }
     }
