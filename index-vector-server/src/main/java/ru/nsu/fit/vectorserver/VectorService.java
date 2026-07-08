@@ -77,6 +77,23 @@ public class VectorService {
         }
     }
 
+    public ResponseEntity<?> load(LoadRequest request) {
+        try {
+            log.info("Received LoadRequest для пути: {}", request.file());
+
+            clear();
+
+            long maxId = index.load(request.file());
+            idGenerator.setCounter(maxId);
+
+            log.info("LoadRequest processed. New ID counter: {}", maxId);
+            return ResponseEntity.ok("LoadRequest processed.");
+        } catch (IllegalArgumentException e){
+            log.error("LoadRequest process was broken", e);
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
     public void clear(){
         index.clear();
     }

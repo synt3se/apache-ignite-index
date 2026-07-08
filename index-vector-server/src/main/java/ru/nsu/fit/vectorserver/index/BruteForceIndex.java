@@ -110,6 +110,9 @@ public class BruteForceIndex implements Index {
     public void save(String path) {
 
     }
+    public long load(String path) {
+        return 0;
+    }
 
     private void validateSaveRequest(AddRequest request) {
         if (request.url() == null || request.url().isBlank()) {

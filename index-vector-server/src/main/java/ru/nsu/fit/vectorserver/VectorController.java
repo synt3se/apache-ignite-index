@@ -2,6 +2,7 @@ package ru.nsu.fit.vectorserver;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import ru.nsu.fit.vector.common.dto.LoadRequest;
 import ru.nsu.fit.vector.common.dto.SaveRequest;
 import ru.nsu.fit.vector.common.dto.SearchRequest;
 
@@ -33,5 +34,9 @@ public class VectorController {
     @PostMapping("/save")
     public ResponseEntity<?> saveDatabase(@RequestBody SaveRequest request) {
         return vectorService.save(request);
+    }
+    @PostMapping("/load")
+    public ResponseEntity<?> saveDatabase(@RequestBody LoadRequest request) {
+        return vectorService.load(request);
     }
 }

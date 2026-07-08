@@ -17,9 +17,7 @@ import ru.nsu.fit.vector.node.compute.DeleteVectorTask;
 import ru.nsu.fit.vector.node.compute.SearchVectorTask;
 
 import javax.cache.Cache;
-import java.io.BufferedWriter;
-import java.io.FileWriter;
-import java.io.IOException;
+import java.io.*;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -42,7 +40,7 @@ public class DistributedVectorIndex implements Index {
 
     @Override
     public void add(long id, AddRequest request) {
-        validateSaveRequest(request);
+        validateAddRequest(request);
 
         VectorObject object = new VectorObject(
                 request.vector(),
@@ -176,19 +174,73 @@ public class DistributedVectorIndex implements Index {
 
                     savedCount++;
                     if (savedCount % 50000 == 0) {
-                        System.out.println("Экспортировано из кэша: " + savedCount + " строк...");
+                        System.out.println("Export from cache: " + savedCount + " lines...");
                     }
                 }
             }
 
-            System.out.println("=== Экспорт в CSV успешно завершен! Всего строк: " + savedCount + " ===");
+            System.out.println("=== CSV export completed! Lines: " + savedCount + " ===");
 
         } catch (IOException e) {
-            throw new RuntimeException("Ошибка при сохранении кэша в CSV файл по пути: " + path, e);
+            throw new RuntimeException("CSV export error: " + path, e);
+        }
+    }
+    @Override
+    public long load(String path) {
+        long maxId = 0;
+        long importedCount = 0;
+
+        try (BufferedReader br = new BufferedReader(new FileReader(path))) {
+            String line = br.readLine();
+
+            while ((line = br.readLine()) != null) {
+                if (line.isBlank()) continue;
+
+                int firstComma = line.indexOf(',');
+                int secondComma = line.indexOf(',', firstComma + 1);
+
+                if (firstComma == -1 || secondComma == -1) {
+                    continue;
+                }
+
+                long id = Long.parseLong(line.substring(0, firstComma));
+                String url = line.substring(firstComma + 1, secondComma);
+                String vectorStr = line.substring(secondComma + 1);
+
+                vectorStr = vectorStr.replace("\"", "").replace("[", "").replace("]", "").trim();
+                String[] tokens = vectorStr.split(",\\s*");
+
+                float[] vector = new float[tokens.length];
+                for (int i = 0; i < tokens.length; i++) {
+                    vector[i] = Float.parseFloat(tokens[i]);
+                }
+
+                AddRequest request = new AddRequest(vector, url, null);
+
+                //TODO сделать через добавление по несколько (10000), а не по 1
+                // чтобы перестраивать индекс каждые 10000, а не после каждого добавления
+                this.add(id, request);
+
+                importedCount++;
+
+                if (id > maxId) {
+                    maxId = id;
+                }
+
+                if (importedCount % 50000 == 0) {
+                    System.out.println("Import from CSV: " + importedCount + " lines...");
+                }
+            }
+
+            System.out.println("=== Import completed! Lines: " + importedCount + " ===");
+            return maxId;
+
+        } catch (IOException e) {
+            throw new RuntimeException("CSV load error: " + path, e);
         }
     }
 
-    private void validateSaveRequest(AddRequest request) {
+    private void validateAddRequest(AddRequest request) {
         if (request.url() == null || request.url().isBlank()) {
             throw new IllegalArgumentException("url is required");
         }

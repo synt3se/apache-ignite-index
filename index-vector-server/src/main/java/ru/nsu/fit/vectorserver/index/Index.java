@@ -15,4 +15,5 @@ public interface Index {
     List<Neighbor> search(float[] vector, int count);
 
     void save(String path);
+    long load(String path);
 }
