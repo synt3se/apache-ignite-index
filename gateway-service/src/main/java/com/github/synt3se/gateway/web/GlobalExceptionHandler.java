@@ -11,6 +11,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -66,6 +67,29 @@ public class GlobalExceptionHandler {
         log.error("Unhandled error on {} {}", req.getMethod(), req.getRequestURI(), e);
         return body(HttpStatus.INTERNAL_SERVER_ERROR, "internal_error", req,
                 e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
+    }
+
+    @ExceptionHandler(ResourceAccessException.class)
+    public ResponseEntity<Map<String, Object>> handleResourceAccessException(
+            ResourceAccessException ex,
+            HttpServletRequest request) {
+
+        String originalMessage = ex.getMessage();
+        String targetService = "";
+
+        if (originalMessage != null) {
+            if (originalMessage.contains("/embed") || originalMessage.contains(":8000")) {
+                targetService = "'CLIP service' ";
+            } else if (originalMessage.contains("/vectors")) {
+                targetService = "'Vector server' ";
+            }
+        }
+
+        log.error("External service {}is down on {}: {}", targetService, request.getRequestURI(), ex.getMessage());
+
+        String clientMessage = String.format("%s is unavailable.", targetService);
+
+        return body(HttpStatus.SERVICE_UNAVAILABLE, "service_unavailable", request, clientMessage);
     }
 
     private ResponseEntity<Map<String, Object>> body(HttpStatusCode status, String error,
