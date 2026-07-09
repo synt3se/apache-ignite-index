@@ -41,4 +41,8 @@ public class IdGenerator {
             // конкурент обновил счётчик — повторяем цикл
         }
     }
+
+    public void setCounter(long value) {
+        this.counters.put(ID_KEY, value);
+    }
 }

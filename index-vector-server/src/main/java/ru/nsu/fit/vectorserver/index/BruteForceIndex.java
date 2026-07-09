@@ -107,6 +107,13 @@ public class BruteForceIndex implements Index {
         return result;
     }
 
+    public void save(String path) {
+
+    }
+    public long load(String path) {
+        return 0;
+    }
+
     private void validateSaveRequest(AddRequest request) {
         if (request.url() == null || request.url().isBlank()) {
             throw new IllegalArgumentException("url is required");
