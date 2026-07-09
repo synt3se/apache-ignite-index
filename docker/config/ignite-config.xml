@@ -1,10 +1,57 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <beans xmlns="http://www.springframework.org/schema/beans"
        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:util="http://www.springframework.org/schema/util"
        xsi:schemaLocation="http://www.springframework.org/schema/beans
-                           http://www.springframework.org/schema/beans/spring-beans.xsd">
+                           http://www.springframework.org/schema/beans/spring-beans.xsd
+                           http://www.springframework.org/schema/util
+                           http://www.springframework.org/schema/util/spring-util.xsd">
 
     <bean class="org.apache.ignite.configuration.IgniteConfiguration">
+
+        <!-- События, на которых живёт индексная плоскость -->
+        <property name="includeEventTypes">
+            <list>
+                <util:constant static-field="org.apache.ignite.events.EventType.EVT_CACHE_OBJECT_PUT"/>
+                <util:constant static-field="org.apache.ignite.events.EventType.EVT_CACHE_OBJECT_REMOVED"/>
+                <util:constant static-field="org.apache.ignite.events.EventType.EVT_NODE_JOINED"/>
+                <util:constant static-field="org.apache.ignite.events.EventType.EVT_NODE_LEFT"/>
+                <util:constant static-field="org.apache.ignite.events.EventType.EVT_NODE_FAILED"/>
+                <util:constant static-field="org.apache.ignite.events.EventType.EVT_CACHE_REBALANCE_STOPPED"/>
+            </list>
+        </property>
+
+        <!-- Кэш-источник истины: теперь объявлен явно (нужен серверам к старту сервиса) -->
+        <property name="cacheConfiguration">
+            <list>
+                <bean class="org.apache.ignite.configuration.CacheConfiguration">
+                    <property name="name" value="vectors"/>
+                    <property name="cacheMode" value="PARTITIONED"/>
+                    <property name="atomicityMode" value="ATOMIC"/>
+                    <property name="backups" value="1"/>
+                    <property name="affinity">
+                        <bean class="org.apache.ignite.cache.affinity.rendezvous.RendezvousAffinityFunction">
+                            <constructor-arg value="false"/>
+                            <constructor-arg value="32"/>
+                        </bean>
+                    </property>
+                </bean>
+            </list>
+        </property>
+
+        <!-- Node-singleton индексная плоскость: экземпляр на каждом сервере -->
+        <property name="serviceConfiguration">
+            <list>
+                <bean class="org.apache.ignite.services.ServiceConfiguration">
+                    <property name="name" value="LocalIndexService"/>
+                    <property name="maxPerNodeCount" value="1"/>
+                    <property name="totalCount" value="0"/>
+                    <property name="service">
+                        <bean class="ru.nsu.fit.vector.node.service.LocalIndexServiceImpl"/>
+                    </property>
+                </bean>
+            </list>
+        </property>
 
         <property name="discoverySpi">
             <bean class="org.apache.ignite.spi.discovery.tcp.TcpDiscoverySpi">
@@ -24,7 +71,6 @@
         <property name="clientConnectorConfiguration">
             <bean class="org.apache.ignite.configuration.ClientConnectorConfiguration">
                 <property name="port" value="10800"/>
-
                 <property name="thinClientConfiguration">
                     <bean class="org.apache.ignite.configuration.ThinClientConfiguration">
                         <property name="maxActiveComputeTasksPerConnection" value="100"/>
