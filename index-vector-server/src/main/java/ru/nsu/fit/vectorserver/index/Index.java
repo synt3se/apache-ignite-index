@@ -13,4 +13,7 @@ public interface Index {
     void clear();
     VectorObject get(long id);
     List<Neighbor> search(float[] vector, int count);
+
+    void save(String path);
+    long load(String path);
 }
