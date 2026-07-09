@@ -1,23 +1,18 @@
 package ru.nsu.fit.vector.telegram;
 
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.web.reactive.function.client.WebClient;
 import org.telegram.telegrambots.meta.TelegramBotsApi;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import org.telegram.telegrambots.updatesreceivers.DefaultBotSession;
 
 @Configuration
-public class WebClientConfig {
-
-    @Value("${gateway.api.url}")
-    private String gatewayUrl;
+public class BotInitializer {
 
     @Bean
-    public WebClient imageServerClient() {
-        return WebClient.builder()
-                .baseUrl(gatewayUrl)
-                .build();
+    public TelegramBotsApi telegramBotsApi(ImageForwarderBot imageForwarderBot) throws TelegramApiException {
+        TelegramBotsApi botsApi = new TelegramBotsApi(DefaultBotSession.class);
+        botsApi.registerBot(imageForwarderBot);
+        return botsApi;
     }
 }
