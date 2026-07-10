@@ -52,6 +52,11 @@ public class BruteForcePartitionIndex implements PartitionVectorIndex {
         vectors.clear();
     }
 
+    @Override
+    public int size() {
+        return vectors.size();
+    }
+
     private double euclideanDistance(float[] a, float[] b) {
         double sum = 0.0;
 

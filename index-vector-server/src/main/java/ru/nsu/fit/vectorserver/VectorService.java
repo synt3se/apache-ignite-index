@@ -73,4 +73,8 @@ public class VectorService {
     public void clear(){
         index.clear();
     }
+
+    public ResponseEntity<ClusterStats> stats() {
+        return ResponseEntity.ok(index.stats());
+    }
 }
