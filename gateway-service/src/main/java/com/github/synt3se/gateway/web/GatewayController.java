@@ -2,6 +2,7 @@ package com.github.synt3se.gateway.web;
 
 import com.github.synt3se.gateway.client.ClipClient;
 import com.github.synt3se.gateway.client.IndexClient;
+import com.github.synt3se.gateway.web.exceptions.ImageDownloadException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.RestTemplate;
@@ -26,13 +27,14 @@ public class GatewayController {
     public Map<String, Object> addImage(@RequestBody Dto.AddImageUrlRequest request) throws IOException {
         RestTemplate restTemplate = new RestTemplate();
 
-        byte[] imageBytes = restTemplate.getForObject(
-                request.url(),
-                byte[].class
-        );
-
+        byte[] imageBytes;
+        try {
+            imageBytes = restTemplate.getForObject(request.url(), byte[].class);
+        } catch (Exception ex) {
+            throw new ImageDownloadException("Failed to download image from external host", request.url(), ex);
+        }
         if (imageBytes == null) {
-            throw new RuntimeException("Failed to download image");
+            throw new ImageDownloadException("Failed to download image: host returned empty body", request.url(), null);
         }
 
         float[] vector = clipClient.embedImage(imageBytes, request.url());
@@ -44,13 +46,14 @@ public class GatewayController {
     public List<Dto.Neighbor> searchImage(@RequestBody Dto.SearchImageUrlRequest request) throws IOException {
         RestTemplate restTemplate = new RestTemplate();
 
-        byte[] imageBytes = restTemplate.getForObject(
-                request.url(),
-                byte[].class
-        );
-
+        byte[] imageBytes;
+        try {
+            imageBytes = restTemplate.getForObject(request.url(), byte[].class);
+        } catch (Exception ex) {
+            throw new ImageDownloadException("Failed to download image from external host", request.url(), ex);
+        }
         if (imageBytes == null) {
-            throw new RuntimeException("Failed to download image");
+            throw new ImageDownloadException("Failed to download image: host returned empty body", request.url(), null);
         }
 
         float[] vector = clipClient.embedImage(imageBytes, request.url());
