@@ -10,9 +10,12 @@ import org.springframework.stereotype.Component;
 import ru.nsu.fit.vector.common.ScoredVector;
 import ru.nsu.fit.vector.common.VectorObject;
 import ru.nsu.fit.vector.common.dto.AddRequest;
+import ru.nsu.fit.vector.common.dto.ClusterStats;
 import ru.nsu.fit.vector.common.dto.Neighbor;
+import ru.nsu.fit.vector.common.dto.NodeStats;
 import ru.nsu.fit.vector.node.compute.ClearVectorTask;
 import ru.nsu.fit.vector.node.compute.SearchVectorTask;
+import ru.nsu.fit.vector.node.compute.StatsTask;
 
 import javax.cache.Cache;
 import java.io.*;
@@ -200,4 +203,23 @@ public class DistributedVectorIndex implements Index {
             throw new RuntimeException("CSV load error: " + path, e);
         }
     }
+
+    @Override
+    public ClusterStats stats() {
+        List<NodeStats> nodes;
+        try {
+            nodes = igniteClient.compute().execute(StatsTask.class.getName(), null);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("Stats task interrupted", e);
+        }
+        ClusterStats cs = new ClusterStats();
+        cs.nodes = nodes;
+        cs.serverNodes = nodes.size();
+        long live = 0;
+        for (NodeStats n : nodes) live += n.liveVectors;
+        cs.totalLiveVectors = live;
+        return cs;
+    }
+
 }

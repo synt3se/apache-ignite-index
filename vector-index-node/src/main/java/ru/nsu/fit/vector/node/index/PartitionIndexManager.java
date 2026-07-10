@@ -15,11 +15,13 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 import javax.cache.Cache;
 
 import org.apache.ignite.Ignite;
 import org.apache.ignite.IgniteCache;
+import org.apache.ignite.IgniteLogger;
 import org.apache.ignite.cache.CachePeekMode;
 import org.apache.ignite.cache.affinity.Affinity;
 import org.apache.ignite.cache.query.QueryCursor;
@@ -31,6 +33,7 @@ import org.apache.ignite.events.EventType;
 
 import ru.nsu.fit.vector.common.ScoredVector;
 import ru.nsu.fit.vector.common.VectorObject;
+import ru.nsu.fit.vector.common.dto.NodeStats;
 
 /**
  * Индексная плоскость узла: индекс - производная кэша.
@@ -61,6 +64,10 @@ public final class PartitionIndexManager {
     private ExecutorService rebuildPool;
     private ScheduledExecutorService housekeeper;
 
+    private IgniteLogger log;
+    private final AtomicLong applied = new AtomicLong();
+    private long lastAppliedLogged = 0;
+
     public PartitionIndexManager(Ignite ignite, String cacheName) {
         this.ignite = ignite;
         this.cacheName = cacheName;
@@ -69,8 +76,11 @@ public final class PartitionIndexManager {
     public void start() {
         cache = ignite.cache(cacheName);
         if (cache == null) {
-            throw new IllegalStateException("Cache '" + cacheName + "' is not configured — see ignite-config.xml");
+            throw new IllegalStateException("Cache '" + cacheName + "' is not configured - see ignite-config.xml");
         }
+
+        log = ignite.log();
+
         affinity = ignite.affinity(cacheName);
         applier = new StripedApplier(APPLIER_STRIPES, APPLIER_QUEUE);
         rebuildPool = Executors.newFixedThreadPool(2, factory("vindex-rebuild-"));
@@ -85,8 +95,16 @@ public final class PartitionIndexManager {
                 EventType.EVT_NODE_FAILED, EventType.EVT_CACHE_REBALANCE_STOPPED);
 
         housekeeper.schedule(() -> safeReconcile(true), 1, TimeUnit.SECONDS);
-        housekeeper.scheduleWithFixedDelay(() -> safeReconcile(false),
-                RECONCILE_INTERVAL_MS, RECONCILE_INTERVAL_MS, TimeUnit.MILLISECONDS);
+        housekeeper.scheduleWithFixedDelay(() -> {
+            long total = applied.get();
+            long delta = total - lastAppliedLogged;
+            lastAppliedLogged = total;
+            long backlog = applier.backlog();
+            if (delta > 0 || backlog > 0 || !dirty.isEmpty())
+                log.info("[vindex] applied=" + delta + "/30s (total=" + total + "), backlog=" + applier.backlog());
+            safeReconcile(false);
+        }, RECONCILE_INTERVAL_MS, RECONCILE_INTERVAL_MS, TimeUnit.MILLISECONDS);
+        log.info("[vindex] started on " + ignite.cluster().localNode().consistentId());
     }
 
     public void stop() {
@@ -108,7 +126,8 @@ public final class PartitionIndexManager {
         PartitionState state = partitions.get(p);
         if (state == null) return true;                       // не наша primary-партиция
         if (!applier.submit(p, () -> state.onKeyChanged(key, this::applyKey))) {
-            dirty.add(p);                                     // переполнение → догонит сверка
+            if (dirty.add(p))
+                log.warning("[vindex] applier queue full - partition " + p + " marked dirty");
             requestReconcile();
         }
         return true;
@@ -154,11 +173,14 @@ public final class PartitionIndexManager {
 
         partitions.keySet().removeIf(p -> !ownedSet.contains(p));   // уехавшие - выбросить
         dirty.removeIf(p -> !ownedSet.contains(p));
-
+        int scheduled = 0;
         for (int p : owned) {
             PartitionState st = partitions.get(p);
-            if (rebuildAll || st == null || dirty.remove(p)) scheduleRebuild(p);
+            if (rebuildAll || st == null || dirty.remove(p)) { scheduleRebuild(p); scheduled++; }
         }
+        if (scheduled > 0)
+            log.info("[vindex] reconcile: owned=" + owned.length
+                    + ", rebuilds=" + scheduled + (rebuildAll ? " (full)" : ""));
     }
 
     private void scheduleRebuild(int partition) {
@@ -172,6 +194,7 @@ public final class PartitionIndexManager {
 
     private void runRebuild(int partition) {
         boolean again = false;
+        long t0 = System.nanoTime();
         try {
             ClusterNode owner = affinity.mapPartitionToNode(partition);
             if (owner == null || !owner.isLocal()) {
@@ -180,9 +203,13 @@ public final class PartitionIndexManager {
             }
             PartitionState st = partitions.computeIfAbsent(partition, PartitionState::new);
             again = st.rebuild(this::buildIndexFor, this::applyKey);
+            log.info("[vindex] partition " + partition + " rebuilt in "
+                    + (System.nanoTime() - t0) / 1_000_000 + " ms"
+                    + (again ? " (heavy writes - extra pass)" : ""));
         } catch (Exception e) {
             dirty.add(partition);
             requestReconcile();
+            log.warning("[vindex] partition " + partition + " rebuild FAILED: " + e + " - marked dirty");
         } finally {
             rebuildQueued.remove(partition);
             if (again) scheduleRebuild(partition);
@@ -211,6 +238,7 @@ public final class PartitionIndexManager {
         if (cur == null) cur = cache.get(key);
         if (cur == null || cur.getVector() == null) idx.delete(key);
         else idx.add(key, cur.getVector());
+        applied.incrementAndGet();
     }
 
     public List<ScoredVector> searchLocal(float[] query, int count) {
@@ -229,6 +257,27 @@ public final class PartitionIndexManager {
         List<ScoredVector> out = new ArrayList<>(top);
         out.sort(Comparator.comparingDouble(ScoredVector::distance));
         return out;
+    }
+
+    public NodeStats localStats() {
+        NodeStats s = new NodeStats();
+        s.nodeId = String.valueOf(ignite.cluster().localNode().consistentId());
+        int active = 0;
+        long live = 0;
+        for (PartitionState st : partitions.values()) {
+            if (st.isActive()) {
+                active++;
+                PartitionVectorIndex idx = st.indexOrNull();
+                if (idx != null) live += idx.size();
+            }
+        }
+        s.ownedPartitions = partitions.size();
+        s.activePartitions = active;
+        s.liveVectors = live;
+        s.applierBacklog = applier == null ? 0 : applier.backlog();
+        s.dirtyPartitions = dirty.size();
+        s.appliedTotal = applied.get();
+        return s;
     }
 
     public void clearAll() {

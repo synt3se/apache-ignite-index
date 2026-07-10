@@ -1,5 +1,6 @@
 package ru.nsu.fit.vectorserver.index;
 
+import org.apache.ignite.cache.CachePeekMode;
 import org.apache.ignite.cache.query.QueryCursor;
 import org.apache.ignite.cache.query.ScanQuery;
 import org.apache.ignite.client.ClientCache;
@@ -7,7 +8,9 @@ import org.apache.ignite.client.IgniteClient;
 import org.springframework.beans.factory.annotation.Value;
 import ru.nsu.fit.vector.common.VectorObject;
 import ru.nsu.fit.vector.common.dto.AddRequest;
+import ru.nsu.fit.vector.common.dto.ClusterStats;
 import ru.nsu.fit.vector.common.dto.Neighbor;
+import ru.nsu.fit.vector.common.dto.NodeStats;
 
 import javax.cache.Cache;
 import java.util.ArrayList;
@@ -16,7 +19,7 @@ import java.util.List;
 import java.util.PriorityQueue;
 
 //@Component
-public class BruteForceIndex implements Index {
+public class BruteForceIndex implements Index { // TODO: REMOVE old bruteforce
 
     private final ClientCache<Long, VectorObject> cache;
     private final int dimension;
@@ -46,6 +49,24 @@ public class BruteForceIndex implements Index {
 
     public void clear(){
         cache.clear();
+    }
+
+    public ClusterStats stats() {
+        NodeStats n = new NodeStats();
+        n.nodeId = "brute-force (local, no index plane)";
+        try {
+            n.liveVectors = cache.size(CachePeekMode.PRIMARY);
+        } catch (Exception e) {
+            n.liveVectors = -1;
+        }
+        n.activePartitions = -1;   // у этой реализации нет партиционного индекса
+        n.ownedPartitions = -1;
+
+        ClusterStats cs = new ClusterStats();
+        cs.nodes = List.of(n);
+        cs.serverNodes = 1;
+        cs.totalLiveVectors = n.liveVectors;
+        return cs;
     }
 
     public List<Neighbor> search(float[] queryVector, int count) {
@@ -113,6 +134,7 @@ public class BruteForceIndex implements Index {
     public long load(String path) {
         return 0;
     }
+
 
     private void validateSaveRequest(AddRequest request) {
         if (request.url() == null || request.url().isBlank()) {
