@@ -89,7 +89,7 @@ public class ImageForwarderBot extends TelegramLongPollingBot {
                         },
                         error -> {
                             log.warn("Gateway error answer: " + error.getMessage());
-                            editTextMessage(chatId, messageIdToEdit, "❌ Ошибка сервера: " + error.getMessage());
+                            editTextMessage(chatId, messageIdToEdit, "❌ Ошибка: " + error.getMessage());
                         }
                 );
     }
@@ -97,7 +97,7 @@ public class ImageForwarderBot extends TelegramLongPollingBot {
     private String generateErrorMessage(Object message, Object error) {
         String msg = message.toString();
         if ("image_download_error".equals(error)) {
-            msg = "Сервер, хранящий изображение по вашему URL не отвечает. Попробуйте другой URL.";
+            msg = "Не удаётся скачать картинку по вашей ссылке. Возможно, этот сайт блокирует наше соединение в целях безопасности. Попробуйте другой URL.";
         }
         return msg;
     }

@@ -3,9 +3,6 @@ package com.github.synt3se.gateway.web;
 import com.github.synt3se.gateway.client.ClipClient;
 import com.github.synt3se.gateway.client.IndexClient;
 import com.github.synt3se.gateway.web.exceptions.ImageDownloadException;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.RestTemplate;
@@ -13,7 +10,6 @@ import org.springframework.web.client.RestTemplate;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicLong;
 
 @RestController
 public class GatewayController {
