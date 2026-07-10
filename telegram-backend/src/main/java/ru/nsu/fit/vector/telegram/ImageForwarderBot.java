@@ -10,7 +10,9 @@ import org.telegram.telegrambots.meta.api.objects.Message;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import reactor.core.publisher.Mono;
+import ru.nsu.fit.vector.telegram.dto.Neighbor;
 
+import java.util.List;
 import java.util.Map;
 
 @Component
@@ -42,7 +44,9 @@ public class ImageForwarderBot extends TelegramLongPollingBot {
             Long chatId = message.getChatId();
 
             if (text.equals("/start")) {
-                sendTextMessage(chatId, "Привет! Отправь мне URL картинки, и я перешлю её на сервер.");
+                String mes;
+                mes = "Привет! Этот бот умеет искать похожие картинки в подготовленной базе данных. Просто скинь URL, и я выдам топ самых похожих картинок.";
+                sendTextMessage(chatId, mes);
                 return;
             }
 
@@ -56,37 +60,32 @@ public class ImageForwarderBot extends TelegramLongPollingBot {
     }
 
     private void processImageUrl(Long chatId, String imageUrl) {
-        // 1. Отправляем пользователю промежуточное сообщение
-        Message statusMessage = sendTextMessage(chatId, "Секунду, отправляю ссылку на сервер...");
+        Message statusMessage = sendTextMessage(chatId, "Отправляю ссылку на сервер...");
         if (statusMessage == null) return;
 
         Integer messageIdToEdit = statusMessage.getMessageId();
 
-        // 2. Формируем тело запроса для вашего сервера (в данном примере JSON: {"imageUrl": "..."})
-        Map<String, String> requestBody = Map.of("imageUrl", imageUrl);
-
-        // 3. Делаем асинхронный POST запрос
+        var requestBody = Map.of("url", imageUrl, "count", 5);
         webClient.post()
+                .uri("/search/image")
                 .bodyValue(requestBody)
                 .retrieve()
-                // Предполагаем, что сервер возвращает ответ в формате JSON, мапим его в Map
-                .bodyToMono(Map.class)
-                .timeout(java.time.Duration.ofSeconds(30)) // таймаут 30 секунд
+                .bodyToMono(Neighbor[].class)
+                .timeout(java.time.Duration.ofSeconds(30))
                 .subscribe(
-                        // Действие при успешном ответе от вашего сервера
                         serverResponse -> {
-                            // Допустим, ваш сервер возвращает JSON вида {"message": "Текст ответа"}
-                            String serverMessage = (String) serverResponse.getOrDefault("message", "Обработано успешно!");
-                            editTextMessage(chatId, messageIdToEdit, "🤖 Ответ сервера:\n\n" + serverMessage);
+                            editTextMessage(chatId, messageIdToEdit, getStringTop(serverResponse));
                         },
-                        // Действие в случае ошибки (сервер недоступен, 500 ошибка, таймаут и т.д.)
                         error -> {
                             editTextMessage(chatId, messageIdToEdit, "❌ Ошибка при обращении к серверу: " + error.getMessage());
                         }
                 );
     }
 
-    // Вспомогательный метод для отправки сообщений
+    private String getStringTop(Neighbor[] top) {
+        return top.toString();
+    }
+
     private Message sendTextMessage(Long chatId, String text) {
         SendMessage sendMessage = new SendMessage(chatId.toString(), text);
         try {
@@ -97,7 +96,6 @@ public class ImageForwarderBot extends TelegramLongPollingBot {
         }
     }
 
-    // Вспомогательный метод для редактирования сообщений
     private void editTextMessage(Long chatId, Integer messageId, String newText) {
         EditMessageText editMessage = new EditMessageText();
         editMessage.setChatId(chatId.toString());
