@@ -12,8 +12,10 @@ import org.telegram.telegrambots.meta.api.objects.PhotoSize;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import reactor.core.publisher.Mono;
-import ru.nsu.fit.vector.telegram.dto.Neighbor;
+import ru.nsu.fit.vector.telegram.Dto.Neighbor;
 import ru.nsu.fit.vector.telegram.service.ImageSearchService;
+
+import java.util.Arrays;
 
 
 @Component
@@ -41,7 +43,7 @@ public class ImageForwarderBot extends TelegramLongPollingBot {
     public void onUpdateReceived(Update update) {
         Message message = update.getMessage();
         String text = message.getText();
-        Long chatId = message.getChatId();
+        long chatId = message.getChatId();
         if (update.hasMessage() && update.getMessage().hasText()) {
             if (text.equals("/start")) {
                 log.info("Received command '/start' from chatId: {}", chatId);
@@ -49,14 +51,20 @@ public class ImageForwarderBot extends TelegramLongPollingBot {
                 mes = "Привет! Этот бот умеет искать похожие картинки в подготовленной базе данных. Просто скинь файл или URL, и я выдам топ самых похожих картинок.";
                 sendTextMessage(chatId, mes);
                 return;
-            }
-
-            if (text.startsWith("http://") || text.startsWith("https://")) {
+            } else if (text.startsWith("/id")) {
+                if (text.equals("/id")){
+                    sendTextMessage(chatId, "Отправьте: /id число.");
+                    return;
+                }
+                log.info("Received command '{}' from chatId: {}", text, chatId);
+                String idValue = text.substring(4).trim();
+                processGetById(chatId, idValue);
+            } else if (text.startsWith("http://") || text.startsWith("https://")) {
                 log.info("Received url: " + text);
                 processImageUrl(chatId, text);
             } else {
                 log.info("Received unknown command: " + text);
-                sendTextMessage(chatId, "Пожалуйста, отправьте корректную ссылку, начинающуюся с http:// или https://");
+                sendTextMessage(chatId, "Пожалуйста, отправьте ссылку или само изображение");
             }
         }
         else if (message.hasPhoto()) {
@@ -124,6 +132,37 @@ public class ImageForwarderBot extends TelegramLongPollingBot {
         }
         if (string.length() == 0) return "Сервер вернул пустой список :(";
         return string.toString();
+    }
+
+    private void processGetById(long chatId, String idValue) {
+        Message statusMessage = sendTextMessage(chatId, "Ищу запись по id...");
+        if (statusMessage == null) return;
+        int messageIdToEdit = statusMessage.getMessageId();
+        long id;
+        try {
+            id = Long.parseLong(idValue);
+        }
+        catch (NumberFormatException e) {
+            log.warn("Incorrect ID format: " + e.getMessage());
+            editTextMessage(chatId, messageIdToEdit, "❌ Неверный формат id: '" + idValue + "'. Отправьте: /id число.");
+            return;
+        }
+
+        imageSearchService.getVectorById(id).subscribe(
+                response -> {
+                    String resultText =
+                            "ID: " + response.id() + "\n" +
+                            "URL: " + response.url();
+                    if (response.metadata() != null && !response.metadata().isBlank()) {
+                        resultText += "\nMETADATA: " + response.metadata();
+                    }
+                    editTextMessage(chatId, messageIdToEdit, resultText);
+                },
+                error -> {
+                    log.warn("Error fetching vector by ID: " + error.getMessage());
+                    editTextMessage(chatId, messageIdToEdit, "❌ Объект с ID " + id + " не найден в базе данных.");
+                }
+        );
     }
 
     private Message sendTextMessage(Long chatId, String text) {

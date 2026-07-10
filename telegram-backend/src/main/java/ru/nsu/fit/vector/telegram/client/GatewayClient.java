@@ -7,7 +7,8 @@ import org.springframework.util.MultiValueMap;
 import org.springframework.web.reactive.function.BodyInserters;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
-import ru.nsu.fit.vector.telegram.dto.Neighbor;
+import ru.nsu.fit.vector.telegram.Dto;
+import ru.nsu.fit.vector.telegram.Dto.Neighbor;
 
 import java.util.Map;
 
@@ -50,8 +51,21 @@ public class GatewayClient {
     private String generateErrorMessage(Object message, Object error) {
         String msg = message.toString();
         if ("image_download_error".equals(error)) {
-            msg = "Не удаётся скачать картинку по вашей ссылке. Возможно, этот сайт блокирует наше соединение в целях безопасности. Попробуйте скачать изображение и отправить нам файлом.";
+            msg = "Не удаётся перейти по вашей ссылке. Возможно, ссылка недействительна, или этот сайт блокирует наше соединение в целях безопасности. Попробуйте скачать изображение и отправить нам файлом.";
         }
         return msg;
+    }
+
+    public Mono<Dto.VectorResponse> getVectorById(long id) {
+        return webClient.get()
+                .uri("/images/" + id)
+                .retrieve()
+                .onStatus(HttpStatusCode::isError, clientResponse ->
+                        clientResponse.bodyToMono(Map.class)
+                                .flatMap(errorBody -> Mono.error(new RuntimeException(
+                                        errorBody.get("message") != null ? errorBody.get("message").toString() : "ID не найден"
+                                )))
+                )
+                .bodyToMono(Dto.VectorResponse.class);
     }
 }
