@@ -106,6 +106,12 @@ public class GlobalExceptionHandler {
         return body(HttpStatus.BAD_REQUEST, "image_download_error", request, clientMessage);
     }
 
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<Map<String, Object>> handleIllegalArgument(IllegalArgumentException e, HttpServletRequest req) {
+        log.warn("Bad request argument on {} {}: {}", req.getMethod(), req.getRequestURI(), e.getMessage());
+        return body(HttpStatus.BAD_REQUEST, "bad_request", req, e.getMessage());
+    }
+
     private ResponseEntity<Map<String, Object>> body(HttpStatusCode status, String error,
                                                      HttpServletRequest req, String message) {
         return ResponseEntity.status(status).body(Map.of(

@@ -3,9 +3,11 @@ package com.github.synt3se.gateway.web;
 import com.github.synt3se.gateway.client.ClipClient;
 import com.github.synt3se.gateway.client.IndexClient;
 import com.github.synt3se.gateway.web.exceptions.ImageDownloadException;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.util.List;
@@ -57,6 +59,21 @@ public class GatewayController {
 
         float[] vector = clipClient.embedImage(imageBytes, request.url());
         return indexClient.search(vector, request.count() != null ? request.count() : 5);
+    }
+
+    @PostMapping(value = "/search/image/file", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public List<Dto.Neighbor> searchImageFile(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(value = "count", required = false) Integer count) throws IOException {
+
+        if (file.isEmpty()) {
+            throw new IllegalArgumentException("Uploaded file is empty");
+        }
+
+        byte[] imageBytes = file.getBytes();
+
+        float[] vector = clipClient.embedImage(imageBytes, file.getOriginalFilename());
+        return indexClient.search(vector, count != null ? count : 5);
     }
 
     @PostMapping("/search/text")
