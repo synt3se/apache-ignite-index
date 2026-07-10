@@ -6,10 +6,8 @@ import java.util.List;
 
 public interface PartitionVectorIndex {
     void add(long id, float[] vector);
-
     void delete(long id);
-
     List<ScoredVector> search(float[] queryVector, int count);
-
     void clear();
+    int size();
 }

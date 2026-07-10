@@ -33,6 +33,7 @@ import org.apache.ignite.events.EventType;
 
 import ru.nsu.fit.vector.common.ScoredVector;
 import ru.nsu.fit.vector.common.VectorObject;
+import ru.nsu.fit.vector.common.dto.NodeStats;
 
 /**
  * Индексная плоскость узла: индекс - производная кэша.
@@ -64,7 +65,8 @@ public final class PartitionIndexManager {
     private ScheduledExecutorService housekeeper;
 
     private IgniteLogger log;
-    private final AtomicLong applied = new java.util.concurrent.atomic.AtomicLong();
+    private final AtomicLong applied = new AtomicLong();
+    private long lastAppliedLogged = 0;
 
     public PartitionIndexManager(Ignite ignite, String cacheName) {
         this.ignite = ignite;
@@ -94,11 +96,12 @@ public final class PartitionIndexManager {
 
         housekeeper.schedule(() -> safeReconcile(true), 1, TimeUnit.SECONDS);
         housekeeper.scheduleWithFixedDelay(() -> {
-            long a = applied.getAndSet(0);
+            long total = applied.get();
+            long delta = total - lastAppliedLogged;
+            lastAppliedLogged = total;
             long backlog = applier.backlog();
-            if (a > 0 || backlog > 0 || !dirty.isEmpty())
-                log.info("[vindex] applied=" + a + "/30s, backlog=" + backlog
-                        + ", dirty=" + dirty.size() + ", partitions=" + partitions.size());
+            if (delta > 0 || backlog > 0 || !dirty.isEmpty())
+                log.info("[vindex] applied=" + delta + "/30s (total=" + total + "), backlog=" + applier.backlog());
             safeReconcile(false);
         }, RECONCILE_INTERVAL_MS, RECONCILE_INTERVAL_MS, TimeUnit.MILLISECONDS);
         log.info("[vindex] started on " + ignite.cluster().localNode().consistentId());
@@ -235,6 +238,7 @@ public final class PartitionIndexManager {
         if (cur == null) cur = cache.get(key);
         if (cur == null || cur.getVector() == null) idx.delete(key);
         else idx.add(key, cur.getVector());
+        applied.incrementAndGet();
     }
 
     public List<ScoredVector> searchLocal(float[] query, int count) {
@@ -253,6 +257,27 @@ public final class PartitionIndexManager {
         List<ScoredVector> out = new ArrayList<>(top);
         out.sort(Comparator.comparingDouble(ScoredVector::distance));
         return out;
+    }
+
+    public NodeStats localStats() {
+        NodeStats s = new NodeStats();
+        s.nodeId = String.valueOf(ignite.cluster().localNode().consistentId());
+        int active = 0;
+        long live = 0;
+        for (PartitionState st : partitions.values()) {
+            if (st.isActive()) {
+                active++;
+                PartitionVectorIndex idx = st.indexOrNull();
+                if (idx != null) live += idx.size();
+            }
+        }
+        s.ownedPartitions = partitions.size();
+        s.activePartitions = active;
+        s.liveVectors = live;
+        s.applierBacklog = applier == null ? 0 : applier.backlog();
+        s.dirtyPartitions = dirty.size();
+        s.appliedTotal = applied.get();
+        return s;
     }
 
     public void clearAll() {

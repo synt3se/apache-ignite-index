@@ -40,8 +40,14 @@ public class VectorController {
     public ResponseEntity<?> saveDatabase(@Valid @RequestBody SaveRequest request) {
         return vectorService.save(request);
     }
+
     @PostMapping("/load")
     public ResponseEntity<?> saveDatabase(@Valid @RequestBody LoadRequest request) {
         return vectorService.load(request);
+    }
+
+    @GetMapping("/stats")
+    public ResponseEntity<?> stats() {
+        return vectorService.stats();
     }
 }
