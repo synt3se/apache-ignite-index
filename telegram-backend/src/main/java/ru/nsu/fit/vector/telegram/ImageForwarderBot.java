@@ -3,6 +3,7 @@ package ru.nsu.fit.vector.telegram;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
@@ -75,6 +76,10 @@ public class ImageForwarderBot extends TelegramLongPollingBot {
                 .uri("/search/image")
                 .bodyValue(requestBody)
                 .retrieve()
+                .onStatus(HttpStatusCode::isError, clientResponse ->
+                        clientResponse.bodyToMono(Map.class)
+                                .flatMap(errorBody -> Mono.error(new RuntimeException(generateErrorMessage(errorBody.get("message"), errorBody.get("error")))))
+                )
                 .bodyToMono(Neighbor[].class)
                 .timeout(java.time.Duration.ofSeconds(30))
                 .subscribe(
@@ -84,11 +89,18 @@ public class ImageForwarderBot extends TelegramLongPollingBot {
                         },
                         error -> {
                             log.warn("Gateway error answer: " + error.getMessage());
-                            editTextMessage(chatId, messageIdToEdit, "❌ Ошибка при обращении к серверу: " + error.getMessage());
+                            editTextMessage(chatId, messageIdToEdit, "❌ Ошибка сервера: " + error.getMessage());
                         }
                 );
     }
 
+    private String generateErrorMessage(Object message, Object error) {
+        String msg = message.toString();
+        if ("image_download_error".equals(error)) {
+            msg = "Сервер, хранящий изображение по вашему URL не отвечает. Попробуйте другой URL.";
+        }
+        return msg;
+    }
     private String getStringTop(Neighbor[] top) {
         StringBuilder string = new StringBuilder();
         for (Neighbor neighbor : top) {
