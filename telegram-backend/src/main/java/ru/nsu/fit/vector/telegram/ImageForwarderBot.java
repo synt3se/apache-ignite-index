@@ -1,5 +1,7 @@
 package ru.nsu.fit.vector.telegram;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -17,6 +19,7 @@ import java.util.Map;
 
 @Component
 public class ImageForwarderBot extends TelegramLongPollingBot {
+    static final Logger log = LoggerFactory.getLogger(ImageForwarderBot.class);
 
     private final String botUsername;
     private final WebClient webClient;
@@ -44,16 +47,18 @@ public class ImageForwarderBot extends TelegramLongPollingBot {
             Long chatId = message.getChatId();
 
             if (text.equals("/start")) {
+                log.info("Received command /start");
                 String mes;
                 mes = "Привет! Этот бот умеет искать похожие картинки в подготовленной базе данных. Просто скинь URL, и я выдам топ самых похожих картинок.";
                 sendTextMessage(chatId, mes);
                 return;
             }
 
-            // Простая проверка: строка должна начинаться как ссылка
             if (text.startsWith("http://") || text.startsWith("https://")) {
+                log.info("Received url: " + text);
                 processImageUrl(chatId, text);
             } else {
+                log.info("Received unknown command: " + text);
                 sendTextMessage(chatId, "Пожалуйста, отправьте корректную ссылку, начинающуюся с http:// или https://");
             }
         }
@@ -74,16 +79,25 @@ public class ImageForwarderBot extends TelegramLongPollingBot {
                 .timeout(java.time.Duration.ofSeconds(30))
                 .subscribe(
                         serverResponse -> {
+                            log.info("Gateway answer: " + serverResponse);
                             editTextMessage(chatId, messageIdToEdit, getStringTop(serverResponse));
                         },
                         error -> {
+                            log.warn("Gateway error answer: " + error.getMessage());
                             editTextMessage(chatId, messageIdToEdit, "❌ Ошибка при обращении к серверу: " + error.getMessage());
                         }
                 );
     }
 
     private String getStringTop(Neighbor[] top) {
-        return top.toString();
+        StringBuilder string = new StringBuilder();
+        for (Neighbor neighbor : top) {
+            string.append("id: " + neighbor.id() + "\n");
+            string.append("distance: " + neighbor.score() + "\n");
+            string.append(neighbor.url() + "\n\n");
+        }
+        if (string.length() == 0) return "Сервер вернул пустой список :(";
+        return string.toString();
     }
 
     private Message sendTextMessage(Long chatId, String text) {
