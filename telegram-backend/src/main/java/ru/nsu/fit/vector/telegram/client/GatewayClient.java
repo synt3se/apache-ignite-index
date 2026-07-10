@@ -1,0 +1,71 @@
+package ru.nsu.fit.vector.telegram.client;
+
+import org.springframework.http.HttpStatusCode;
+import org.springframework.http.MediaType;
+import org.springframework.stereotype.Component;
+import org.springframework.util.MultiValueMap;
+import org.springframework.web.reactive.function.BodyInserters;
+import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.publisher.Mono;
+import ru.nsu.fit.vector.telegram.Dto;
+import ru.nsu.fit.vector.telegram.Dto.Neighbor;
+
+import java.util.Map;
+
+@Component
+public class GatewayClient {
+    private final WebClient webClient;
+
+    public GatewayClient(WebClient webClient) {
+        this.webClient = webClient;
+    }
+
+    public Mono<Neighbor[]> searchUrl(String imageUrl) {
+        var requestBody = Map.of("url", imageUrl, "count", 5);
+        return webClient.post()
+                .uri("/search/image")
+                .bodyValue(requestBody)
+                .retrieve()
+                .onStatus(HttpStatusCode::isError, clientResponse ->
+                        clientResponse.bodyToMono(Map.class)
+                                .flatMap(errorBody -> Mono.error(new RuntimeException(generateErrorMessage(errorBody.get("message"), errorBody.get("error")))))
+                )
+                .bodyToMono(Neighbor[].class)
+                .timeout(java.time.Duration.ofSeconds(30));
+    }
+
+    public Mono<Neighbor[]> searchFile(String fileId, MultiValueMap<String, Object> body) {
+        return webClient.post()
+                .uri("/search/image/file")
+                .contentType(MediaType.MULTIPART_FORM_DATA)
+                .body(BodyInserters.fromMultipartData(body))
+                .retrieve()
+                .onStatus(HttpStatusCode::isError, clientResponse ->
+                        clientResponse.bodyToMono(Map.class)
+                                .flatMap(errorBody -> Mono.error(new RuntimeException(generateErrorMessage(errorBody.get("message"), errorBody.get("error")))))
+                )
+                .bodyToMono(Neighbor[].class)
+                .timeout(java.time.Duration.ofSeconds(30));
+    }
+
+    private String generateErrorMessage(Object message, Object error) {
+        String msg = message.toString();
+        if ("image_download_error".equals(error)) {
+            msg = "Не удаётся перейти по вашей ссылке. Возможно, ссылка недействительна, или этот сайт блокирует наше соединение в целях безопасности. Попробуйте скачать изображение и отправить нам файлом.";
+        }
+        return msg;
+    }
+
+    public Mono<Dto.VectorResponse> getVectorById(long id) {
+        return webClient.get()
+                .uri("/images/" + id)
+                .retrieve()
+                .onStatus(HttpStatusCode::isError, clientResponse ->
+                        clientResponse.bodyToMono(Map.class)
+                                .flatMap(errorBody -> Mono.error(new RuntimeException(
+                                        errorBody.get("message") != null ? errorBody.get("message").toString() : "ID не найден"
+                                )))
+                )
+                .bodyToMono(Dto.VectorResponse.class);
+    }
+}
