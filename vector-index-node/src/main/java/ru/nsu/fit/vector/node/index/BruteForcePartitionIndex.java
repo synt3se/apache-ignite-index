@@ -29,7 +29,7 @@ public class BruteForcePartitionIndex implements PartitionVectorIndex {
         );
 
         for (Map.Entry<Long, float[]> entry : vectors.entrySet()) {
-            double distance = euclideanDistance(queryVector, entry.getValue());
+            double distance = cosineDistance(queryVector, entry.getValue());
 
             ScoredVector candidate = new ScoredVector(entry.getKey(), distance);
 
@@ -57,14 +57,24 @@ public class BruteForcePartitionIndex implements PartitionVectorIndex {
         return vectors.size();
     }
 
-    private double euclideanDistance(float[] a, float[] b) {
-        double sum = 0.0;
+    private double cosineDistance(float[] a, float[] b) {
+        double dotProduct = 0.0;
+        double normA = 0.0;
+        double normB = 0.0;
 
         for (int i = 0; i < a.length; i++) {
-            double diff = a[i] - b[i];
-            sum += diff * diff;
+            dotProduct += a[i] * b[i];
+            normA += a[i] * a[i];
+            normB += b[i] * b[i];
         }
 
-        return Math.sqrt(sum);
+        if (normA == 0.0 || normB == 0.0) {
+            return 1.0;
+        }
+
+        double cosineSimilarity =
+                dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+
+        return 1.0 - cosineSimilarity;
     }
 }

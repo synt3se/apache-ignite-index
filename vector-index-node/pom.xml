@@ -46,6 +46,11 @@
             <groupId>org.mockito</groupId><artifactId>mockito-core</artifactId>
             <version>5.11.0</version><scope>test</scope>
         </dependency>
+        <dependency>
+            <groupId>io.github.jbellis</groupId>
+            <artifactId>jvector</artifactId>
+            <version>4.0.0-rc.8-hf1</version>
+        </dependency>
     </dependencies>
 
     <build>

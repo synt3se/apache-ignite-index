@@ -218,7 +218,8 @@ public final class PartitionIndexManager {
 
     /** Скан партиции по кэшу без сети */
     private PartitionVectorIndex buildIndexFor(int partition) {
-        PartitionVectorIndex idx = new BruteForcePartitionIndex(); // позже: HNSW за тем же интерфейсом
+        //PartitionVectorIndex idx = new BruteForcePartitionIndex(); // позже: HNSW за тем же интерфейсом
+        PartitionVectorIndex idx = new JVectorPartitionIndex(512); //TODO
         ScanQuery<Long, VectorObject> scan = new ScanQuery<>();
         scan.setPartition(partition);
         scan.setLocal(true);
