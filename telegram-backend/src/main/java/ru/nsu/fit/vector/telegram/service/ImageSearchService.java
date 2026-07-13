@@ -25,7 +25,14 @@ public class ImageSearchService {
     }
 
     public Mono<Neighbor[]> searchUrl(String imageUrl) {
-        return client.searchUrl(imageUrl);
+        return client.searchUrl(imageUrl)
+                .onErrorMap(error -> {
+                    String msg = error.getMessage();
+                    if (msg != null && msg.contains("Не удаётся перейти по вашей ссылке")) {
+                        return new RuntimeException(msg + " Попробуйте отправить изображение файлом.");
+                    }
+                    return error;
+                });
     }
 
     public Mono<Neighbor[]> searchFile(String fileId, TelegramLongPollingBot bot) throws TelegramApiException, IOException {
@@ -47,5 +54,9 @@ public class ImageSearchService {
 
     public Mono<Dto.VectorResponse> getVectorById(long id) {
         return client.getVectorById(id);
+    }
+
+    public Mono<Dto.VectorResponse> addVector(String link) {
+        return client.addVector(link);
     }
 }

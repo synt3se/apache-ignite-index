@@ -53,13 +53,25 @@ public class ImageForwarderBot extends TelegramLongPollingBot {
                 return;
             } else if (text.startsWith("/id")) {
                 if (text.equals("/id")){
-                    sendTextMessage(chatId, "Отправьте: /id число.");
+                    sendTextMessage(chatId, "Отправьте: '/id число'.");
                     return;
                 }
                 log.info("Received command '{}' from chatId: {}", text, chatId);
                 String idValue = text.substring(4).trim();
                 processGetById(chatId, idValue);
-            } else if (text.startsWith("http://") || text.startsWith("https://")) {
+            } else if (text.startsWith("/add")) {
+                if (text.equals("/add")){
+                    sendTextMessage(chatId, "Отправьте: '/add ссылка'.");
+                    return;
+                }
+                String link = text.substring(5).trim();
+                if (!isLink(link)){
+                    sendTextMessage(chatId, "Пожалуйста, отправьте корректную ссылку на изображение");
+                    return;
+                }
+                log.info("Received command '{}' from chatId: {}", text, chatId);
+                processAdd(chatId, link);
+            } else if (isLink(text)) {
                 log.info("Received url: " + text);
                 processImageUrl(chatId, text);
             } else {
@@ -98,7 +110,6 @@ public class ImageForwarderBot extends TelegramLongPollingBot {
         Mono<Neighbor[]> searchMono = imageSearchService.searchUrl(imageUrl);
         handleSearchResponse(searchMono, chatId, "Отправляю ссылку на сервер...");
     }
-
     private void processImageFile(Long chatId, String fileId) {
         try {
             Mono<Neighbor[]> searchMono = imageSearchService.searchFile(fileId, this);
@@ -108,7 +119,6 @@ public class ImageForwarderBot extends TelegramLongPollingBot {
             sendTextMessage(chatId, "❌ Произошла ошибка при получении файла из Telegram.");
         }
     }
-
     private void handleSearchResponse(Mono<Neighbor[]> searchMono, Long chatId, String statusText) {
         Message statusMessage = sendTextMessage(chatId, statusText);
         if (statusMessage == null) return;
@@ -163,6 +173,32 @@ public class ImageForwarderBot extends TelegramLongPollingBot {
                     editTextMessage(chatId, messageIdToEdit, "❌ Объект с ID " + id + " не найден в базе данных.");
                 }
         );
+    }
+
+    private void processAdd(long chatId, String link) {
+        Message statusMessage = sendTextMessage(chatId, "Добавляю запись в базу...");
+        if (statusMessage == null) return;
+        int messageIdToEdit = statusMessage.getMessageId();
+
+        imageSearchService.addVector(link).subscribe(
+                response -> {
+                    String resultText =
+                            "ID: " + response.id() + "\n" +
+                                    "URL: " + response.url();
+                    if (response.metadata() != null && !response.metadata().isBlank()) {
+                        resultText += "\nMETADATA: " + response.metadata();
+                    }
+                    editTextMessage(chatId, messageIdToEdit, resultText);
+                },
+                error -> {
+                    log.warn("Error fetching vector by ID: " + error.getMessage());
+                    editTextMessage(chatId, messageIdToEdit, "❌ Не удалось добавить " + link + ". " + error.getMessage());
+                }
+        );
+    }
+
+    private boolean isLink(String s) {
+        return s.startsWith("http://") || s.startsWith("https://");
     }
 
     private Message sendTextMessage(Long chatId, String text) {

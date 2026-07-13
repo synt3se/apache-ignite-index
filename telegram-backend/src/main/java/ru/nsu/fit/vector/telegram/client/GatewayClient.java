@@ -6,6 +6,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.reactive.function.BodyInserters;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.util.UriComponentsBuilder;
 import reactor.core.publisher.Mono;
 import ru.nsu.fit.vector.telegram.Dto;
 import ru.nsu.fit.vector.telegram.Dto.Neighbor;
@@ -48,14 +49,6 @@ public class GatewayClient {
                 .timeout(java.time.Duration.ofSeconds(30));
     }
 
-    private String generateErrorMessage(Object message, Object error) {
-        String msg = message.toString();
-        if ("image_download_error".equals(error)) {
-            msg = "Не удаётся перейти по вашей ссылке. Возможно, ссылка недействительна, или этот сайт блокирует наше соединение в целях безопасности. Попробуйте скачать изображение и отправить нам файлом.";
-        }
-        return msg;
-    }
-
     public Mono<Dto.VectorResponse> getVectorById(long id) {
         return webClient.get()
                 .uri("/images/" + id)
@@ -67,5 +60,29 @@ public class GatewayClient {
                                 )))
                 )
                 .bodyToMono(Dto.VectorResponse.class);
+    }
+
+    public Mono<Dto.VectorResponse> addVector(String link) {
+        var requestBody = Map.of("url", link);
+        return webClient.post()
+                .uri("/images/add")
+                .bodyValue(requestBody)
+                .retrieve()
+                .onStatus(HttpStatusCode::isError, clientResponse ->
+                        clientResponse.bodyToMono(Map.class)
+                                .flatMap(errorBody -> Mono.error(new RuntimeException(generateErrorMessage(errorBody.get("message"), errorBody.get("error")))))
+
+                )
+                .bodyToMono(Dto.VectorResponse.class)
+                .timeout(java.time.Duration.ofSeconds(30));
+    }
+
+    private String generateErrorMessage(Object message, Object e) {
+        String msg = message.toString();
+        String error = e.toString();
+        if (error.startsWith("image_download_error")) {
+            msg = "Не удаётся перейти по вашей ссылке. Возможно, ссылка недействительна, или этот сайт блокирует наше соединение в целях безопасности.";
+        }
+        return msg;
     }
 }
