@@ -18,6 +18,30 @@ public class BruteForcePartitionIndex implements PartitionVectorIndex {
     }
 
     @Override
+    public void build(Map<Long, float[]> newVectors) {
+        if (newVectors == null) {
+            throw new IllegalArgumentException("vectors are required");
+        }
+
+        vectors.clear();
+
+        for (Map.Entry<Long, float[]> entry : newVectors.entrySet()) {
+            Long id = entry.getKey();
+            float[] vector = entry.getValue();
+
+            if (id == null) {
+                throw new IllegalArgumentException("vector id is required");
+            }
+
+            if (vector == null) {
+                throw new IllegalArgumentException("vector is required for id " + id);
+            }
+
+            vectors.put(id, vector.clone());
+        }
+    }
+
+    @Override
     public void delete(long id) {
         vectors.remove(id);
     }

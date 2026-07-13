@@ -1,107 +1,218 @@
 package ru.nsu.fit.vectorserver.benchmark;
 
-import ru.nsu.fit.vectorserver.index.Index;
+import io.jhdf.HdfFile;
+import io.jhdf.api.Dataset;
 import ru.nsu.fit.vector.common.dto.AddRequest;
+import ru.nsu.fit.vector.common.dto.Neighbor;
+import ru.nsu.fit.vector.common.dto.SearchRequest;
+import ru.nsu.fit.vectorserver.VectorService;
 
-import java.util.Random;
+import java.io.File;
+import java.util.ArrayList;
+import java.util.List;
 
+public class BenchmarkRunner {
 
+    private final VectorService service;
 
-public class BenchmarkRunner{
-    private final Index index;
-
-    public BenchmarkRunner(Index index){
-        this.index = index;
+    public BenchmarkRunner(VectorService service) {
+        this.service = service;
     }
 
-    public void run(
-            int vectorCount,
-            int queryCount,
-            int dimension,
-            int neighborCount
-    ){
-        System.out.println("=== Brute force benchmark STARTED ===");
-        System.out.println("vectors: " + vectorCount);
-        System.out.println("queries: " + queryCount);
-        System.out.println("dimension: " + dimension);
-        System.out.println("neighbors searchCount: " + neighborCount);
+    public void run(int neighborCount, String hdf5Path) {
+        File file = new File(hdf5Path);
 
-        Random random = new Random(42);
-
-        index.clear();
-
-        float[][] train = new float[vectorCount][];
-        for (int i = 0; i < vectorCount; i++) {
-            train[i] = randomVector(random, dimension);
+        if (!file.exists()) {
+            throw new IllegalArgumentException(
+                    "Incorrect dataset filepath: " + hdf5Path
+            );
         }
 
-        long loadStart = System.nanoTime();
+        try (HdfFile hdfFile = new HdfFile(file)) {
+            Dataset trainDataset = hdfFile.getDatasetByPath("train");
+            int[] trainDims = trainDataset.getDimensions();
+            int vectorCount = trainDims[0];
+            int dimension = trainDims[1];
 
-        for (int i = 0; i < vectorCount; i++) {
-            AddRequest request = new AddRequest(
-                    train[i],
-                    "benchmark://vector/" + i,
-                    "Source: benchmark"
+            Dataset testDataset = hdfFile.getDatasetByPath("test");
+            int[] testDims = testDataset.getDimensions();
+            int queryCount = testDims[0];
+
+            Dataset neighborsDataset = hdfFile.getDatasetByPath("neighbors");
+            int maxNeighbors = neighborsDataset.getDimensions()[1];
+
+            neighborCount = Math.min(neighborCount, maxNeighbors);
+
+            System.out.println("=== Vector benchmark STARTED ===");
+            System.out.println("Dataset: " + file.getName());
+            System.out.println("vectors: " + vectorCount);
+            System.out.println("queries: " + queryCount);
+            System.out.println("dimension: " + dimension);
+            System.out.println("neighbors count: " + neighborCount);
+
+            service.clear();
+
+            long loadStart = System.nanoTime();
+            int batchSize = 10_000;
+
+            for (int startIdx = 0; startIdx < vectorCount; startIdx += batchSize) {
+                int currentBatchSize = Math.min(batchSize, vectorCount - startIdx);
+
+                System.out.println("(～￣▽￣)～ " + startIdx + " / " + vectorCount);
+
+                float[][] batchVectors = (float[][]) trainDataset.getData(
+                        new long[]{startIdx, 0},
+                        new int[]{currentBatchSize, dimension}
+                );
+
+                for (int i = 0; i < currentBatchSize; i++) {
+                    int globalIndex = startIdx + i;
+
+                    AddRequest request = new AddRequest(
+                            batchVectors[i],
+                            "benchmark://vector/" + globalIndex,
+                            "Source: benchmark"
+                    );
+
+                    service.add(request);
+                }
+            }
+
+            long loadEnd = System.nanoTime();
+
+            float[][] queries = (float[][]) testDataset.getData();
+            long[][] groundTruth = (long[][]) neighborsDataset.getData();
+
+            BenchmarkMetrics searchMetrics = new BenchmarkMetrics();
+
+            int warmupQueries = Math.min(10, queryCount);
+            System.out.println("Warmup queries: " + warmupQueries);
+
+            for (int i = 0; i < warmupQueries; i++) {
+                service.search(
+                        new SearchRequest(queries[i], neighborCount)
+                );
+            }
+
+            long totalSearchNanos = 0L;
+            double totalRecall = 0.0;
+
+
+            queryCount = 100;
+            for (int i = 0; i < queryCount; i++) {
+                float[] query = queries[i];
+                long[] exactNeighbors = groundTruth[i];
+
+                long start = System.nanoTime();
+
+                var searchResponse = service.search(
+                        new SearchRequest(query, neighborCount)
+                );
+
+                long searchNanos = System.nanoTime() - start;
+                totalSearchNanos += searchNanos;
+
+                searchMetrics.add(
+                        searchNanos / 1_000_000.0
+                );
+
+                List<Long> foundIds = extractIdsFromResponse(searchResponse);
+
+                int matches = 0;
+                int returnedCount = Math.min(
+                        foundIds.size(),
+                        neighborCount
+                );
+
+                for (int resultIndex = 0; resultIndex < returnedCount; resultIndex++) {
+                    long foundId = foundIds.get(resultIndex);
+
+                    if (containsInTopK(exactNeighbors, foundId, neighborCount)) {
+                        matches++;
+                    }
+                }
+
+                totalRecall += (double) matches / neighborCount;
+            }
+
+            double loadMs = (loadEnd - loadStart) / 1_000_000.0;
+            double totalSearchMs = totalSearchNanos / 1_000_000.0;
+            double qps = queryCount / (totalSearchNanos / 1_000_000_000.0);
+            double averageRecall = totalRecall / queryCount;
+
+            System.out.println();
+            System.out.println("=== Vector benchmark result ===");
+            System.out.println("load_ms: " + loadMs);
+            System.out.println("total_search_ms: " + totalSearchMs);
+            System.out.println("avg_search_ms: " + searchMetrics.average());
+            System.out.println("p95_search_ms: " + searchMetrics.percentile(0.95));
+            System.out.println("p99_search_ms: " + searchMetrics.percentile(0.99));
+            System.out.println("measured_queries: " + searchMetrics.count());
+            System.out.println("qps: " + qps);
+
+            System.out.printf(
+                    "Average RECALL@%d: %.2f%%%n",
+                    neighborCount,
+                    averageRecall * 100.0
             );
 
-            index.add(i, request); //TODO wtf
+            System.out.println("=== Vector benchmark FINISHED ===");
+        } catch (Exception e) {
+            throw new RuntimeException(
+                    "Benchmark failed for dataset: " + hdf5Path,
+                    e
+            );
         }
-
-        long loadEnd = System.nanoTime();
-
-        float[][] queries = new float[queryCount][];
-
-        for (int i = 0; i < queryCount; i++) {
-            queries[i] = randomVector(random, dimension);
-        }
-
-        BenchmarkMetrics searchMetrics = new BenchmarkMetrics();
-
-
-        int warmupQueries = Math.min(10, queryCount);;
-        for (int i = 0; i < warmupQueries; i++) {
-            index.search(queries[i], neighborCount);
-        }
-
-
-        long searchStartTotal = System.nanoTime();
-
-        for (float[] query : queries) {
-            long start = System.nanoTime();
-
-            index.search(query, neighborCount);
-
-            long end = System.nanoTime();
-
-            double searchMs = (end - start) / 1_000_000.0;
-            searchMetrics.add(searchMs);
-        }
-
-        long searchEndTotal = System.nanoTime();
-
-        double loadMs = (loadEnd - loadStart) / 1_000_000.0;
-        double totalSearchMs = (searchEndTotal - searchStartTotal) / 1_000_000.0;
-        double qps = queryCount / (totalSearchMs / 1000.0);
-
-        System.out.println();
-        System.out.println("=== Brute force benchmark result ===");
-        System.out.println("load_ms: " + loadMs);
-        System.out.println("total_search_ms: " + totalSearchMs);
-        System.out.println("avg_search_ms: " + searchMetrics.average());
-        System.out.println("p95_search_ms: " + searchMetrics.percentile(0.95));
-        System.out.println("p99_search_ms: " + searchMetrics.percentile(0.99));
-        System.out.println("measured_queries: " + searchMetrics.count());
-        System.out.println("qps: " + qps); //queries per second
-        System.out.println("=== Brute force benchmark FINISHED ===");
     }
 
-    private float[] randomVector(Random random, int dimension) {
-        float[] vector = new float[dimension];
+    private boolean containsInTopK(
+            long[] exactNeighbors,
+            long foundId,
+            int neighborCount
+    ) {
+        int limit = Math.min(
+                neighborCount,
+                exactNeighbors.length
+        );
 
-        for (int i = 0; i < dimension; i++) {
-            vector[i] = random.nextFloat();
+        for (int i = 0; i < limit; i++) {
+            long expectedId = exactNeighbors[i] + 1L;
+
+            if (expectedId == foundId) {
+                return true;
+            }
         }
 
-        return vector;
+        return false;
+    }
+
+    private List<Long> extractIdsFromResponse(Object searchResponse) {
+        Object body = searchResponse;
+
+        if (searchResponse instanceof org.springframework.http.ResponseEntity<?> responseEntity) {
+            body = responseEntity.getBody();
+        }
+
+        if (!(body instanceof List<?> resultList)) {
+            throw new IllegalStateException(
+                    "Unexpected search response type: "
+                            + (body == null ? "null" : body.getClass().getName())
+            );
+        }
+
+        List<Long> ids = new ArrayList<>(resultList.size());
+
+        for (Object item : resultList) {
+            if (!(item instanceof Neighbor neighbor)) {
+                throw new IllegalStateException(
+                        "Unexpected search result item: "
+                                + (item == null ? "null" : item.getClass().getName())
+                );
+            }
+
+            ids.add(neighbor.id());
+        }
+
+        return ids;
     }
 }
