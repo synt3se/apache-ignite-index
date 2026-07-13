@@ -13,9 +13,11 @@ import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import reactor.core.publisher.Mono;
 import ru.nsu.fit.vector.telegram.Dto.Neighbor;
+import ru.nsu.fit.vector.telegram.command.BotCommandProcessor;
 import ru.nsu.fit.vector.telegram.service.ImageSearchService;
 
 import java.util.Arrays;
+import java.util.List;
 
 
 @Component
@@ -23,15 +25,16 @@ public class ImageForwarderBot extends TelegramLongPollingBot {
     static final Logger log = LoggerFactory.getLogger(ImageForwarderBot.class);
 
     private final String botUsername;
+    private final List<BotCommandProcessor> commandProcessors;
     private ImageSearchService imageSearchService;
 
     public ImageForwarderBot(
             @Value("${bot.token}") String botToken,
             @Value("${bot.username}") String botUsername,
-            ImageSearchService imageSearchService) {
+            List<BotCommandProcessor> commandProcessors) {
         super(botToken);
         this.botUsername = botUsername;
-        this.imageSearchService = imageSearchService;
+        this.commandProcessors = commandProcessors;
     }
 
     @Override
@@ -44,6 +47,17 @@ public class ImageForwarderBot extends TelegramLongPollingBot {
         Message message = update.getMessage();
         String text = message.getText();
         long chatId = message.getChatId();
+
+        for (BotCommandProcessor processor : commandProcessors) {
+            if (processor.canProcess(update)) {
+                processor.process(update, chatId, this);
+                return;
+            }
+        }
+        log.info("Received unknown request pattern");
+        sendTextMessage(chatId, "Пожалуйста, отправьте поддерживаемую команду, ссылку или изображение.");
+
+        /*
         if (update.hasMessage() && update.getMessage().hasText()) {
             if (text.equals("/start")) {
                 log.info("Received command '/start' from chatId: {}", chatId);
@@ -103,7 +117,7 @@ public class ImageForwarderBot extends TelegramLongPollingBot {
         else {
             log.info("Received unknown request");
             sendTextMessage(chatId, "Пожалуйста, отправьте ссылку или само изображение");
-        }
+        }*/
     }
 
     private void processImageUrl(Long chatId, String imageUrl) {
