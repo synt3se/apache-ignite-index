@@ -8,6 +8,7 @@ import org.telegram.telegrambots.bots.*;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import reactor.core.publisher.Mono;
 import ru.nsu.fit.vector.telegram.Dto;
+import ru.nsu.fit.vector.telegram.ImageDownloadException;
 import ru.nsu.fit.vector.telegram.client.GatewayClient;
 import ru.nsu.fit.vector.telegram.Dto.Neighbor;
 
@@ -16,6 +17,8 @@ import java.io.InputStream;
 
 @Service
 public class ImageSearchService {
+    private static final String BASE_DOWNLOAD_ERROR = "Не удаётся перейти по вашей ссылке. Возможно, ссылка недействительна, или этот сайт блокирует наше соединение в целях безопасности.";
+
     private GatewayClient client;
     private TelegramFileService telegramFileService;
 
@@ -26,13 +29,9 @@ public class ImageSearchService {
 
     public Mono<Neighbor[]> searchUrl(String imageUrl) {
         return client.searchUrl(imageUrl)
-                .onErrorMap(error -> {
-                    String msg = error.getMessage();
-                    if (msg != null && msg.contains("Не удаётся перейти по вашей ссылке")) {
-                        return new RuntimeException(msg + " Попробуйте отправить изображение файлом.");
-                    }
-                    return error;
-                });
+                .onErrorMap(ImageDownloadException.class, error ->
+                        new RuntimeException(BASE_DOWNLOAD_ERROR + " Попробуйте отправить изображение файлом.")
+                );
     }
 
     public Mono<Neighbor[]> searchFile(String fileId, TelegramLongPollingBot bot) throws TelegramApiException, IOException {
@@ -57,6 +56,9 @@ public class ImageSearchService {
     }
 
     public Mono<Dto.VectorResponse> addVector(String link) {
-        return client.addVector(link);
+        return client.addVector(link)
+                .onErrorMap(ImageDownloadException.class, error ->
+                    new RuntimeException(BASE_DOWNLOAD_ERROR)
+                );
     }
 }
