@@ -3,6 +3,7 @@ package com.github.synt3se.gateway.web;
 import com.github.synt3se.gateway.client.ClipClient;
 import com.github.synt3se.gateway.client.IndexClient;
 import com.github.synt3se.gateway.web.exceptions.ImageDownloadException;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -88,15 +89,22 @@ public class GatewayController {
 
     private byte[] downloadImage(String url) {
         RestTemplate restTemplate = new RestTemplate();
-        byte[] imageBytes;
         try {
-            imageBytes = restTemplate.getForObject(url, byte[].class);
+            return restTemplate.execute(url, HttpMethod.GET, null, response -> {
+                MediaType contentType = response.getHeaders().getContentType();
+
+                // Проверяем, что Content-Type начинается с "image/"
+                if (contentType == null || !contentType.getType().equals("image")) {
+                    throw new ImageDownloadException(
+                            "URL does not point to a valid image. Content-Type: " + contentType, url, null
+                    );
+                }
+
+                // Если всё ок — читаем байты
+                return response.getBody().readAllBytes();
+            });
         } catch (Exception ex) {
             throw new ImageDownloadException("Failed to download image from external host", url, ex);
         }
-        if (imageBytes == null) {
-            throw new ImageDownloadException("Failed to download image: host returned empty body", url, null);
-        }
-        return imageBytes;
     }
 }

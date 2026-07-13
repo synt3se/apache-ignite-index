@@ -59,11 +59,7 @@ public class GatewayClient {
                 .uri("/images/add")
                 .bodyValue(requestBody)
                 .retrieve()
-                .onStatus(HttpStatusCode::isError, clientResponse ->
-                        clientResponse.bodyToMono(Map.class)
-                                .flatMap(errorBody -> Mono.error(new RuntimeException(generateErrorMessage(errorBody.get("message"), errorBody.get("error")))))
-
-                )
+                .onStatus(HttpStatusCode::isError, this::mapError)
                 .bodyToMono(Dto.VectorResponse.class)
                 .timeout(java.time.Duration.ofSeconds(30));
     }
