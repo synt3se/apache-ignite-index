@@ -28,6 +28,10 @@ services:
       - ./config:/config:ro
       - ./ignite-libs/vector-index-common-1.0-SNAPSHOT.jar:/opt/ignite/apache-ignite/libs/vector-index-common-1.0-SNAPSHOT.jar:ro
       - ./ignite-libs/vector-index-node-1.0-SNAPSHOT.jar:/opt/ignite/apache-ignite/libs/vector-index-node-1.0-SNAPSHOT.jar:ro
+      - ./ignite-libs/jvector-4.0.0-rc.8-hf1.jar:/opt/ignite/apache-ignite/libs/jvector-4.0.0-rc.8-hf1.jar:ro
+      - ./ignite-libs/slf4j-api-2.0.16.jar:/opt/ignite/apache-ignite/libs/slf4j-api-2.0.16.jar:ro
+      - ./ignite-libs/slf4j-simple-2.0.16.jar:/opt/ignite/apache-ignite/libs/slf4j-simple-2.0.16.jar:ro
+      - ./ignite-libs/agrona-1.22.0.jar:/opt/ignite/apache-ignite/libs/agrona-1.22.0.jar:ro
     ports:
       - "10800:10800"
       - "47100:47100"
@@ -52,6 +56,10 @@ services:
       - ./config:/config:ro
       - ./ignite-libs/vector-index-common-1.0-SNAPSHOT.jar:/opt/ignite/apache-ignite/libs/vector-index-common-1.0-SNAPSHOT.jar:ro
       - ./ignite-libs/vector-index-node-1.0-SNAPSHOT.jar:/opt/ignite/apache-ignite/libs/vector-index-node-1.0-SNAPSHOT.jar:ro
+      - ./ignite-libs/jvector-4.0.0-rc.8-hf1.jar:/opt/ignite/apache-ignite/libs/jvector-4.0.0-rc.8-hf1.jar:ro
+      - ./ignite-libs/slf4j-api-2.0.16.jar:/opt/ignite/apache-ignite/libs/slf4j-api-2.0.16.jar:ro
+      - ./ignite-libs/slf4j-simple-2.0.16.jar:/opt/ignite/apache-ignite/libs/slf4j-simple-2.0.16.jar:ro
+      - ./ignite-libs/agrona-1.22.0.jar:/opt/ignite/apache-ignite/libs/agrona-1.22.0.jar:ro
     networks:
       - ignite-net
     depends_on:

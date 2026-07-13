@@ -71,6 +71,11 @@
             <version>2.7.18</version>
             <scope>provided</scope>
         </dependency>
+        <dependency>
+            <groupId>org.agrona</groupId>
+            <artifactId>agrona</artifactId>
+            <version>1.22.0</version>
+        </dependency>
 
     </dependencies>
 

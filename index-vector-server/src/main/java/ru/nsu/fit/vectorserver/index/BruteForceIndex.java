@@ -20,7 +20,7 @@ import java.util.List;
 import java.util.PriorityQueue;
 
 //@Component
-public class BruteForceIndex implements Index { // TODO: REMOVE old bruteforce
+public class BruteForceIndex {//implements Index {
 
     private final ClientCache<Long, VectorObject> cache;
     private final int dimension;

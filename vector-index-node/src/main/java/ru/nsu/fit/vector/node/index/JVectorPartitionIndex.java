@@ -125,16 +125,16 @@ public class JVectorPartitionIndex
         }
 
         lock.writeLock().lock();
-
         try {
-            IndexSnapshot newSnapshot = buildSnapshot(vectorsCopy);
-            IndexSnapshot oldSnapshot = snapshot;
+            if (!snapshot.isEmpty()
+                    || !pendingVectors.isEmpty()
+                    || !deletedFromGraph.isEmpty()) {
+                throw new IllegalStateException(
+                        "build can only be called on an empty index"
+                );
+            }
 
-            snapshot = newSnapshot;
-            pendingVectors.clear();
-            deletedFromGraph.clear();
-
-            closeGraph(oldSnapshot.graph());
+            snapshot = buildSnapshot(vectorsCopy);
         } finally {
             lock.writeLock().unlock();
         }
@@ -142,25 +142,26 @@ public class JVectorPartitionIndex
 
     @Override
     public void delete(long id) {
-        boolean rebuildRequired = false;
+        boolean startRebuild = false;
 
         lock.writeLock().lock();
         try {
-            pendingVectors.remove(id);
+            boolean removedFromPending = pendingVectors.remove(id) != null;
+            boolean existedInSnapshot = snapshot.containsId(id);
 
-            if (snapshot.containsId(id)) {
+            if (removedFromPending || existedInSnapshot) {
                 deletedFromGraph.add(id);
             }
 
             if (shouldRebuildAfterDelete() && !rebuildInProgress) {
                 rebuildInProgress = true;
-                rebuildRequired = true;
+                startRebuild = true;
             }
         } finally {
             lock.writeLock().unlock();
         }
 
-        if (rebuildRequired) {
+        if (startRebuild) {
             rebuildAsync();
         }
     }
@@ -221,20 +222,18 @@ public class JVectorPartitionIndex
     @Override
     public int size() {
         lock.readLock().lock();
-
         try {
-            int graphSize =
-                    snapshot.size() - deletedFromGraph.size();
+            int result = 0;
 
-            int newPendingCount = 0;
-
-            for (Long id : pendingVectors.keySet()) {
-                if (!snapshot.containsId(id)) {
-                    newPendingCount++;
+            for (Long id : snapshot.idToOrdinal().keySet()) {
+                if (!deletedFromGraph.contains(id)
+                        && !pendingVectors.containsKey(id)) {
+                    result++;
                 }
             }
 
-            return graphSize + newPendingCount;
+            result += pendingVectors.size();
+            return result;
         } finally {
             lock.readLock().unlock();
         }
@@ -242,8 +241,8 @@ public class JVectorPartitionIndex
 
     @Override
     public void close() {
-        rebuildExecutor.shutdownNow();
         clear();
+        rebuildExecutor.shutdownNow();
     }
 
     private void searchGraph(
@@ -263,12 +262,6 @@ public class JVectorPartitionIndex
                         VectorSimilarityFunction.COSINE,
                         snapshot.vectorValues()
                 );
-
-
-        int candidateCount = Math.min(
-                snapshot.size(),
-                count
-        );
 
         int rerankK = Math.min(
                 snapshot.size(),
@@ -356,8 +349,14 @@ public class JVectorPartitionIndex
 
     private void rebuildAsync() {
         rebuildExecutor.submit(() -> {
+            boolean succeeded = false;
+
             try {
                 rebuildInBackground();
+                succeeded = true;
+            } catch (RuntimeException e) {
+                System.err.println("JVector background rebuild failed");
+                e.printStackTrace();
             } finally {
                 boolean rebuildAgain = false;
 
@@ -365,7 +364,7 @@ public class JVectorPartitionIndex
                 try {
                     rebuildInProgress = false;
 
-                    if (shouldRebuild()) {
+                    if (succeeded && shouldRebuild()) {
                         rebuildInProgress = true;
                         rebuildAgain = true;
                     }
@@ -381,34 +380,45 @@ public class JVectorPartitionIndex
     }
 
     private void rebuildInBackground() {
+        Set<Long> includedDeleted = new HashSet<>();
         Map<Long, float[]> vectorsForBuild = new HashMap<>();
         Map<Long, float[]> includedPending = new HashMap<>();
 
-        lock.writeLock().lock();
+        IndexSnapshot sourceSnapshot;
+
+        lock.readLock().lock();
         try {
-            for (int ordinal = 0; ordinal < snapshot.size(); ordinal++) {
-                long id = snapshot.ordinalToId().get(ordinal);
+            sourceSnapshot = snapshot;
+            includedDeleted.addAll(deletedFromGraph);
+
+            for (int ordinal = 0; ordinal < sourceSnapshot.size(); ordinal++) {
+                long id = sourceSnapshot.ordinalToId().get(ordinal);
 
                 if (!deletedFromGraph.contains(id)) {
                     vectorsForBuild.put(
                             id,
-                            snapshot.rawVectors().get(ordinal).clone()
+                            sourceSnapshot.rawVectors().get(ordinal)
                     );
                 }
             }
 
             for (Map.Entry<Long, float[]> entry : pendingVectors.entrySet()) {
                 includedPending.put(entry.getKey(), entry.getValue());
-                vectorsForBuild.put(entry.getKey(), entry.getValue().clone());
+                vectorsForBuild.put(entry.getKey(), entry.getValue());
             }
         } finally {
-            lock.writeLock().unlock();
+            lock.readLock().unlock();
         }
 
         IndexSnapshot newSnapshot = buildSnapshot(vectorsForBuild);
 
         lock.writeLock().lock();
         try {
+            if (snapshot != sourceSnapshot) {
+                closeGraph(newSnapshot.graph());
+                return;
+            }
+
             IndexSnapshot oldSnapshot = snapshot;
             snapshot = newSnapshot;
 
@@ -416,7 +426,7 @@ public class JVectorPartitionIndex
                 pendingVectors.remove(entry.getKey(), entry.getValue());
             }
 
-            deletedFromGraph.removeIf(newSnapshot::containsId);
+            deletedFromGraph.removeAll(includedDeleted);
 
             closeGraph(oldSnapshot.graph());
         } finally {
@@ -450,7 +460,7 @@ public class JVectorPartitionIndex
 
         for (Map.Entry<Long, float[]> entry : entries) {
             int ordinal = ordinalToId.size();
-            float[] vector = entry.getValue().clone();
+            float[] vector = entry.getValue();
 
             ordinalToId.add(entry.getKey());
             rawVectors.add(vector);

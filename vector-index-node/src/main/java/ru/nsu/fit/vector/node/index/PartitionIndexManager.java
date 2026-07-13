@@ -188,6 +188,7 @@ public final class PartitionIndexManager {
     }
 
     private void runRebuild(int partition) {
+        log.info("[vindex] runRebuild START partition=" + partition);
         boolean again = false;
         long t0 = System.nanoTime();
         try {
@@ -201,10 +202,14 @@ public final class PartitionIndexManager {
             log.info("[vindex] partition " + partition + " rebuilt in "
                     + (System.nanoTime() - t0) / 1_000_000 + " ms"
                     + (again ? " (heavy writes - extra pass)" : ""));
-        } catch (Exception e) {
+        } catch (Throwable e) {
             dirty.add(partition);
             requestReconcile();
-            log.warning("[vindex] partition " + partition + " rebuild FAILED: " + e + " - marked dirty");
+
+            log.error(
+                    "[vindex] partition " + partition + " rebuild FAILED",
+                    e
+            );
         } finally {
             rebuildQueued.remove(partition);
             if (again) scheduleRebuild(partition);
@@ -213,7 +218,8 @@ public final class PartitionIndexManager {
 
     /** Скан партиции по кэшу без сети */
     private PartitionVectorIndex buildIndexFor(int partition) {
-        PartitionVectorIndex idx = new JVectorPartitionIndex(512, 50);
+        log.info("[vindex] scan START partition=" + partition);
+
         Map<Long, float[]> vectors = new HashMap<>();
 
         ScanQuery<Long, VectorObject> scan = new ScanQuery<>();
@@ -233,7 +239,15 @@ public final class PartitionIndexManager {
             }
         }
 
+        log.info("[vindex] scan FINISHED partition=" + partition +
+                ", vectors=" + vectors.size());
+
+        PartitionVectorIndex idx = new JVectorPartitionIndex(512, 50);
+
+        log.info("[vindex] jvector build START partition=" + partition);
         idx.build(vectors);
+        log.info("[vindex] jvector build FINISHED partition=" + partition);
+
         return idx;
     }
     /** Читаем текущее значение кэша. */
