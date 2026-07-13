@@ -10,14 +10,12 @@ import ru.nsu.fit.vector.telegram.service.BotMessageService;
 import ru.nsu.fit.vector.telegram.service.ImageSearchService;
 
 @Component
-public class GetCommandProcessor implements BotCommandProcessor {
-    private static final Logger log = LoggerFactory.getLogger(AddCommandProcessor.class);
+public class GetCommandProcessor extends BotCommandProcessor {
     private final ImageSearchService imageSearchService;
-    private final BotMessageService messageService;
 
     public GetCommandProcessor(ImageSearchService imageSearchService, BotMessageService messageService) {
+        super(messageService);
         this.imageSearchService = imageSearchService;
-        this.messageService = messageService;
     }
 
     @Override
@@ -40,15 +38,8 @@ public class GetCommandProcessor implements BotCommandProcessor {
         if (statusMessage == null) return;
         int messageIdToEdit = statusMessage.getMessageId();
 
-        long id;
-        try {
-            id = Long.parseLong(idValue);
-        }
-        catch (NumberFormatException e) {
-            log.warn("Incorrect ID format: " + e.getMessage());
-            messageService.editText(sender, chatId, messageIdToEdit, "❌ Неверный формат id: '" + idValue + "'. Отправьте: /id число.");
-            return;
-        }
+        Long id = parseId(idValue, chatId, sender, messageIdToEdit);
+        if (id == null) return;
 
         imageSearchService.getVectorById(id).subscribe(
                 response -> {

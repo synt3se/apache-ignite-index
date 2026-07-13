@@ -10,14 +10,12 @@ import ru.nsu.fit.vector.telegram.service.BotMessageService;
 import ru.nsu.fit.vector.telegram.service.ImageSearchService;
 
 @Component
-public class AddCommandProcessor implements BotCommandProcessor {
-    private static final Logger log = LoggerFactory.getLogger(AddCommandProcessor.class);
+public class AddCommandProcessor extends BotCommandProcessor {
     private final ImageSearchService imageSearchService;
-    private final BotMessageService messageService;
 
     public AddCommandProcessor(ImageSearchService imageSearchService, BotMessageService messageService) {
+        super(messageService);
         this.imageSearchService = imageSearchService;
-        this.messageService = messageService;
     }
 
     @Override

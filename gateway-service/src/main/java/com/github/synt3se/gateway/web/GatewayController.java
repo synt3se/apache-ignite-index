@@ -93,14 +93,12 @@ public class GatewayController {
             return restTemplate.execute(url, HttpMethod.GET, null, response -> {
                 MediaType contentType = response.getHeaders().getContentType();
 
-                // Проверяем, что Content-Type начинается с "image/"
                 if (contentType == null || !contentType.getType().equals("image")) {
                     throw new ImageDownloadException(
                             "URL does not point to a valid image. Content-Type: " + contentType, url, null
                     );
                 }
 
-                // Если всё ок — читаем байты
                 return response.getBody().readAllBytes();
             });
         } catch (Exception ex) {

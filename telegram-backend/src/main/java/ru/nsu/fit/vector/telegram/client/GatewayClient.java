@@ -64,13 +64,12 @@ public class GatewayClient {
                 .timeout(java.time.Duration.ofSeconds(30));
     }
 
-    private String generateErrorMessage(Object message, Object e) {
-        String msg = message.toString();
-        String error = e.toString();
-        if (error.startsWith("image_download_error")) {
-            msg = "Не удаётся перейти по вашей ссылке. Возможно, ссылка недействительна, или этот сайт блокирует наше соединение в целях безопасности.";
-        }
-        return msg;
+    public Mono<Dto.VectorResponse> deleteVector(long id) {
+        return webClient.delete()
+                .uri("/images/" + id)
+                .retrieve()
+                .onStatus(HttpStatusCode::isError, this::mapError)
+                .bodyToMono(Dto.VectorResponse.class);
     }
 
     private Mono<? extends Throwable> mapError(ClientResponse clientResponse) {

@@ -14,14 +14,12 @@ import ru.nsu.fit.vector.telegram.service.BotMessageService;
 import ru.nsu.fit.vector.telegram.service.ImageSearchService;
 
 @Component
-public class SearchCommandProcessor implements BotCommandProcessor {
-    private static final Logger log = LoggerFactory.getLogger(AddCommandProcessor.class);
+public class SearchCommandProcessor extends BotCommandProcessor {
     private final ImageSearchService imageSearchService;
-    private final BotMessageService messageService;
 
     public SearchCommandProcessor(ImageSearchService imageSearchService, BotMessageService messageService) {
+        super(messageService);
         this.imageSearchService = imageSearchService;
-        this.messageService = messageService;
     }
 
     @Override
@@ -77,10 +75,6 @@ public class SearchCommandProcessor implements BotCommandProcessor {
                     messageService.editText(sender, chatId, messageIdToEdit, "❌ Ошибка: " + error.getMessage());
                 }
         );
-    }
-
-    private boolean isLink(String s) {
-        return s.startsWith("http://") || s.startsWith("https://");
     }
 
     private String getStringTop(Dto.Neighbor[] top) {

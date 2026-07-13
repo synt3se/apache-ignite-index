@@ -8,12 +8,9 @@ import org.telegram.telegrambots.meta.bots.AbsSender;
 import ru.nsu.fit.vector.telegram.service.BotMessageService;
 
 @Component
-public class StartCommandProcessor implements BotCommandProcessor {
-    private static final Logger log = LoggerFactory.getLogger(StartCommandProcessor.class);
-    private final BotMessageService messageService;
-
+public class StartCommandProcessor extends BotCommandProcessor {
     public StartCommandProcessor(BotMessageService messageService) {
-        this.messageService = messageService;
+        super(messageService);
     }
 
     @Override

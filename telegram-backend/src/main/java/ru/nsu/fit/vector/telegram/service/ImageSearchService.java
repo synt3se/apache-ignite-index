@@ -61,4 +61,11 @@ public class ImageSearchService {
                     new RuntimeException(BASE_DOWNLOAD_ERROR)
                 );
     }
+
+    public Mono<Dto.VectorResponse> deleteVector(long id) {
+        return client.deleteVector(id)
+                .onErrorMap(ImageDownloadException.class, error ->
+                        new RuntimeException(BASE_DOWNLOAD_ERROR)
+                );
+    }
 }
