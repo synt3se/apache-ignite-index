@@ -43,8 +43,24 @@ public class DistributedVectorIndex implements Index {
         this.dimension = dimension;
     }
 
+    private void validateVector(float[] vector) {
+        if (vector == null) {
+            throw new IllegalArgumentException("Vector must not be null");
+        }
+
+        if (vector.length != dimension) {
+            throw new IllegalArgumentException(
+                    "Incorrect vector dimension: "
+                            + vector.length
+                            + ", required: "
+                            + dimension
+            );
+        }
+    }
+
     @Override
     public void add(long id, AddRequest request) {
+        validateVector(request.vector());
         cache.put(id, new VectorObject(request.vector(), request.url(), request.metadata()));
         // индекс — производная кэша: слушатель владельца сам добавит вектор
     }
@@ -76,6 +92,8 @@ public class DistributedVectorIndex implements Index {
 
     @Override
     public List<Neighbor> search(float[] queryVector, int count) {
+        validateVector(queryVector);
+
         List<ScoredVector> scoredVectors;
 
         try {
@@ -218,6 +236,26 @@ public class DistributedVectorIndex implements Index {
 
     @Override
     public void addAll(Map<Long, VectorObject> vectors) {
+        //TODO Тут происходит проверка всех векторов мб потом заменить на что-то получше
+        for (Map.Entry<Long, VectorObject> entry : vectors.entrySet()) {
+            VectorObject object = entry.getValue();
+
+            if (object == null) {
+                throw new IllegalArgumentException(
+                        "VectorObject must not be null for id " + entry.getKey()
+                );
+            }
+
+            try {
+                validateVector(object.getVector());
+            } catch (IllegalArgumentException e) {
+                throw new IllegalArgumentException(
+                        "Incorrect vector for id " + entry.getKey() + ": " + e.getMessage(), e
+                );
+            }
+        }
+
+
         cache.putAll(vectors);
     }
 

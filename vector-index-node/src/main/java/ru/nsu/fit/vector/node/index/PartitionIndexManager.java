@@ -202,7 +202,11 @@ public final class PartitionIndexManager {
             log.info("[vindex] partition " + partition + " rebuilt in "
                     + (System.nanoTime() - t0) / 1_000_000 + " ms"
                     + (again ? " (heavy writes - extra pass)" : ""));
-        } catch (Throwable e) {
+        }catch (IllegalArgumentException e) {
+            log.error(
+                    "[vindex] partition " + partition
+                            + " rebuild FAILED permanently; automatic retry disabled", e);
+        }catch (Throwable e) {
             dirty.add(partition);
             requestReconcile();
 
@@ -242,7 +246,7 @@ public final class PartitionIndexManager {
         log.info("[vindex] scan FINISHED partition=" + partition +
                 ", vectors=" + vectors.size());
 
-        PartitionVectorIndex idx = new JVectorPartitionIndex(512, 50);
+        PartitionVectorIndex idx = new JVectorPartitionIndex(512);
 
         log.info("[vindex] jvector build START partition=" + partition);
         idx.build(vectors);

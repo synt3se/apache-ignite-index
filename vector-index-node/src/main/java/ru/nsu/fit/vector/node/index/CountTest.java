@@ -79,11 +79,7 @@ public class CountTest {
          *
          * В текущем JVectorPartitionIndex searchExpansion не используется.
          */
-        PartitionVectorIndex jVectorIndex =
-                new JVectorPartitionIndex(
-                        DIMENSION,
-                        2
-                );
+        PartitionVectorIndex jVectorIndex = new JVectorPartitionIndex(DIMENSION);
 
         System.out.println();
         System.out.println("3. Загрузка brute force индекса...");
