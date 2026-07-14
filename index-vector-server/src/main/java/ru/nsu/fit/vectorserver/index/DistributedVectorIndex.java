@@ -16,6 +16,9 @@ import ru.nsu.fit.vector.common.dto.NodeStats;
 import ru.nsu.fit.vector.node.compute.ClearVectorTask;
 import ru.nsu.fit.vector.node.compute.SearchVectorTask;
 import ru.nsu.fit.vector.node.compute.StatsTask;
+import java.util.HashMap;
+import java.util.Map;
+import ru.nsu.fit.vector.node.compute.RebuildIndexesTask;
 
 import javax.cache.Cache;
 import java.io.*;
@@ -28,6 +31,7 @@ public class DistributedVectorIndex implements Index {
     private final IgniteClient igniteClient;
     private final ClientCache<Long, VectorObject> cache;
     private final int dimension;
+    private static final int LOAD_BATCH_SIZE = 5_000;
 
     public DistributedVectorIndex(
             IgniteClient igniteClient,
@@ -39,8 +43,24 @@ public class DistributedVectorIndex implements Index {
         this.dimension = dimension;
     }
 
+    private void validateVector(float[] vector) {
+        if (vector == null) {
+            throw new IllegalArgumentException("Vector must not be null");
+        }
+
+        if (vector.length != dimension) {
+            throw new IllegalArgumentException(
+                    "Incorrect vector dimension: "
+                            + vector.length
+                            + ", required: "
+                            + dimension
+            );
+        }
+    }
+
     @Override
     public void add(long id, AddRequest request) {
+        validateVector(request.vector());
         cache.put(id, new VectorObject(request.vector(), request.url(), request.metadata()));
         // индекс — производная кэша: слушатель владельца сам добавит вектор
     }
@@ -72,6 +92,8 @@ public class DistributedVectorIndex implements Index {
 
     @Override
     public List<Neighbor> search(float[] queryVector, int count) {
+        validateVector(queryVector);
+
         List<ScoredVector> scoredVectors;
 
         try {
@@ -153,54 +175,106 @@ public class DistributedVectorIndex implements Index {
     public long load(String path) {
         long maxId = 0;
         long importedCount = 0;
+        Map<Long, VectorObject> batch = new HashMap<>(LOAD_BATCH_SIZE);
 
         try (BufferedReader br = new BufferedReader(new FileReader(path))) {
-            String line = br.readLine();
+            br.readLine();
 
+            String line;
             while ((line = br.readLine()) != null) {
                 if (line.isBlank()) continue;
 
                 int firstComma = line.indexOf(',');
                 int secondComma = line.indexOf(',', firstComma + 1);
-
-                if (firstComma == -1 || secondComma == -1) {
-                    continue;
-                }
+                if (firstComma == -1 || secondComma == -1) continue;
 
                 long id = Long.parseLong(line.substring(0, firstComma));
                 String url = line.substring(firstComma + 1, secondComma);
-                String vectorStr = line.substring(secondComma + 1);
+                String vectorStr = line.substring(secondComma + 1)
+                        .replace("\"", "")
+                        .replace("[", "")
+                        .replace("]", "")
+                        .trim();
 
-                vectorStr = vectorStr.replace("\"", "").replace("[", "").replace("]", "").trim();
                 String[] tokens = vectorStr.split(",\\s*");
-
                 float[] vector = new float[tokens.length];
-                for (int i = 0; i < tokens.length; i++) {
-                    vector[i] = Float.parseFloat(tokens[i]);
+
+                for (int i = 0; i < tokens.length; i++) vector[i] = Float.parseFloat(tokens[i]);
+
+                if (vector.length != dimension) {
+                    throw new IllegalArgumentException(
+                            "Incorrect vector dimension for id " + id +
+                                    ": " + vector.length + ", required: " + dimension
+                    );
                 }
 
-                AddRequest request = new AddRequest(vector, url, null);
-
-                //TODO сделать через добавление по несколько (10000), а не по 1
-                // чтобы перестраивать индекс каждые 10000, а не после каждого добавления
-                this.add(id, request);
-
+                batch.put(id, new VectorObject(vector, url, null));
                 importedCount++;
+                maxId = Math.max(maxId, id);
 
-                if (id > maxId) {
-                    maxId = id;
-                }
-
-                if (importedCount % 50000 == 0) {
+                if (batch.size() >= LOAD_BATCH_SIZE) flushLoadBatch(batch);
+                if (importedCount % 50_000 == 0) {
                     System.out.println("Import from CSV: " + importedCount + " lines...");
                 }
             }
 
+            flushLoadBatch(batch);
+            rebuildIndexes();
+
             System.out.println("=== Import completed! Lines: " + importedCount + " ===");
             return maxId;
-
         } catch (IOException e) {
             throw new RuntimeException("CSV load error: " + path, e);
+        }
+    }
+
+    private void flushLoadBatch(Map<Long, VectorObject> batch) {
+        if (batch.isEmpty()) return;
+        cache.putAll(batch);
+        batch.clear();
+    }
+
+    @Override
+    public void addAll(Map<Long, VectorObject> vectors) {
+        //TODO Тут происходит проверка всех векторов мб потом заменить на что-то получше
+        for (Map.Entry<Long, VectorObject> entry : vectors.entrySet()) {
+            VectorObject object = entry.getValue();
+
+            if (object == null) {
+                throw new IllegalArgumentException(
+                        "VectorObject must not be null for id " + entry.getKey()
+                );
+            }
+
+            try {
+                validateVector(object.getVector());
+            } catch (IllegalArgumentException e) {
+                throw new IllegalArgumentException(
+                        "Incorrect vector for id " + entry.getKey() + ": " + e.getMessage(), e
+                );
+            }
+        }
+
+
+        cache.putAll(vectors);
+    }
+
+    @Override
+    public void rebuild() {
+        try {
+            igniteClient.compute().execute(RebuildIndexesTask.class.getName(), null);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("Index rebuild was interrupted", e);
+        }
+    }
+
+    private void rebuildIndexes() {
+        try {
+            igniteClient.compute().execute(RebuildIndexesTask.class.getName(), null);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("Index rebuild was interrupted", e);
         }
     }
 

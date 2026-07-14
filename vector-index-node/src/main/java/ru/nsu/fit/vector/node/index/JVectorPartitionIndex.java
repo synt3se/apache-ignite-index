@@ -25,6 +25,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class JVectorPartitionIndex
@@ -36,10 +38,18 @@ public class JVectorPartitionIndex
     private static final float ALPHA = 1.2f;
     private static final boolean ADD_HIERARCHY = true;
     private static final boolean REFINE_FINAL_GRAPH = true;
-
-    private static final int REBUILD_CAPACITY = 100;
+    private static final double ADD_REBUILD_RATIO = 0.10;
     private static final double DELETE_REBUILD_RATIO = 0.20;
+    private static final int MIN_ADDITIONS_BEFORE_REBUILD = 256;
     private final int dimension;
+
+    private final ExecutorService rebuildExecutor =
+            Executors.newSingleThreadExecutor(r -> {
+                Thread thread = new Thread(r, "jvector-rebuild");
+                thread.setDaemon(true);
+                return thread;
+            });
+
 
 
     //Для преобразования float[] в VectorFloat
@@ -54,22 +64,22 @@ public class JVectorPartitionIndex
 
     //Текущее состояние графа (Наша реализация)
     private IndexSnapshot snapshot = IndexSnapshot.empty();
+    private boolean rebuildInProgress = false;
+
 
     public JVectorPartitionIndex(int dimension) {
         if (dimension <= 0)
             throw new IllegalArgumentException("dimension must be positive");
 
-        if (REBUILD_CAPACITY <= 0)
-            throw new IllegalArgumentException("rebuildCapacity must be positive");
         this.dimension = dimension;
     }
 
     @Override
     public void add(long id, float[] vector) {
         validateVector(vector);
+        boolean rebuildRequired = false;
 
         lock.writeLock().lock();
-
         try {
             if (snapshot.containsId(id)) {
                 deletedFromGraph.add(id);
@@ -77,9 +87,52 @@ public class JVectorPartitionIndex
 
             pendingVectors.put(id, vector.clone());
 
-            if (shouldRebuild()) {
-                rebuild();
+            if (shouldRebuild() && !rebuildInProgress) {
+                rebuildInProgress = true;
+                rebuildRequired = true;
             }
+        } finally {
+            lock.writeLock().unlock();
+        }
+
+        if (rebuildRequired) {
+            rebuildAsync();
+        }
+    }
+
+
+
+    @Override
+    public void build(Map<Long, float[]> vectors) {
+        if (vectors == null) {
+            throw new IllegalArgumentException("vectors are required");
+        }
+
+        Map<Long, float[]> vectorsCopy = new HashMap<>(vectors.size());
+
+        for (Map.Entry<Long, float[]> entry : vectors.entrySet()) {
+            Long id = entry.getKey();
+            float[] vector = entry.getValue();
+
+            if (id == null) {
+                throw new IllegalArgumentException("vector id is required");
+            }
+
+            validateVector(vector);
+            vectorsCopy.put(id, vector.clone());
+        }
+
+        lock.writeLock().lock();
+        try {
+            if (!snapshot.isEmpty()
+                    || !pendingVectors.isEmpty()
+                    || !deletedFromGraph.isEmpty()) {
+                throw new IllegalStateException(
+                        "build can only be called on an empty index"
+                );
+            }
+
+            snapshot = buildSnapshot(vectorsCopy);
         } finally {
             lock.writeLock().unlock();
         }
@@ -87,20 +140,27 @@ public class JVectorPartitionIndex
 
     @Override
     public void delete(long id) {
+        boolean startRebuild = false;
+
         lock.writeLock().lock();
-
         try {
-            pendingVectors.remove(id);
+            boolean removedFromPending = pendingVectors.remove(id) != null;
+            boolean existedInSnapshot = snapshot.containsId(id);
 
-            if (snapshot.containsId(id)) {
+            if (removedFromPending || existedInSnapshot) {
                 deletedFromGraph.add(id);
             }
 
-            if (shouldRebuildAfterDelete()) {
-                rebuild();
+            if (shouldRebuildAfterDelete() && !rebuildInProgress) {
+                rebuildInProgress = true;
+                startRebuild = true;
             }
         } finally {
             lock.writeLock().unlock();
+        }
+
+        if (startRebuild) {
+            rebuildAsync();
         }
     }
 
@@ -160,27 +220,28 @@ public class JVectorPartitionIndex
     @Override
     public int size() {
         lock.readLock().lock();
-
         try {
-            int graphSize =
-                    snapshot.size() - deletedFromGraph.size();
+            int result = 0;
 
-            int newPendingCount = 0;
-
-            for (Long id : pendingVectors.keySet()) {
-                if (!snapshot.containsId(id)) {
-                    newPendingCount++;
+            for (Long id : snapshot.idToOrdinal().keySet()) {
+                if (!deletedFromGraph.contains(id)
+                        && !pendingVectors.containsKey(id)) {
+                    result++;
                 }
             }
 
-            return graphSize + newPendingCount;
+            result += pendingVectors.size();
+            return result;
         } finally {
             lock.readLock().unlock();
         }
     }
 
     @Override
-    public void close() {clear();}
+    public void close() {
+        clear();
+        rebuildExecutor.shutdownNow();
+    }
 
     private void searchGraph(
             float[] queryVector,
@@ -191,8 +252,7 @@ public class JVectorPartitionIndex
             return;
         }
 
-        VectorFloat<?> query =
-                vectorTypeSupport.createFloatVector(queryVector);
+        VectorFloat<?> query = vectorTypeSupport.createFloatVector(queryVector);
 
         SearchScoreProvider searchScoreProvider =
                 DefaultSearchScoreProvider.exact(
@@ -201,22 +261,23 @@ public class JVectorPartitionIndex
                         snapshot.vectorValues()
                 );
 
-        int candidateCount = Math.min(
+        int rerankK = Math.min(
                 snapshot.size(),
-                Math.max(
-                        count * 3,
-                        count + deletedFromGraph.size()
-                )
+                count * 3 //Math.max(count, DEFAULT_RERANK_K)
         );
 
         SearchResult searchResult;
 
-        try (GraphSearcher searcher =
-                     new GraphSearcher(snapshot.graph())) {
+        Bits activeNodes = createActiveNodesBits();
+
+        try (GraphSearcher searcher = new GraphSearcher(snapshot.graph())) {
             searchResult = searcher.search(
                     searchScoreProvider,
-                    candidateCount,
-                    Bits.ALL
+                    count,
+                    rerankK,
+                    0.0f,
+                    0.0f,
+                    activeNodes
             );
         } catch (IOException e) {
             throw new RuntimeException("Failed to search JVector graph", e);
@@ -229,35 +290,50 @@ public class JVectorPartitionIndex
 
             long id = snapshot.ordinalToId().get(ordinal);
 
-            if (deletedFromGraph.contains(id)) continue;
-            if (pendingVectors.containsKey(id)) continue;
-
-
             float[] vector = snapshot.rawVectors().get(ordinal);
 
             distances.put(id, cosineDistance(queryVector, vector));
         }
     }
 
-    private void searchPending(
-            float[] queryVector,
-            Map<Long, Double> distances
-    ) {
-        for (Map.Entry<Long, float[]> entry
-                : pendingVectors.entrySet()) {
+    private void searchPending(float[] queryVector, Map<Long, Double> distances) {
+        for (Map.Entry<Long, float[]> entry : pendingVectors.entrySet()) {
             distances.put(
                     entry.getKey(),
-                    cosineDistance(
-                            queryVector,
-                            entry.getValue()
-                    )
+                    cosineDistance(queryVector, entry.getValue())
             );
         }
     }
 
+    private boolean isGraphIdActive(long id) {
+        return !deletedFromGraph.contains(id)
+                && !pendingVectors.containsKey(id);
+    }
+
+    private Bits createActiveNodesBits() {
+        return ordinal -> {
+            if (ordinal < 0 || ordinal >= snapshot.size()) {
+                return false;
+            }
+
+            long id = snapshot.ordinalToId().get(ordinal);
+            return isGraphIdActive(id);
+        };
+    }
+
     private boolean shouldRebuild() {
-        return pendingVectors.size() >= REBUILD_CAPACITY
+        return pendingVectors.size() >= additionsBeforeRebuild()
                 || shouldRebuildAfterDelete();
+    }
+
+    private int additionsBeforeRebuild() {
+        if (snapshot.isEmpty()) {
+            return MIN_ADDITIONS_BEFORE_REBUILD;
+        }
+
+        int relativeThreshold = (int) Math.ceil(snapshot.size() * ADD_REBUILD_RATIO);
+
+        return Math.max(MIN_ADDITIONS_BEFORE_REBUILD, relativeThreshold);
     }
 
     private boolean shouldRebuildAfterDelete() {
@@ -269,32 +345,94 @@ public class JVectorPartitionIndex
                 >= snapshot.size() * DELETE_REBUILD_RATIO;
     }
 
-    private void rebuild() {
-        Map<Long, float[]> activeVectors = new HashMap<>();
+    private void rebuildAsync() {
+        rebuildExecutor.submit(() -> {
+            boolean succeeded = false;
 
-        for (int ordinal = 0; ordinal < snapshot.size(); ordinal++) {
-            long id = snapshot.ordinalToId().get(ordinal);
+            try {
+                rebuildInBackground();
+                succeeded = true;
+            } catch (RuntimeException e) {
+                System.err.println("JVector background rebuild failed");
+                e.printStackTrace();
+            } finally {
+                boolean rebuildAgain = false;
 
-            if (deletedFromGraph.contains(id)) {
-                continue;
+                lock.writeLock().lock();
+                try {
+                    rebuildInProgress = false;
+
+                    if (succeeded && shouldRebuild()) {
+                        rebuildInProgress = true;
+                        rebuildAgain = true;
+                    }
+                } finally {
+                    lock.writeLock().unlock();
+                }
+
+                if (rebuildAgain) {
+                    rebuildAsync();
+                }
+            }
+        });
+    }
+
+    private void rebuildInBackground() {
+        Set<Long> includedDeleted = new HashSet<>();
+        Map<Long, float[]> vectorsForBuild = new HashMap<>();
+        Map<Long, float[]> includedPending = new HashMap<>();
+
+        IndexSnapshot sourceSnapshot;
+
+        lock.readLock().lock();
+        try {
+            sourceSnapshot = snapshot;
+            includedDeleted.addAll(deletedFromGraph);
+
+            for (int ordinal = 0; ordinal < sourceSnapshot.size(); ordinal++) {
+                long id = sourceSnapshot.ordinalToId().get(ordinal);
+
+                if (!deletedFromGraph.contains(id)) {
+                    vectorsForBuild.put(
+                            id,
+                            sourceSnapshot.rawVectors().get(ordinal)
+                    );
+                }
             }
 
-            activeVectors.put(id, snapshot.rawVectors().get(ordinal).clone());
+            for (Map.Entry<Long, float[]> entry : pendingVectors.entrySet()) {
+                includedPending.put(entry.getKey(), entry.getValue());
+                vectorsForBuild.put(entry.getKey(), entry.getValue());
+            }
+        } finally {
+            lock.readLock().unlock();
         }
 
-        for (Map.Entry<Long, float[]> entry : pendingVectors.entrySet()) {
-            activeVectors.put(entry.getKey(), entry.getValue().clone());
+        IndexSnapshot newSnapshot = buildSnapshot(vectorsForBuild);
+
+        lock.writeLock().lock();
+        try {
+            if (snapshot != sourceSnapshot) {
+                closeGraph(newSnapshot.graph());
+                return;
+            }
+
+            IndexSnapshot oldSnapshot = snapshot;
+            snapshot = newSnapshot;
+
+            for (Map.Entry<Long, float[]> entry : includedPending.entrySet()) {
+                pendingVectors.remove(entry.getKey(), entry.getValue());
+            }
+
+            deletedFromGraph.removeAll(includedDeleted);
+
+            closeGraph(oldSnapshot.graph());
+        } finally {
+            lock.writeLock().unlock();
         }
-
-        IndexSnapshot newSnapshot = buildSnapshot(activeVectors);
-        IndexSnapshot oldSnapshot = snapshot;
-
-        snapshot = newSnapshot;
-        pendingVectors.clear();
-        deletedFromGraph.clear();
-
-        closeGraph(oldSnapshot.graph());
     }
+
+
 
     private IndexSnapshot buildSnapshot(Map<Long, float[]> activeVectors) {
         if (activeVectors.isEmpty()) {
@@ -320,15 +458,13 @@ public class JVectorPartitionIndex
 
         for (Map.Entry<Long, float[]> entry : entries) {
             int ordinal = ordinalToId.size();
-            float[] vector = entry.getValue().clone();
+            float[] vector = entry.getValue();
 
             ordinalToId.add(entry.getKey());
             rawVectors.add(vector);
             idToOrdinal.put(entry.getKey(), ordinal);
 
-            jVectorValues.add(
-                    vectorTypeSupport.createFloatVector(vector)
-            );
+            jVectorValues.add(vectorTypeSupport.createFloatVector(vector));
         }
 
         RandomAccessVectorValues vectorValues =

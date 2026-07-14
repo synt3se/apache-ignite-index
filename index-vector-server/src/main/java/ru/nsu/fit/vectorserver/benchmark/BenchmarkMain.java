@@ -1,14 +1,21 @@
 package ru.nsu.fit.vectorserver.benchmark;
 
 
+import org.springframework.boot.SpringApplication;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ConfigurableApplicationContext;
 import ru.nsu.fit.vectorserver.VectorServerApplication;
-import ru.nsu.fit.vectorserver.index.BruteForceIndex;
-import ru.nsu.fit.vectorserver.index.Index;
+import ru.nsu.fit.vectorserver.VectorService;
 
+/*
+======================== BEFORE RUNNING BENCHMARK =======================
+- restart database
+- set vector.dimension in application.properties to tasting db dimension
+- set path to tasting db file in the variable hdf5Path
+- set tasting db neighborCount in the variable neighborCount
+ */
 
 @SpringBootApplication
 public class BenchmarkMain {
@@ -19,13 +26,12 @@ public class BenchmarkMain {
                         .web(WebApplicationType.NONE)
                         .run(args);
         try{
-            Index bruteForceIndex = context.getBean(BruteForceIndex.class);;
-            BenchmarkRunner runner = new BenchmarkRunner(bruteForceIndex);
-            int vectorCount = 10;
-            int queryCount = 2;
-            int dimension = 512;
+            VectorService vectorService = context.getBean(VectorService.class);
+            BenchmarkRunner runner = new BenchmarkRunner(vectorService);
             int neighborCount = 10;
-            runner.run(vectorCount, queryCount, dimension, neighborCount);
+            //String hdf5Path = "index-vector-server/src/main/resources/coco-i2i-512-angular.hdf5";
+            String hdf5Path = "index-vector-server/src/main/resources/mnist-784-euclidean.hdf5";
+            runner.run(neighborCount, hdf5Path);
         }finally {
             context.close();
         }

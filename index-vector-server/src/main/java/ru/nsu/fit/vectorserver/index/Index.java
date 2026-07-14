@@ -6,6 +6,7 @@ import ru.nsu.fit.vector.common.dto.ClusterStats;
 import ru.nsu.fit.vector.common.dto.Neighbor;
 
 import java.util.List;
+import java.util.Map;
 
 public interface Index {
 
@@ -17,6 +18,9 @@ public interface Index {
 
     void save(String path);
     long load(String path);
+
+    void addAll(Map<Long, VectorObject> vectors);
+    void rebuild();
 
     ClusterStats stats();
 }
