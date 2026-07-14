@@ -4,11 +4,10 @@ import org.springframework.core.io.ByteArrayResource;
 import org.springframework.stereotype.Service;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
-import org.telegram.telegrambots.bots.*;
+import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import reactor.core.publisher.Mono;
 import ru.nsu.fit.vector.telegram.Dto;
-import ru.nsu.fit.vector.telegram.exception.ImageDownloadException;
 import ru.nsu.fit.vector.telegram.client.GatewayClient;
 import ru.nsu.fit.vector.telegram.Dto.Neighbor;
 
@@ -17,10 +16,8 @@ import java.io.InputStream;
 
 @Service
 public class ImageSearchService {
-    private static final String BASE_DOWNLOAD_ERROR = "Не удаётся перейти по вашей ссылке. Возможно, ссылка недействительна, или этот сайт блокирует наше соединение в целях безопасности.";
-
-    private GatewayClient client;
-    private TelegramFileService telegramFileService;
+    private final GatewayClient client;
+    private final TelegramFileService telegramFileService;
 
     public ImageSearchService(GatewayClient client, TelegramFileService telegramFileService) {
         this.client = client;
@@ -28,10 +25,7 @@ public class ImageSearchService {
     }
 
     public Mono<Neighbor[]> searchUrl(String imageUrl) {
-        return client.searchUrl(imageUrl)
-                .onErrorMap(ImageDownloadException.class, error ->
-                        new RuntimeException(BASE_DOWNLOAD_ERROR + " Попробуйте отправить изображение файлом.")
-                );
+        return client.searchUrl(imageUrl);
     }
 
     public Mono<Neighbor[]> searchTxt(String text) {
@@ -60,16 +54,10 @@ public class ImageSearchService {
     }
 
     public Mono<Dto.VectorResponse> addVector(String link) {
-        return client.addVector(link)
-                .onErrorMap(ImageDownloadException.class, error ->
-                    new RuntimeException(BASE_DOWNLOAD_ERROR)
-                );
+        return client.addVector(link);
     }
 
     public Mono<Dto.VectorResponse> deleteVector(long id) {
-        return client.deleteVector(id)
-                .onErrorMap(ImageDownloadException.class, error ->
-                        new RuntimeException(BASE_DOWNLOAD_ERROR)
-                );
+        return client.deleteVector(id);
     }
 }

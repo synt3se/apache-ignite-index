@@ -56,8 +56,9 @@ public class AddCommandProcessor extends BotCommandProcessor {
                 },
                 error -> {
                     log.warn("Error adding vector: " + error.getMessage());
-                    String errorText = getErrorMessage(error, "❌ Не удалось добавить запись.");
-                    messageService.editText(sender, chatId, messageIdToEdit, errorText);                }
+                    String errorText = getErrorMessage(error);
+                    messageService.editText(sender, chatId, messageIdToEdit, errorText);
+                }
         );
     }
 }

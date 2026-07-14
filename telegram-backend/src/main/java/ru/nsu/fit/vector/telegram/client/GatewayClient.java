@@ -86,13 +86,14 @@ public class GatewayClient {
 
     private Mono<? extends Throwable> mapError(ClientResponse clientResponse) {
         int statusCode = clientResponse.statusCode().value();
+
         return clientResponse.bodyToMono(Map.class)
                 .flatMap(errorBody -> {
                     String errorSign = errorBody.get("error") != null ? errorBody.get("error").toString() : "";
                     String serverMessage = errorBody.get("message") != null ? errorBody.get("message").toString() : "Unknown error";
 
                     if ("image_download_error".equals(errorSign)) {
-                        return Mono.<Throwable>error(new ImageDownloadException(serverMessage, "", null));
+                        return Mono.<Throwable>error(new ImageDownloadException(serverMessage));
                     }
                     return Mono.<Throwable>error(new GatewayException(statusCode, serverMessage));
                 })

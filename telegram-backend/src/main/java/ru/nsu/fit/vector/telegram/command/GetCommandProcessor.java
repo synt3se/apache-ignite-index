@@ -56,8 +56,14 @@ public class GetCommandProcessor extends BotCommandProcessor {
                 },
                 error -> {
                     log.warn("Error fetching vector by ID: " + error.getMessage());
-                    String errorText = getErrorMessage(error, "❌ Объект с ID " + id + " не найден в базе данных.");
-                    messageService.editText(sender, chatId, messageIdToEdit, errorText);                }
+                    String errorText = getErrorMessage(error);
+                    messageService.editText(sender, chatId, messageIdToEdit, errorText);
+                }
         );
+    }
+
+    @Override
+    protected String getNotFoundMessage() {
+        return "❌ Объект с таким ID не найден в базе данных.";
     }
 }

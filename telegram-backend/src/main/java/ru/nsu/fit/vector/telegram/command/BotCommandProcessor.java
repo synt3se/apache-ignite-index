@@ -8,6 +8,7 @@ import org.telegram.telegrambots.meta.api.objects.Message;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.bots.AbsSender;
 import ru.nsu.fit.vector.telegram.exception.GatewayException;
+import ru.nsu.fit.vector.telegram.exception.ImageDownloadException;
 import ru.nsu.fit.vector.telegram.service.BotMessageService;
 
 public abstract class BotCommandProcessor {
@@ -77,27 +78,48 @@ public abstract class BotCommandProcessor {
         return s.startsWith("http://") || s.startsWith("https://");
     }
 
-    protected String getErrorMessage(Throwable error, String notFoundMessage) {
-        // Сервер недоступен
-        if (error instanceof org.springframework.web.reactive.function.client.WebClientRequestException ||
-                error.getCause() instanceof java.net.ConnectException) {
+    protected String getErrorMessage(Throwable error) {
+        // gateway выключен
+        if (error instanceof org.springframework.web.reactive.function.client.WebClientRequestException
+                || error.getCause() instanceof java.net.ConnectException) {
             return "❌ Ошибка: Не удалось связаться с сервером. Сервис временно недоступен.";
         }
 
-        // Сервер вернул ошибку
-        if (error instanceof GatewayException gatewayException) {
-            if (gatewayException.getStatusCode() == 404) {
-                return notFoundMessage;
-            }
-            return "❌ Ошибка сервера " + gatewayException.getStatusCode() + ". " + gatewayException.getMessage();
-        }
-
-        // Таймаут запроса
+        // Таймаут
         if (error instanceof java.util.concurrent.TimeoutException) {
             return "❌ Время ожидания ответа от сервера истекло.";
         }
 
-        // Непредвиденные локальные ошибки
-        return "❌ Ошибка: " + error.getMessage();
+        if (error instanceof ImageDownloadException) {
+            return "❌ Не удалось скачать изображение по указанной ссылке. Проверьте, что ссылка доступна публично.";
+        }
+
+        // Ошибки от шлюза (GatewayException)
+        if (error instanceof GatewayException gatewayException) {
+            int code = gatewayException.getStatusCode();
+
+            switch (code) {
+                case 404:
+                    // Динамически определяем сообщение в зависимости от текущей команды!
+                    return getNotFoundMessage();
+                case 400:
+                    return "❌ Некорректный запрос: " + gatewayException.getMessage();
+                case 500:
+                    return "❌ Внутренняя ошибка сервера. Пожалуйста, попробуйте позже.";
+                default:
+                    return "❌ Ошибка сервера (код " + code + "): " + gatewayException.getMessage();
+            }
+        }
+
+        // Непредвиденные ошибки
+        return "❌ Произошла непредвиденная ошибка: " + error.getMessage();
+    }
+
+    /**
+     * Каждая команда переопределит этот метод, чтобы возвращать свой текст для 404 ошибки.
+     * Если не переопределено, вернется дефолтный текст.
+     */
+    protected String getNotFoundMessage() {
+        return "❌ Запрашиваемый ресурс не найден.";
     }
 }

@@ -47,7 +47,7 @@ public class SearchTextCommandProcessor extends BotCommandProcessor {
                 serverResponse -> messageService.editText(sender, chatId, messageIdToEdit, getStringTop(serverResponse)),
                 error -> {
                     log.warn("Gateway error answer: " + error.getMessage());
-                    String errorText = getErrorMessage(error, "❌ Ничего не найдено по вашему текстовому запросу.");
+                    String errorText = getErrorMessage(error);
                     messageService.editText(sender, chatId, messageIdToEdit, errorText);
                 }
         );
@@ -62,5 +62,10 @@ public class SearchTextCommandProcessor extends BotCommandProcessor {
         }
         if (string.length() == 0) return "Сервер вернул пустой список :(";
         return string.toString();
+    }
+
+    @Override
+    protected String getNotFoundMessage() {
+        return "❌ Похожих изображений не найдено.";
     }
 }
