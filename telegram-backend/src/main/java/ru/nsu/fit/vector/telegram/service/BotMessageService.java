@@ -10,6 +10,7 @@ import org.telegram.telegrambots.meta.api.objects.replykeyboard.ForceReplyKeyboa
 import org.telegram.telegrambots.meta.bots.AbsSender;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 
+// Отвечает за отправку сообщений пользователю телеграм-бота
 @Service
 public class BotMessageService {
     private static final Logger log = LoggerFactory.getLogger(BotMessageService.class);
@@ -19,7 +20,7 @@ public class BotMessageService {
         try {
             return sender.execute(sendMessage);
         } catch (TelegramApiException e) {
-            log.error("Ошибка отправки сообщения в чат {}", chatId, e);
+            log.error("Failed to send message to chat: {}", chatId, e);
             return null;
         }
     }
@@ -32,7 +33,7 @@ public class BotMessageService {
         try {
             sender.execute(editMessage);
         } catch (TelegramApiException e) {
-            log.error("Ошибка редактирования сообщения {} в чате {}", messageId, chatId, e);
+            log.error("Failed to edit message {} in chat {}", messageId, chatId, e);
         }
     }
 
@@ -43,7 +44,7 @@ public class BotMessageService {
         try {
             return sender.execute(sendMessage);
         } catch (TelegramApiException e) {
-            log.error("Ошибка отправки ForceReply в чат {}", chatId, e);
+            log.error("Failed to send ForceReply message to chat {}", chatId, e);
             return null;
         }
     }

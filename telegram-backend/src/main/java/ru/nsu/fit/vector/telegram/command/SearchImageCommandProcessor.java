@@ -11,6 +11,7 @@ import ru.nsu.fit.vector.telegram.Dto;
 import ru.nsu.fit.vector.telegram.service.BotMessageService;
 import ru.nsu.fit.vector.telegram.service.ImageSearchService;
 
+// Команда нахождения топ 5 похожих картинок.
 @Component
 public class SearchImageCommandProcessor extends BotCommandProcessor {
     private final ImageSearchService imageSearchService;
@@ -84,7 +85,7 @@ public class SearchImageCommandProcessor extends BotCommandProcessor {
         searchMono.subscribe(
                 serverResponse -> messageService.editText(sender, chatId, messageIdToEdit, getStringTop(serverResponse)),
                 error -> {
-                    log.warn("Gateway error answer: " + error.getMessage());
+                    log.warn("Failed to search image: " + error.getMessage());
                     String errorText = getErrorMessage(error);
                     messageService.editText(sender, chatId, messageIdToEdit, errorText);
                 }

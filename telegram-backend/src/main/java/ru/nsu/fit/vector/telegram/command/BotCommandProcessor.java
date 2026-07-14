@@ -9,6 +9,7 @@ import ru.nsu.fit.vector.telegram.exception.GatewayException;
 import ru.nsu.fit.vector.telegram.exception.ImageDownloadException;
 import ru.nsu.fit.vector.telegram.service.BotMessageService;
 
+// Класс команды. От него наследуются все команды бота.
 public abstract class BotCommandProcessor {
     protected static final Logger log = LoggerFactory.getLogger(BotCommandProcessor.class);
     protected final BotMessageService messageService;
@@ -113,10 +114,7 @@ public abstract class BotCommandProcessor {
         return "❌ Произошла непредвиденная ошибка: " + error.getMessage();
     }
 
-    /**
-     * Каждая команда переопределит этот метод, чтобы возвращать свой текст для 404 ошибки.
-     * Если не переопределено, вернется дефолтный текст.
-     */
+    // Каждая команда переопределит этот метод, чтобы возвращать свой текст для 404 ошибки.
     protected String getNotFoundMessage() {
         return "❌ Запрашиваемый ресурс не найден.";
     }

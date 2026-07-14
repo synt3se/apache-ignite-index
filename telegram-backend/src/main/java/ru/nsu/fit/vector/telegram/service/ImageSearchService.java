@@ -14,6 +14,7 @@ import ru.nsu.fit.vector.telegram.Dto.Neighbor;
 import java.io.IOException;
 import java.io.InputStream;
 
+// Прослойка бизнес-логики между ботом и gateway-клиентом
 @Service
 public class ImageSearchService {
     private final GatewayClient client;

@@ -1,7 +1,5 @@
 package ru.nsu.fit.vector.telegram.command;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.meta.api.objects.Message;
 import org.telegram.telegrambots.meta.api.objects.Update;
@@ -9,6 +7,7 @@ import org.telegram.telegrambots.meta.bots.AbsSender;
 import ru.nsu.fit.vector.telegram.service.BotMessageService;
 import ru.nsu.fit.vector.telegram.service.ImageSearchService;
 
+// Команда добавления в базу данных.
 @Component
 public class AddCommandProcessor extends BotCommandProcessor {
     private final ImageSearchService imageSearchService;

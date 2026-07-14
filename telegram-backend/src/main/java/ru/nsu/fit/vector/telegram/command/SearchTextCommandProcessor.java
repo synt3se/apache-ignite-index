@@ -1,18 +1,14 @@
 package ru.nsu.fit.vector.telegram.command;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
-import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.meta.api.objects.Message;
-import org.telegram.telegrambots.meta.api.objects.PhotoSize;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.bots.AbsSender;
-import reactor.core.publisher.Mono;
 import ru.nsu.fit.vector.telegram.Dto;
 import ru.nsu.fit.vector.telegram.service.BotMessageService;
 import ru.nsu.fit.vector.telegram.service.ImageSearchService;
 
+// Команда нахождения топ 5 записей по тексту.
 @Component
 public class SearchTextCommandProcessor extends BotCommandProcessor {
     private final ImageSearchService imageSearchService;
@@ -46,7 +42,7 @@ public class SearchTextCommandProcessor extends BotCommandProcessor {
         imageSearchService.searchTxt(content).subscribe(
                 serverResponse -> messageService.editText(sender, chatId, messageIdToEdit, getStringTop(serverResponse)),
                 error -> {
-                    log.warn("Gateway error answer: " + error.getMessage());
+                    log.warn("Failed to search by text: " + error.getMessage());
                     String errorText = getErrorMessage(error);
                     messageService.editText(sender, chatId, messageIdToEdit, errorText);
                 }
