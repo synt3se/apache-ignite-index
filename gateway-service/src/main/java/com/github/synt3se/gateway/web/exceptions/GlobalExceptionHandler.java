@@ -1,4 +1,4 @@
-package com.github.synt3se.gateway.web;
+package com.github.synt3se.gateway.web.exceptions;
 
 import java.util.Map;
 
@@ -78,18 +78,38 @@ public class GlobalExceptionHandler {
         String targetService = "";
 
         if (originalMessage != null) {
-            if (originalMessage.contains("/embed") || originalMessage.contains(":8000")) {
-                targetService = "'CLIP service' ";
+            if (originalMessage.contains("/embed")) {
+                targetService = "CLIP service";
             } else if (originalMessage.contains("/vectors")) {
-                targetService = "'Vector server' ";
-            }
+                targetService = "Vector server";
+            } //else if (originalMessage.contains("/search/image")) {
+                //targetService = "(Image owner) ";
+            //}
         }
 
-        log.error("External service {}is down on {}: {}", targetService, request.getRequestURI(), ex.getMessage());
+        log.error("External service {} is down on {}: {}", targetService, request.getRequestURI(), ex.getMessage());
 
         String clientMessage = String.format("%s is unavailable.", targetService);
 
         return body(HttpStatus.SERVICE_UNAVAILABLE, "service_unavailable", request, clientMessage);
+    }
+
+    @ExceptionHandler(ImageDownloadException.class)
+    public ResponseEntity<Map<String, Object>> handleImageDownloadException(
+            ImageDownloadException ex,
+            HttpServletRequest request) {
+
+        log.error("Image download failed on {} for URL [{}]. Reason: {}",
+                request.getRequestURI(), ex.getUrl(), ex.getCause() != null ? ex.getCause().getMessage() : "Empty body");
+
+        String clientMessage = "Failed to download the image from the provided URL. Host is unreachable or connection timed out.";
+        return body(HttpStatus.BAD_REQUEST, "image_download_error", request, clientMessage);
+    }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<Map<String, Object>> handleIllegalArgument(IllegalArgumentException e, HttpServletRequest req) {
+        log.warn("Bad request argument on {} {}: {}", req.getMethod(), req.getRequestURI(), e.getMessage());
+        return body(HttpStatus.BAD_REQUEST, "bad_request", req, e.getMessage());
     }
 
     private ResponseEntity<Map<String, Object>> body(HttpStatusCode status, String error,
