@@ -34,6 +34,10 @@ public class ImageSearchService {
                 );
     }
 
+    public Mono<Neighbor[]> searchTxt(String text) {
+        return client.searchTxt(text);
+    }
+
     public Mono<Neighbor[]> searchFile(String fileId, TelegramLongPollingBot bot) throws TelegramApiException, IOException {
         InputStream is = telegramFileService.getFilePath(fileId, bot);
         byte[] imageBytes = is.readAllBytes();

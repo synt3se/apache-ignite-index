@@ -34,6 +34,17 @@ public class GatewayClient {
                 .timeout(java.time.Duration.ofSeconds(30));
     }
 
+    public Mono<Neighbor[]> searchTxt(String text) {
+        var requestBody = Map.of("text", text, "count", 5);
+        return webClient.post()
+                .uri("/search/text")
+                .bodyValue(requestBody)
+                .retrieve()
+                .onStatus(HttpStatusCode::isError, this::mapError)
+                .bodyToMono(Neighbor[].class)
+                .timeout(java.time.Duration.ofSeconds(30));
+    }
+
     public Mono<Neighbor[]> searchFile(String fileId, MultiValueMap<String, Object> body) {
         return webClient.post()
                 .uri("/search/image/file")
