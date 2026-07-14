@@ -9,13 +9,11 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
 import ru.nsu.fit.vector.common.ScoredVector;
 import ru.nsu.fit.vector.common.VectorObject;
-import ru.nsu.fit.vector.common.dto.AddRequest;
-import ru.nsu.fit.vector.common.dto.ClusterStats;
-import ru.nsu.fit.vector.common.dto.Neighbor;
-import ru.nsu.fit.vector.common.dto.NodeStats;
+import ru.nsu.fit.vector.common.dto.*;
 import ru.nsu.fit.vector.node.compute.ClearVectorTask;
 import ru.nsu.fit.vector.node.compute.SearchVectorTask;
 import ru.nsu.fit.vector.node.compute.StatsTask;
+import ru.nsu.fit.vector.node.service.SearchAggregationService;
 
 import javax.cache.Cache;
 import java.io.*;
@@ -27,6 +25,10 @@ public class DistributedVectorIndex implements Index {
     private final IgniteClient igniteClient;
     private final ClientCache<Long, VectorObject> cache;
     private final int dimension;
+
+    @Value("${search.mode:task}")
+    private String searchMode;
+    private SearchAggregationService aggregator;
 
     public DistributedVectorIndex(
             IgniteClient igniteClient,
@@ -71,8 +73,16 @@ public class DistributedVectorIndex implements Index {
 
     @Override
     public List<Neighbor> search(float[] queryVector, int count) {
-        List<ScoredVector> scoredVectors;
+        if ("service".equalsIgnoreCase(searchMode)) {
+            SearchResponse resp = aggregator().search(queryVector, count);
+            List<Neighbor> result = new ArrayList<>(resp.results.size());
+            for (SearchHit h : resp.results) {
+                result.add(new Neighbor(h.id, h.distance, h.url, h.metadata));
+            }
+            return result;
+        }
 
+        List<ScoredVector> scoredVectors;
         try {
             scoredVectors = igniteClient.compute().execute(
                     SearchVectorTask.class.getName(),
@@ -220,6 +230,14 @@ public class DistributedVectorIndex implements Index {
         for (NodeStats n : nodes) live += n.liveVectors;
         cs.totalLiveVectors = live;
         return cs;
+    }
+
+    private SearchAggregationService aggregator() {
+        if (aggregator == null) {
+            aggregator = igniteClient.services()
+                    .serviceProxy(SearchAggregationService.NAME, SearchAggregationService.class);
+        }
+        return aggregator;
     }
 
 }
