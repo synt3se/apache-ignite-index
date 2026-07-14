@@ -19,8 +19,7 @@ import ru.nsu.fit.vector.node.compute.StatsTask;
 
 import javax.cache.Cache;
 import java.io.*;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 
 @Primary
 @Component
@@ -84,21 +83,22 @@ public class DistributedVectorIndex implements Index {
             throw new RuntimeException("Search vector task was interrupted", e);
         }
 
-        List<Neighbor> result = new ArrayList<>();
+        if (scoredVectors.isEmpty()) {
+            return List.of();
+        }
 
-        for (ScoredVector scoredVector : scoredVectors) {
-            VectorObject object = cache.get(scoredVector.id());
+        Set<Long> ids = new HashSet<>();
+        for (ScoredVector sv : scoredVectors) {
+            ids.add(sv.id());
+        }
 
-            if (object == null) {
-                continue;
-            }
+        Map<Long, VectorObject> loaded = cache.getAll(ids);
 
-            result.add(new Neighbor(
-                    scoredVector.id(),
-                    scoredVector.distance(),
-                    object.getUrl(),
-                    object.getMetadata()
-            ));
+        List<Neighbor> result = new ArrayList<>(scoredVectors.size());
+        for (ScoredVector sv : scoredVectors) {
+            VectorObject object = loaded.get(sv.id());
+            if (object == null) { continue; }
+            result.add(new Neighbor(sv.id(), sv.distance(), object.getUrl(), object.getMetadata()));
         }
 
         return result;
