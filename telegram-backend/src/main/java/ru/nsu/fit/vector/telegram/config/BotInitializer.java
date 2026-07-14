@@ -5,15 +5,15 @@ import org.springframework.context.annotation.Configuration;
 import org.telegram.telegrambots.meta.TelegramBotsApi;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import org.telegram.telegrambots.updatesreceivers.DefaultBotSession;
-import ru.nsu.fit.vector.telegram.ImageForwarderBot;
+import ru.nsu.fit.vector.telegram.IgnitePictureBot;
 
 @Configuration
 public class BotInitializer {
 
     @Bean
-    public TelegramBotsApi telegramBotsApi(ImageForwarderBot imageForwarderBot) throws TelegramApiException {
+    public TelegramBotsApi telegramBotsApi(IgnitePictureBot ignitePictureBot) throws TelegramApiException {
         TelegramBotsApi botsApi = new TelegramBotsApi(DefaultBotSession.class);
-        botsApi.registerBot(imageForwarderBot);
+        botsApi.registerBot(ignitePictureBot);
         return botsApi;
     }
 }

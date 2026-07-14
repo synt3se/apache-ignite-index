@@ -1,36 +1,31 @@
 package ru.nsu.fit.vector.telegram;
 
+import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
-import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
-import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageText;
+import org.telegram.telegrambots.meta.api.methods.updates.DeleteWebhook;
 import org.telegram.telegrambots.meta.api.objects.Message;
-import org.telegram.telegrambots.meta.api.objects.PhotoSize;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
-import reactor.core.publisher.Mono;
-import ru.nsu.fit.vector.telegram.Dto.Neighbor;
 import ru.nsu.fit.vector.telegram.command.BotCommandProcessor;
 import ru.nsu.fit.vector.telegram.command.UnknownCommandProcessor;
 import ru.nsu.fit.vector.telegram.service.BotMessageService;
-import ru.nsu.fit.vector.telegram.service.ImageSearchService;
 
-import java.util.Arrays;
 import java.util.List;
 
 
 @Component
-public class ImageForwarderBot extends TelegramLongPollingBot {
-    static final Logger log = LoggerFactory.getLogger(ImageForwarderBot.class);
+public class IgnitePictureBot extends TelegramLongPollingBot {
+    protected static final Logger log = LoggerFactory.getLogger(IgnitePictureBot.class);
 
     private final String botUsername;
     private final List<BotCommandProcessor> commandProcessors;
     private final UnknownCommandProcessor unknownCommandProcessor;
 
-    public ImageForwarderBot(
+    public IgnitePictureBot(
             @Value("${bot.token}") String botToken,
             @Value("${bot.username}") String botUsername,
             List<BotCommandProcessor> commandProcessors,
@@ -61,14 +56,19 @@ public class ImageForwarderBot extends TelegramLongPollingBot {
         unknownCommandProcessor.process(update, chatId, this);
     }
 
-
-    private Message sendTextMessage(Long chatId, String text) {
-        SendMessage sendMessage = new SendMessage(chatId.toString(), text);
+    @PostConstruct
+    public void clearPendingUpdates() {
         try {
-            return execute(sendMessage);
+            log.info("Clearing old Telegram messages...");
+
+            DeleteWebhook deleteWebhook = new DeleteWebhook();
+            deleteWebhook.setDropPendingUpdates(true); // Сбрасываем очередь накопившихся апдейтов
+
+            this.execute(deleteWebhook);
+
+            log.info("Old message queue cleared.");
         } catch (TelegramApiException e) {
-            e.printStackTrace();
-            return null;
+            log.error("Could not clear old message queue: {}", e.getMessage());
         }
     }
 }
