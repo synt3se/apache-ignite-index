@@ -11,6 +11,7 @@ import ru.nsu.fit.vectorserver.index.Index;
 import ru.nsu.fit.vector.common.VectorObject;
 
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class VectorService {
@@ -72,6 +73,14 @@ public class VectorService {
 
     public void clear(){
         index.clear();
+    }
+
+    public void addAll(Map<Long, VectorObject> vectors) {
+        index.addAll(vectors);
+    }
+
+    public void rebuild() {
+        index.rebuild();
     }
 
     public ResponseEntity<ClusterStats> stats() {

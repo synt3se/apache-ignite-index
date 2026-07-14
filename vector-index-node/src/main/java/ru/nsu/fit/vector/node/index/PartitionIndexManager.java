@@ -1,11 +1,6 @@
 package ru.nsu.fit.vector.node.index;
 
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.HashSet;
-import java.util.List;
-import java.util.PriorityQueue;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -193,6 +188,7 @@ public final class PartitionIndexManager {
     }
 
     private void runRebuild(int partition) {
+        log.info("[vindex] runRebuild START partition=" + partition);
         boolean again = false;
         long t0 = System.nanoTime();
         try {
@@ -206,10 +202,14 @@ public final class PartitionIndexManager {
             log.info("[vindex] partition " + partition + " rebuilt in "
                     + (System.nanoTime() - t0) / 1_000_000 + " ms"
                     + (again ? " (heavy writes - extra pass)" : ""));
-        } catch (Exception e) {
+        } catch (Throwable e) {
             dirty.add(partition);
             requestReconcile();
-            log.warning("[vindex] partition " + partition + " rebuild FAILED: " + e + " - marked dirty");
+
+            log.error(
+                    "[vindex] partition " + partition + " rebuild FAILED",
+                    e
+            );
         } finally {
             rebuildQueued.remove(partition);
             if (again) scheduleRebuild(partition);
@@ -218,21 +218,38 @@ public final class PartitionIndexManager {
 
     /** Скан партиции по кэшу без сети */
     private PartitionVectorIndex buildIndexFor(int partition) {
-        //PartitionVectorIndex idx = new BruteForcePartitionIndex(); // позже: HNSW за тем же интерфейсом
-        PartitionVectorIndex idx = new JVectorPartitionIndex(512); //TODO
+        log.info("[vindex] scan START partition=" + partition);
+
+        Map<Long, float[]> vectors = new HashMap<>();
+
         ScanQuery<Long, VectorObject> scan = new ScanQuery<>();
         scan.setPartition(partition);
         scan.setLocal(true);
         scan.setPageSize(1_024);
-        try (QueryCursor<Cache.Entry<Long, VectorObject>> cur = cache.query(scan)) {
-            for (Cache.Entry<Long, VectorObject> e : cur) {
-                VectorObject v = e.getValue();
-                if (v != null && v.getVector() != null) idx.add(e.getKey(), v.getVector());
+
+        try (QueryCursor<Cache.Entry<Long, VectorObject>> cursor = cache.query(scan)) {
+            for (Cache.Entry<Long, VectorObject> entry : cursor) {
+                VectorObject object = entry.getValue();
+
+                if (object == null || object.getVector() == null) {
+                    continue;
+                }
+
+                vectors.put(entry.getKey(), object.getVector());
             }
         }
+
+        log.info("[vindex] scan FINISHED partition=" + partition +
+                ", vectors=" + vectors.size());
+
+        PartitionVectorIndex idx = new JVectorPartitionIndex(512, 50);
+
+        log.info("[vindex] jvector build START partition=" + partition);
+        idx.build(vectors);
+        log.info("[vindex] jvector build FINISHED partition=" + partition);
+
         return idx;
     }
-
     /** Читаем текущее значение кэша. */
     private void applyKey(PartitionVectorIndex idx, long key) {
         VectorObject cur = cache.localPeek(key, CachePeekMode.PRIMARY, CachePeekMode.BACKUP);
