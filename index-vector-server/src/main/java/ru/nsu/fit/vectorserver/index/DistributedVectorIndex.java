@@ -240,4 +240,9 @@ public class DistributedVectorIndex implements Index {
         return aggregator;
     }
 
+    @Override
+    public SearchResponse searchFull(float[] queryVector, int count) {
+        return aggregator().search(queryVector, count);   // напрямую через сервис, mode не важен
+    }
+
 }

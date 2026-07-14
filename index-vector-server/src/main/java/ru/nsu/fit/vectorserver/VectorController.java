@@ -50,4 +50,9 @@ public class VectorController {
     public ResponseEntity<?> stats() {
         return vectorService.stats();
     }
+
+    @PostMapping("/search/full")
+    public ResponseEntity<?> searchFull(@Valid @RequestBody SearchRequest request) {
+        return vectorService.searchFull(request);
+    }
 }
