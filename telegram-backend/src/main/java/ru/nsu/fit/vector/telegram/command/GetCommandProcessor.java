@@ -35,7 +35,6 @@ public class GetCommandProcessor extends BotCommandProcessor {
     @Override
     public void processArgument(Update update, long chatId, AbsSender sender) {
         Message message = update.getMessage();
-        int userMessageId = message.getMessageId();
         String idValue = message.getText().trim();
 
         Long id = parseId(idValue, chatId, sender);
@@ -57,8 +56,8 @@ public class GetCommandProcessor extends BotCommandProcessor {
                 },
                 error -> {
                     log.warn("Error fetching vector by ID: " + error.getMessage());
-                    messageService.editText(sender, chatId, messageIdToEdit, "❌ Объект с ID " + id + " не найден в базе данных.");
-                }
+                    String errorText = getErrorMessage(error, "❌ Объект с ID " + id + " не найден в базе данных.");
+                    messageService.editText(sender, chatId, messageIdToEdit, errorText);                }
         );
     }
 }

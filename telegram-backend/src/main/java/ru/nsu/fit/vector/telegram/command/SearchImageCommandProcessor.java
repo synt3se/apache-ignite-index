@@ -85,8 +85,8 @@ public class SearchImageCommandProcessor extends BotCommandProcessor {
                 serverResponse -> messageService.editText(sender, chatId, messageIdToEdit, getStringTop(serverResponse)),
                 error -> {
                     log.warn("Gateway error answer: " + error.getMessage());
-                    messageService.editText(sender, chatId, messageIdToEdit, "❌ Ошибка: " + error.getMessage());
-                }
+                    String errorText = getErrorMessage(error, "❌ Не удалось найти топ.");
+                    messageService.editText(sender, chatId, messageIdToEdit, errorText);                }
         );
     }
 

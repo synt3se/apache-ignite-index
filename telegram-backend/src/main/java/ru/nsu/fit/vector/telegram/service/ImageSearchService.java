@@ -8,7 +8,7 @@ import org.telegram.telegrambots.bots.*;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import reactor.core.publisher.Mono;
 import ru.nsu.fit.vector.telegram.Dto;
-import ru.nsu.fit.vector.telegram.ImageDownloadException;
+import ru.nsu.fit.vector.telegram.exception.ImageDownloadException;
 import ru.nsu.fit.vector.telegram.client.GatewayClient;
 import ru.nsu.fit.vector.telegram.Dto.Neighbor;
 

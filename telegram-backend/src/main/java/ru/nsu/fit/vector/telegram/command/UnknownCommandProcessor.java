@@ -13,7 +13,7 @@ public class UnknownCommandProcessor extends BotCommandProcessor {
 
     @Override
     protected String getCommandName() {
-        return "";
+        return "unknown";
     }
     @Override
     protected String getReplyPrompt() {

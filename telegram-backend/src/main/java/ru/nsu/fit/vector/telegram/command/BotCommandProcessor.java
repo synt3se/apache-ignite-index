@@ -2,9 +2,12 @@ package ru.nsu.fit.vector.telegram.command;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.web.reactive.function.client.WebClientRequestException;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 import org.telegram.telegrambots.meta.api.objects.Message;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.bots.AbsSender;
+import ru.nsu.fit.vector.telegram.exception.GatewayException;
 import ru.nsu.fit.vector.telegram.service.BotMessageService;
 
 public abstract class BotCommandProcessor {
@@ -34,8 +37,9 @@ public abstract class BotCommandProcessor {
 
     public void process(Update update, long chatId, AbsSender sender) {
         Message message = update.getMessage();
-        if (message.getReplyToMessage() == null) { // Ответ на саму команду
-            log.info("Received command {} from chatId: {}", getCommandName(), chatId);
+        if (this instanceof UnknownCommandProcessor ||
+                message.getReplyToMessage() == null && message.getText() != null && message.getText().startsWith("/")) { // Ответ на саму команду
+            log.info("Received command '{}' from chatId: {}", getCommandName(), chatId);
             if (hasArgument()) {
                 messageService.sendForceReply(sender, chatId, getCommandName() + "\n" + getReplyPrompt());
             }
@@ -49,7 +53,7 @@ public abstract class BotCommandProcessor {
     }
     public boolean hasArgument() {
         return true;
-    };
+    }
     public abstract void processArgument(Update update, long chatId, AbsSender sender);
 
     protected Long parseId(String raw, long chatId, AbsSender sender) {
@@ -71,5 +75,29 @@ public abstract class BotCommandProcessor {
 
     protected boolean isLink(String s) {
         return s.startsWith("http://") || s.startsWith("https://");
+    }
+
+    protected String getErrorMessage(Throwable error, String notFoundMessage) {
+        // Сервер недоступен
+        if (error instanceof org.springframework.web.reactive.function.client.WebClientRequestException ||
+                error.getCause() instanceof java.net.ConnectException) {
+            return "❌ Ошибка: Не удалось связаться с сервером. Сервис временно недоступен.";
+        }
+
+        // Сервер вернул ошибку
+        if (error instanceof GatewayException gatewayException) {
+            if (gatewayException.getStatusCode() == 404) {
+                return notFoundMessage;
+            }
+            return "❌ Ошибка сервера " + gatewayException.getStatusCode() + ". " + gatewayException.getMessage();
+        }
+
+        // Таймаут запроса
+        if (error instanceof java.util.concurrent.TimeoutException) {
+            return "❌ Время ожидания ответа от сервера истекло.";
+        }
+
+        // Непредвиденные локальные ошибки
+        return "❌ Ошибка: " + error.getMessage();
     }
 }

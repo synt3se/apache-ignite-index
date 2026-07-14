@@ -4,14 +4,15 @@ import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.util.MultiValueMap;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.reactive.function.BodyInserters;
 import org.springframework.web.reactive.function.client.ClientResponse;
 import org.springframework.web.reactive.function.client.WebClient;
-import org.springframework.web.util.UriComponentsBuilder;
 import reactor.core.publisher.Mono;
 import ru.nsu.fit.vector.telegram.Dto;
 import ru.nsu.fit.vector.telegram.Dto.Neighbor;
-import ru.nsu.fit.vector.telegram.ImageDownloadException;
+import ru.nsu.fit.vector.telegram.exception.GatewayException;
+import ru.nsu.fit.vector.telegram.exception.ImageDownloadException;
 
 import java.util.Map;
 
@@ -84,15 +85,17 @@ public class GatewayClient {
     }
 
     private Mono<? extends Throwable> mapError(ClientResponse clientResponse) {
+        int statusCode = clientResponse.statusCode().value();
         return clientResponse.bodyToMono(Map.class)
                 .flatMap(errorBody -> {
                     String errorSign = errorBody.get("error") != null ? errorBody.get("error").toString() : "";
                     String serverMessage = errorBody.get("message") != null ? errorBody.get("message").toString() : "Unknown error";
 
                     if ("image_download_error".equals(errorSign)) {
-                        return Mono.error(new ImageDownloadException(serverMessage, "", null));
+                        return Mono.<Throwable>error(new ImageDownloadException(serverMessage, "", null));
                     }
-                    return Mono.error(new RuntimeException(serverMessage));
-                });
+                    return Mono.<Throwable>error(new GatewayException(statusCode, serverMessage));
+                })
+                .switchIfEmpty(Mono.<Throwable>error(new GatewayException(statusCode, "Неизвестная ошибка сервера")));
     }
 }

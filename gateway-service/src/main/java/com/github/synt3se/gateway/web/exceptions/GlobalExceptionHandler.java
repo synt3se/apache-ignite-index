@@ -79,15 +79,15 @@ public class GlobalExceptionHandler {
 
         if (originalMessage != null) {
             if (originalMessage.contains("/embed")) {
-                targetService = "(CLIP service) ";
+                targetService = "CLIP service";
             } else if (originalMessage.contains("/vectors")) {
-                targetService = "(Vector server) ";
+                targetService = "Vector server";
             } //else if (originalMessage.contains("/search/image")) {
                 //targetService = "(Image owner) ";
             //}
         }
 
-        log.error("External service {}is down on {}: {}", targetService, request.getRequestURI(), ex.getMessage());
+        log.error("External service {} is down on {}: {}", targetService, request.getRequestURI(), ex.getMessage());
 
         String clientMessage = String.format("%s is unavailable.", targetService);
 
