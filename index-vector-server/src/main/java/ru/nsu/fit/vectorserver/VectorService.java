@@ -86,4 +86,8 @@ public class VectorService {
     public ResponseEntity<ClusterStats> stats() {
         return ResponseEntity.ok(index.stats());
     }
+
+    public ResponseEntity<SearchResponse> searchFull(SearchRequest request) {
+        return ResponseEntity.ok(index.searchFull(request.vector(), request.count()));
+    }
 }

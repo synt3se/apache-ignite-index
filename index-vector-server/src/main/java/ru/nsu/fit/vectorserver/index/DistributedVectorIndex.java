@@ -9,21 +9,18 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
 import ru.nsu.fit.vector.common.ScoredVector;
 import ru.nsu.fit.vector.common.VectorObject;
-import ru.nsu.fit.vector.common.dto.AddRequest;
-import ru.nsu.fit.vector.common.dto.ClusterStats;
-import ru.nsu.fit.vector.common.dto.Neighbor;
-import ru.nsu.fit.vector.common.dto.NodeStats;
+import ru.nsu.fit.vector.common.dto.*;
 import ru.nsu.fit.vector.node.compute.ClearVectorTask;
 import ru.nsu.fit.vector.node.compute.SearchVectorTask;
 import ru.nsu.fit.vector.node.compute.StatsTask;
+import ru.nsu.fit.vector.node.service.SearchAggregationService;
 import java.util.HashMap;
 import java.util.Map;
 import ru.nsu.fit.vector.node.compute.RebuildIndexesTask;
 
 import javax.cache.Cache;
 import java.io.*;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 
 @Primary
 @Component
@@ -32,6 +29,10 @@ public class DistributedVectorIndex implements Index {
     private final ClientCache<Long, VectorObject> cache;
     private final int dimension;
     private static final int LOAD_BATCH_SIZE = 5_000;
+
+    @Value("${search.mode:task}")
+    private String searchMode;
+    private SearchAggregationService aggregator;
 
     public DistributedVectorIndex(
             IgniteClient igniteClient,
@@ -92,10 +93,18 @@ public class DistributedVectorIndex implements Index {
 
     @Override
     public List<Neighbor> search(float[] queryVector, int count) {
+        if ("service".equalsIgnoreCase(searchMode)) {
+            SearchResponse resp = aggregator().search(queryVector, count);
+            List<Neighbor> result = new ArrayList<>(resp.results.size());
+            for (SearchHit h : resp.results) {
+                result.add(new Neighbor(h.id, h.distance, h.url, h.metadata));
+            }
+            return result;
+        }
+
         validateVector(queryVector);
 
         List<ScoredVector> scoredVectors;
-
         try {
             scoredVectors = igniteClient.compute().execute(
                     SearchVectorTask.class.getName(),
@@ -106,21 +115,22 @@ public class DistributedVectorIndex implements Index {
             throw new RuntimeException("Search vector task was interrupted", e);
         }
 
-        List<Neighbor> result = new ArrayList<>();
+        if (scoredVectors.isEmpty()) {
+            return List.of();
+        }
 
-        for (ScoredVector scoredVector : scoredVectors) {
-            VectorObject object = cache.get(scoredVector.id());
+        Set<Long> ids = new HashSet<>();
+        for (ScoredVector sv : scoredVectors) {
+            ids.add(sv.id());
+        }
 
-            if (object == null) {
-                continue;
-            }
+        Map<Long, VectorObject> loaded = cache.getAll(ids);
 
-            result.add(new Neighbor(
-                    scoredVector.id(),
-                    scoredVector.distance(),
-                    object.getUrl(),
-                    object.getMetadata()
-            ));
+        List<Neighbor> result = new ArrayList<>(scoredVectors.size());
+        for (ScoredVector sv : scoredVectors) {
+            VectorObject object = loaded.get(sv.id());
+            if (object == null) { continue; }
+            result.add(new Neighbor(sv.id(), sv.distance(), object.getUrl(), object.getMetadata()));
         }
 
         return result;
@@ -294,6 +304,19 @@ public class DistributedVectorIndex implements Index {
         for (NodeStats n : nodes) live += n.liveVectors;
         cs.totalLiveVectors = live;
         return cs;
+    }
+
+    private SearchAggregationService aggregator() {
+        if (aggregator == null) {
+            aggregator = igniteClient.services()
+                    .serviceProxy(SearchAggregationService.NAME, SearchAggregationService.class);
+        }
+        return aggregator;
+    }
+
+    @Override
+    public SearchResponse searchFull(float[] queryVector, int count) {
+        return aggregator().search(queryVector, count);   // напрямую через сервис, mode не важен
     }
 
 }
