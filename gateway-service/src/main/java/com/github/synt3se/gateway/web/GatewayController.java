@@ -3,6 +3,7 @@ package com.github.synt3se.gateway.web;
 import com.github.synt3se.gateway.client.ClipClient;
 import com.github.synt3se.gateway.client.IndexClient;
 import com.github.synt3se.gateway.web.exceptions.ImageDownloadException;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -26,17 +27,7 @@ public class GatewayController {
 
     @PostMapping("/images")
     public Map<String, Object> addImage(@RequestBody Dto.AddImageUrlRequest request) throws IOException {
-        RestTemplate restTemplate = new RestTemplate();
-
-        byte[] imageBytes;
-        try {
-            imageBytes = restTemplate.getForObject(request.url(), byte[].class);
-        } catch (Exception ex) {
-            throw new ImageDownloadException("Failed to download image from external host", request.url(), ex);
-        }
-        if (imageBytes == null) {
-            throw new ImageDownloadException("Failed to download image: host returned empty body", request.url(), null);
-        }
+        byte[] imageBytes = downloadImage(request.url());
 
         float[] vector = clipClient.embedImage(imageBytes, request.url());
         Dto.VectorResponse response = indexClient.add(vector, request.url(), request.metadata());
@@ -45,17 +36,7 @@ public class GatewayController {
 
     @PostMapping("/search/image")
     public List<Dto.Neighbor> searchImage(@RequestBody Dto.SearchImageUrlRequest request) throws IOException {
-        RestTemplate restTemplate = new RestTemplate();
-
-        byte[] imageBytes;
-        try {
-            imageBytes = restTemplate.getForObject(request.url(), byte[].class);
-        } catch (Exception ex) {
-            throw new ImageDownloadException("Failed to download image from external host", request.url(), ex);
-        }
-        if (imageBytes == null) {
-            throw new ImageDownloadException("Failed to download image: host returned empty body", request.url(), null);
-        }
+        byte[] imageBytes = downloadImage(request.url());
 
         float[] vector = clipClient.embedImage(imageBytes, request.url());
         return indexClient.search(vector, request.count() != null ? request.count() : 5);
@@ -98,4 +79,30 @@ public class GatewayController {
         return ResponseEntity.noContent().build();
     }
 
+    @PostMapping("/images/add")
+    public Dto.VectorResponse addVector(@RequestBody Dto.AddImageUrlRequest request) {
+        String url = request.url();
+        byte[] imageBytes = downloadImage(url);
+        float[] vector = clipClient.embedImage(imageBytes, url);
+        return indexClient.add(vector, url, null);
+    }
+
+    private byte[] downloadImage(String url) {
+        RestTemplate restTemplate = new RestTemplate();
+        try {
+            return restTemplate.execute(url, HttpMethod.GET, null, response -> {
+                MediaType contentType = response.getHeaders().getContentType();
+
+                if (contentType == null || !contentType.getType().equals("image")) {
+                    throw new ImageDownloadException(
+                            "URL does not point to a valid image. Content-Type: " + contentType, url, null
+                    );
+                }
+
+                return response.getBody().readAllBytes();
+            });
+        } catch (Exception ex) {
+            throw new ImageDownloadException("Failed to download image from external host", url, ex);
+        }
+    }
 }

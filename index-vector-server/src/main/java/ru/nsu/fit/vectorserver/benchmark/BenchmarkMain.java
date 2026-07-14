@@ -29,7 +29,8 @@ public class BenchmarkMain {
             VectorService vectorService = context.getBean(VectorService.class);
             BenchmarkRunner runner = new BenchmarkRunner(vectorService);
             int neighborCount = 10;
-            String hdf5Path = "index-vector-server/src/main/resources/coco-i2i-512-angular.hdf5";
+            //String hdf5Path = "index-vector-server/src/main/resources/coco-i2i-512-angular.hdf5";
+            String hdf5Path = "index-vector-server/src/main/resources/mnist-784-euclidean.hdf5";
             runner.run(neighborCount, hdf5Path);
         }finally {
             context.close();

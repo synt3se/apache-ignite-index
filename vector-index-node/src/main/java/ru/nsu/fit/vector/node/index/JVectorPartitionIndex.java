@@ -50,7 +50,6 @@ public class JVectorPartitionIndex
                 return thread;
             });
 
-    private final int searchExpansion; //TODO
 
 
     //Для преобразования float[] в VectorFloat
@@ -68,12 +67,11 @@ public class JVectorPartitionIndex
     private boolean rebuildInProgress = false;
 
 
-    public JVectorPartitionIndex(int dimension, int searchExpansion) {
+    public JVectorPartitionIndex(int dimension) {
         if (dimension <= 0)
             throw new IllegalArgumentException("dimension must be positive");
 
         this.dimension = dimension;
-        this.searchExpansion = searchExpansion;
     }
 
     @Override
