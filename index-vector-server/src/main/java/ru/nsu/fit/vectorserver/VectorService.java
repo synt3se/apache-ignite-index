@@ -60,7 +60,7 @@ public class VectorService {
     }
 
     public ResponseEntity<String> load(LoadRequest request) {
-        log.info("Received LoadRequest для пути: {}", request.file());
+        log.info("Received LoadRequest for path: {}", request.file());
 
         clear();
 

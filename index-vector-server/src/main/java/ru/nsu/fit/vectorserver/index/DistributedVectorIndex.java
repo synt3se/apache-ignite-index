@@ -139,7 +139,7 @@ public class DistributedVectorIndex implements Index {
     @Override
     public void save(String path) {
         try (BufferedWriter bw = new BufferedWriter(new FileWriter(path))) {
-            bw.write("id,url,embedding");
+            bw.write("id;url;embedding");
             bw.newLine();
 
             long savedCount = 0;
@@ -163,7 +163,7 @@ public class DistributedVectorIndex implements Index {
                     }
                     vectorBuilder.append("]");
 
-                    String csvLine = String.format("%d,%s,\"%s\"", id, obj.getUrl(), vectorBuilder.toString());
+                    String csvLine = String.format("%d;%s;%s", id, obj.getUrl(), vectorBuilder.toString());
 
                     bw.write(csvLine);
                     bw.newLine();
@@ -181,6 +181,7 @@ public class DistributedVectorIndex implements Index {
             throw new RuntimeException("CSV export error: " + path, e);
         }
     }
+
     @Override
     public long load(String path) {
         long maxId = 0;
@@ -194,14 +195,14 @@ public class DistributedVectorIndex implements Index {
             while ((line = br.readLine()) != null) {
                 if (line.isBlank()) continue;
 
-                int firstComma = line.indexOf(',');
-                int secondComma = line.indexOf(',', firstComma + 1);
-                if (firstComma == -1 || secondComma == -1) continue;
+                int firstSemicolon = line.indexOf(';');
+                int secondSemicolon = line.indexOf(';', firstSemicolon + 1);
+                if (firstSemicolon == -1 || secondSemicolon == -1) continue;
 
-                long id = Long.parseLong(line.substring(0, firstComma));
-                String url = line.substring(firstComma + 1, secondComma);
-                String vectorStr = line.substring(secondComma + 1)
-                        .replace("\"", "")
+                long id = Long.parseLong(line.substring(0, firstSemicolon));
+                String url = line.substring(firstSemicolon + 1, secondSemicolon);
+
+                String vectorStr = line.substring(secondSemicolon + 1)
                         .replace("[", "")
                         .replace("]", "")
                         .trim();
@@ -209,7 +210,9 @@ public class DistributedVectorIndex implements Index {
                 String[] tokens = vectorStr.split(",\\s*");
                 float[] vector = new float[tokens.length];
 
-                for (int i = 0; i < tokens.length; i++) vector[i] = Float.parseFloat(tokens[i]);
+                for (int i = 0; i < tokens.length; i++) {
+                    vector[i] = Float.parseFloat(tokens[i]);
+                }
 
                 if (vector.length != dimension) {
                     throw new IllegalArgumentException(
