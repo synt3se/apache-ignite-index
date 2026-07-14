@@ -1,7 +1,5 @@
 package ru.nsu.fit.vector.telegram.command;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.meta.api.objects.Message;
@@ -14,35 +12,46 @@ import ru.nsu.fit.vector.telegram.service.BotMessageService;
 import ru.nsu.fit.vector.telegram.service.ImageSearchService;
 
 @Component
-public class SearchCommandProcessor extends BotCommandProcessor {
+public class SearchImageCommandProcessor extends BotCommandProcessor {
     private final ImageSearchService imageSearchService;
 
-    public SearchCommandProcessor(ImageSearchService imageSearchService, BotMessageService messageService) {
+    public SearchImageCommandProcessor(ImageSearchService imageSearchService, BotMessageService messageService) {
         super(messageService);
         this.imageSearchService = imageSearchService;
     }
 
     @Override
-    public boolean canProcess(Update update) {
-        return update.hasMessage() && update.getMessage().hasText() && isLink(update.getMessage().getText()) ||
-                update.getMessage().hasPhoto() ||
-                update.getMessage().hasDocument() && update.getMessage().getDocument().getMimeType() != null &&
-                        update.getMessage().getDocument().getMimeType().startsWith("image/");
+    protected String getCommandName() {
+        return "/search_img";
+    }
+    @Override
+    protected String getReplyPrompt() {
+        return "Отправьте картинку, документ или ссылку на изображение в ответ на это сообщение";
     }
 
     @Override
-    public void process(Update update, long chatId, AbsSender sender) {
+    public boolean canProcessCondition(Update update) {
+        return update.getMessage().hasText() ||
+                update.getMessage().hasPhoto() ||
+                update.getMessage().hasDocument();
+    }
+
+    @Override
+    public void processArgument(Update update, long chatId, AbsSender sender) {
         Message message = update.getMessage();
         if (message.hasPhoto() || message.hasDocument()) {
             String fileId = null;
             if (message.hasPhoto()) {
-                log.info("Received photo from chatId: {}", chatId);
                 PhotoSize photo = message.getPhoto().stream()
                         .max(java.util.Comparator.comparing(PhotoSize::getFileSize))
                         .orElse(null);
                 fileId = photo.getFileId();
             }
             else {
+                String mime = update.getMessage().getDocument().getMimeType();
+                 if (mime == null || !mime.startsWith("image/")) {
+                     messageService.sendText(sender, chatId, "❌ Документ должен быть изображением.");
+                 }
                 fileId = message.getDocument().getFileId();
             }
 
@@ -56,6 +65,10 @@ public class SearchCommandProcessor extends BotCommandProcessor {
         }
         else {
             String url = update.getMessage().getText().trim();
+            if (!isLink(url)) {
+                messageService.sendText(sender, chatId, "❌ Пожалуйста, отправьте корректную ссылку (http:// или https://) или изображение в ответ на то сообщение.");
+                return;
+            }
 
             Mono<Dto.Neighbor[]> searchMono = imageSearchService.searchUrl(url);
             handleSearchResponse(searchMono, chatId, "Отправляю на сервер...", sender);

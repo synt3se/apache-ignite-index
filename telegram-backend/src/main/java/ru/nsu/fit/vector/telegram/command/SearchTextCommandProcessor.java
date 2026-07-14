@@ -23,20 +23,22 @@ public class SearchTextCommandProcessor extends BotCommandProcessor {
     }
 
     @Override
-    public boolean canProcess(Update update) {
-        return update.hasMessage() && update.getMessage().hasText() && update.getMessage().getText().startsWith("/searchtxt");
+    protected String getCommandName() {
+        return "/search_txt";
+    }
+    @Override
+    protected String getReplyPrompt() {
+        return "Отправьте описание изображения текстом в ответ на это сообщение";
     }
 
     @Override
-    public void process(Update update, long chatId, AbsSender sender) {
-        String text = update.getMessage().getText().trim();
-        log.info("Received command '{}' from chatId: {}", text, chatId);
+    public boolean canProcessCondition(Update update) {
+        return update.getMessage().hasText();
+    }
 
-        if (text.equals("/searchtxt")) {
-            messageService.sendText(sender, chatId, "Отправьте: '/searchtxt текст'.");
-            return;
-        }
-        String content = text.substring(11).trim();
+    @Override
+    public void processArgument(Update update, long chatId, AbsSender sender) {
+        String content = update.getMessage().getText().trim();
         Message statusMessage = messageService.sendText(sender, chatId, "Ищу картинки по тексту...");
         if (statusMessage == null) return;
         int messageIdToEdit = statusMessage.getMessageId();

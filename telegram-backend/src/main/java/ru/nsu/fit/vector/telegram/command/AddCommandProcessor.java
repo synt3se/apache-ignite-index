@@ -19,36 +19,44 @@ public class AddCommandProcessor extends BotCommandProcessor {
     }
 
     @Override
-    public boolean canProcess(Update update) {
-        return update.hasMessage() && update.getMessage().hasText() && update.getMessage().getText().startsWith("/add");
+    protected String getCommandName() {
+        return "/add";
+    }
+    @Override
+    protected String getReplyPrompt() {
+        return "Отправьте ссылку на изображение в ответ на это сообщение";
     }
 
     @Override
-    public void process(Update update, long chatId, AbsSender sender) {
-        String text = update.getMessage().getText().trim();
-        log.info("Received command '{}' from chatId: {}", text, chatId);
+    public boolean canProcessCondition(Update update) {
+        return update.getMessage().hasText();
+    }
 
-        if (text.equals("/add")) {
-            messageService.sendText(sender, chatId, "Отправьте: '/add ссылка'.");
+    @Override
+    public void processArgument(Update update, long chatId, AbsSender sender) {
+        Message message = update.getMessage();
+        String link = message.getText().trim();
+
+        if (!isLink(link)) {
+            messageService.sendText(sender, chatId, "❌ Пожалуйста, отправьте корректную ссылку на изображение (http:// или https://) в ответ на то сообщение.");
             return;
         }
 
-        String link = text.substring(5).trim();
         Message statusMessage = messageService.sendText(sender, chatId, "Добавляю запись в базу...");
         if (statusMessage == null) return;
         int messageIdToEdit = statusMessage.getMessageId();
 
         imageSearchService.addVector(link).subscribe(
                 response -> {
-                    String resultText = "ID: " + response.id() + "\nURL: " + response.url();
+                    String resultText = "✅ Успешно добавлено!\nID: " + response.id() + "\nURL: " + response.url();
                     if (response.metadata() != null && !response.metadata().isBlank()) {
                         resultText += "\nMETADATA: " + response.metadata();
                     }
                     messageService.editText(sender, chatId, messageIdToEdit, resultText);
                 },
                 error -> {
-                    log.warn("Error fetching vector by ID: " + error.getMessage());
-                    messageService.editText(sender, chatId, messageIdToEdit, "❌ Не удалось добавить " + link + ". " + error.getMessage());
+                    log.warn("Error adding vector: " + error.getMessage());
+                    messageService.editText(sender, chatId, messageIdToEdit, "❌ Не удалось добавить. " + error.getMessage());
                 }
         );
     }

@@ -19,27 +19,31 @@ public class GetCommandProcessor extends BotCommandProcessor {
     }
 
     @Override
-    public boolean canProcess(Update update) {
-        return update.hasMessage() && update.getMessage().hasText() && update.getMessage().getText().startsWith("/id");
+    protected String getCommandName() {
+        return "/id";
+    }
+    @Override
+    protected String getReplyPrompt() {
+        return "Отправьте id нужной записи в ответ на это сообщение";
     }
 
     @Override
-    public void process(Update update, long chatId, AbsSender sender) {
-        String text = update.getMessage().getText().trim();
-        log.info("Received command '{}' from chatId: {}", text, chatId);
+    public boolean canProcessCondition(Update update) {
+        return update.getMessage().hasText();
+    }
 
-        if (text.equals("/id")) {
-            messageService.sendText(sender, chatId, "Отправьте: '/id число'.");
-            return;
-        }
+    @Override
+    public void processArgument(Update update, long chatId, AbsSender sender) {
+        Message message = update.getMessage();
+        int userMessageId = message.getMessageId();
+        String idValue = message.getText().trim();
 
-        String idValue = text.substring(4).trim();
+        Long id = parseId(idValue, chatId, sender);
+        if (id == null) return;
+
         Message statusMessage = messageService.sendText(sender, chatId, "Ищу запись по id...");
         if (statusMessage == null) return;
         int messageIdToEdit = statusMessage.getMessageId();
-
-        Long id = parseId(idValue, chatId, sender, messageIdToEdit);
-        if (id == null) return;
 
         imageSearchService.getVectorById(id).subscribe(
                 response -> {

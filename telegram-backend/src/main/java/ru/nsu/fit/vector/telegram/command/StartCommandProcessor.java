@@ -14,14 +14,24 @@ public class StartCommandProcessor extends BotCommandProcessor {
     }
 
     @Override
-    public boolean canProcess(Update update) {
-        return update.hasMessage() && update.getMessage().hasText() && update.getMessage().getText().equals("/start");
+    protected String getCommandName() {
+        return "/start";
+    }
+    @Override
+    protected String getReplyPrompt() {
+        return "Привет! Этот бот умеет работать с векторной базой данных картинок. Например, искать похожие. Для этого просто введи команду /search_img, затем скинь файл или URL, и я выдам топ самых похожих картинок. Полный список команд и их описаний есть в меню";
     }
 
     @Override
-    public void process(Update update, long chatId, AbsSender sender) {
-        log.info("Received command '/start' from chatId: {}", chatId);
-        String mes = "Привет! Этот бот умеет искать похожие картинки в подготовленной базе данных. Просто скинь файл или URL, и я выдам топ самых похожих картинок.";
-        messageService.sendText(sender, chatId, mes);
+    public boolean canProcessCondition(Update update) {
+        return false;
     }
+
+    @Override
+    public boolean hasArgument() {
+        return false;
+    };
+
+    @Override
+    public void processArgument(Update update, long chatId, AbsSender sender) {}
 }

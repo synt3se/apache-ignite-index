@@ -12,14 +12,24 @@ public class UnknownCommandProcessor extends BotCommandProcessor {
     }
 
     @Override
-    public boolean canProcess(Update update) {
-        return true;
+    protected String getCommandName() {
+        return "";
+    }
+    @Override
+    protected String getReplyPrompt() {
+        return "Пожалуйста, отправьте поддерживаемую команду или ответьте на необходимое сообщение";
     }
 
     @Override
-    public void process(Update update, long chatId, AbsSender sender) {
-        log.info("Received unknown request pattern from chatId: {}", chatId);
-        String mes = "Пожалуйста, отправьте поддерживаемую команду, ссылку или изображение.";
-        messageService.sendText(sender, chatId, mes);
+    public boolean canProcessCondition(Update update) {
+        return false;
     }
+
+    @Override
+    public boolean hasArgument() {
+        return false;
+    };
+
+    @Override
+    public void processArgument(Update update, long chatId, AbsSender sender) {}
 }
