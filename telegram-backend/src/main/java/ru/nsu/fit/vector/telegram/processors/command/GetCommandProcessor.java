@@ -1,5 +1,7 @@
 package ru.nsu.fit.vector.telegram.processors.command;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.meta.api.objects.Message;
 import org.telegram.telegrambots.meta.api.objects.Update;
@@ -67,10 +69,20 @@ public class GetCommandProcessor extends BotCommandProcessor {
     }
 
     private String formatStringResult(Dto.VectorResponse response) {
+        String sourceValue = null;
+        try {
+            ObjectMapper objectMapper = new ObjectMapper();
+            JsonNode jsonNode = objectMapper.readTree(response.metadata());
+
+            sourceValue = jsonNode.get("source").asText();
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
         return String.format(
                 "🆔 <code>%s</code>\n" +
-                        "<a href=\"%s\">🔗 Изображение</a>\n\n",
-                response.id(), response.url()
+                        "<a href=\"%s\">🔗 Изображение</a>\n" +
+                        "↩\uFE0F Источник: %s\n\n",
+                response.id(), response.url(), sourceValue
         );
     }
     private InlineKeyboardMarkup makeMarkup(long id) {

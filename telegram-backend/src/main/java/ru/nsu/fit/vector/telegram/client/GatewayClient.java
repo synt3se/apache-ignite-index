@@ -64,8 +64,8 @@ public class GatewayClient {
                 .bodyToMono(Dto.VectorResponse.class);
     }
 
-    public Mono<Dto.VectorResponse> addVector(String link) {
-        var requestBody = Map.of("url", link);
+    public Mono<Dto.VectorResponse> addVector(String link, String metadata) {
+        var requestBody = Map.of("url", link, "metadata", metadata);
         return webClient.post()
                 .uri("/images/add")
                 .bodyValue(requestBody)

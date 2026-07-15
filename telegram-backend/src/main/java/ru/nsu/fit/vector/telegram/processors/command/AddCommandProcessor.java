@@ -46,7 +46,7 @@ public class AddCommandProcessor extends BotCommandProcessor {
         if (statusMessage == null) return;
         int messageIdToEdit = statusMessage.getMessageId();
 
-        imageSearchService.addVector(link).subscribe(
+        imageSearchService.addVector(link, getUserNameOrDefault(sender, chatId, String.valueOf(chatId))).subscribe(
                 response -> {
                     String resultText = formatStringResult(response);
                     messageService.editText(sender, chatId, messageIdToEdit, resultText, "HTML");
