@@ -5,9 +5,12 @@ import org.slf4j.LoggerFactory;
 import org.telegram.telegrambots.meta.api.objects.Message;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.bots.AbsSender;
+import ru.nsu.fit.vector.telegram.Dto;
 import ru.nsu.fit.vector.telegram.exception.GatewayException;
 import ru.nsu.fit.vector.telegram.exception.ImageDownloadException;
 import ru.nsu.fit.vector.telegram.service.BotMessageService;
+
+import java.util.Locale;
 
 // Класс команды. От него наследуются все команды бота.
 public abstract class BotCommandProcessor {
@@ -117,5 +120,22 @@ public abstract class BotCommandProcessor {
     // Каждая команда переопределит этот метод, чтобы возвращать свой текст для 404 ошибки.
     protected String getNotFoundMessage() {
         return "❌ Запрашиваемый ресурс не найден.";
+    }
+
+    protected String getStringTop(Dto.Neighbor[] top) {
+        StringBuilder string = new StringBuilder();
+        string.append("🔍 <b>РЕЗУЛЬТАТЫ ПОИСКА</b>\n━━━━━━━━━━━━━━━━━━\n\n");
+        for (Dto.Neighbor neighbor : top) {
+            String similarity = String.format(Locale.US, "%.1f", 100*(1 - neighbor.score()));
+
+            string.append(String.format(
+                    "🆔 <code>%s</code>\n" +
+                            "Сходство: <b>%s %%</b>\n" +
+                            "<a href=\"%s\">🔗 Открыть изображение</a>\n\n",
+                    neighbor.id(), similarity, neighbor.url()
+            ));
+        }
+        if (string.length() == 0) return "Сервер вернул пустой список :(";
+        return string.toString();
     }
 }

@@ -40,24 +40,13 @@ public class SearchTextCommandProcessor extends BotCommandProcessor {
         int messageIdToEdit = statusMessage.getMessageId();
 
         imageSearchService.searchTxt(content).subscribe(
-                serverResponse -> messageService.editText(sender, chatId, messageIdToEdit, getStringTop(serverResponse)),
+                serverResponse -> messageService.editText(sender, chatId, messageIdToEdit, getStringTop(serverResponse), "HTML"),
                 error -> {
                     log.warn("Failed to search by text: " + error.getMessage());
                     String errorText = getErrorMessage(error);
                     messageService.editText(sender, chatId, messageIdToEdit, errorText);
                 }
         );
-    }
-
-    private String getStringTop(Dto.Neighbor[] top) {
-        StringBuilder string = new StringBuilder();
-        for (Dto.Neighbor neighbor : top) {
-            string.append("id: " + neighbor.id() + "\n");
-            string.append("distance: " + neighbor.score() + "\n");
-            string.append(neighbor.url() + "\n\n");
-        }
-        if (string.length() == 0) return "Сервер вернул пустой список :(";
-        return string.toString();
     }
 
     @Override
