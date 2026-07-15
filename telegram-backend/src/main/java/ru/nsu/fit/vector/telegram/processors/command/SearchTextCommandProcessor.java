@@ -1,10 +1,9 @@
-package ru.nsu.fit.vector.telegram.command;
+package ru.nsu.fit.vector.telegram.processors.command;
 
 import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.meta.api.objects.Message;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.bots.AbsSender;
-import ru.nsu.fit.vector.telegram.Dto;
 import ru.nsu.fit.vector.telegram.service.BotMessageService;
 import ru.nsu.fit.vector.telegram.service.ImageSearchService;
 
@@ -40,24 +39,13 @@ public class SearchTextCommandProcessor extends BotCommandProcessor {
         int messageIdToEdit = statusMessage.getMessageId();
 
         imageSearchService.searchTxt(content).subscribe(
-                serverResponse -> messageService.editText(sender, chatId, messageIdToEdit, getStringTop(serverResponse)),
+                serverResponse -> messageService.editText(sender, chatId, messageIdToEdit, getStringTop(serverResponse), "HTML"),
                 error -> {
                     log.warn("Failed to search by text: " + error.getMessage());
                     String errorText = getErrorMessage(error);
                     messageService.editText(sender, chatId, messageIdToEdit, errorText);
                 }
         );
-    }
-
-    private String getStringTop(Dto.Neighbor[] top) {
-        StringBuilder string = new StringBuilder();
-        for (Dto.Neighbor neighbor : top) {
-            string.append("id: " + neighbor.id() + "\n");
-            string.append("distance: " + neighbor.score() + "\n");
-            string.append(neighbor.url() + "\n\n");
-        }
-        if (string.length() == 0) return "Сервер вернул пустой список :(";
-        return string.toString();
     }
 
     @Override

@@ -10,8 +10,9 @@ import org.telegram.telegrambots.meta.api.methods.updates.DeleteWebhook;
 import org.telegram.telegrambots.meta.api.objects.Message;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
-import ru.nsu.fit.vector.telegram.command.BotCommandProcessor;
-import ru.nsu.fit.vector.telegram.command.UnknownCommandProcessor;
+import ru.nsu.fit.vector.telegram.processors.callback.VectorCallbackProcessor;
+import ru.nsu.fit.vector.telegram.processors.command.BotCommandProcessor;
+import ru.nsu.fit.vector.telegram.processors.command.UnknownCommandProcessor;
 import ru.nsu.fit.vector.telegram.service.BotMessageService;
 
 import java.util.List;
@@ -24,16 +25,19 @@ public class IgnitePictureBot extends TelegramLongPollingBot {
     private final String botUsername;
     private final List<BotCommandProcessor> commandProcessors;
     private final UnknownCommandProcessor unknownCommandProcessor;
+    private final VectorCallbackProcessor vectorCallbackProcessor;
 
     public IgnitePictureBot(
             @Value("${bot.token}") String botToken,
             @Value("${bot.username}") String botUsername,
             List<BotCommandProcessor> commandProcessors,
-            BotMessageService messageService) {
+            BotMessageService messageService,
+            VectorCallbackProcessor vectorCallbackProcessor) {
         super(botToken);
         this.botUsername = botUsername;
         this.commandProcessors = commandProcessors;
         this.unknownCommandProcessor = new UnknownCommandProcessor(messageService);
+        this.vectorCallbackProcessor = vectorCallbackProcessor;
     }
 
     @Override
@@ -43,17 +47,25 @@ public class IgnitePictureBot extends TelegramLongPollingBot {
 
     @Override
     public void onUpdateReceived(Update update) {
-        Message message = update.getMessage();
-        String text = message.getText();
-        long chatId = message.getChatId();
-
-        for (BotCommandProcessor processor : commandProcessors) {
-            if (processor.canProcess(update)) {
-                processor.process(update, chatId, this);
-                return;
+        if (update.hasCallbackQuery()) {
+            if (vectorCallbackProcessor.canProcess(update.getCallbackQuery())) {
+                vectorCallbackProcessor.process(update.getCallbackQuery(), this);
             }
+            return;
         }
-        unknownCommandProcessor.process(update, chatId, this);
+
+        if (update.hasMessage()) {
+            Message message = update.getMessage();
+            long chatId = message.getChatId();
+
+            for (BotCommandProcessor processor : commandProcessors) {
+                if (processor.canProcess(update)) {
+                    processor.process(update, chatId, this);
+                    return;
+                }
+            }
+            unknownCommandProcessor.process(update, chatId, this);
+        }
     }
 
     @PostConstruct
