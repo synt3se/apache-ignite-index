@@ -1,7 +1,6 @@
 package ru.nsu.fit.vectorserver.benchmark;
 
 
-import org.springframework.boot.SpringApplication;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
@@ -19,21 +18,55 @@ import ru.nsu.fit.vectorserver.VectorService;
 
 @SpringBootApplication
 public class BenchmarkMain {
+
+    private enum Mode{
+        ANN_BENCHMARK_TEST,
+        OUR_DATASET,
+        N_CLIENTS
+    }
+
     public static void main(String[] args){
         System.out.println("Hello");
         ConfigurableApplicationContext context =
                 new SpringApplicationBuilder(VectorServerApplication.class)
                         .web(WebApplicationType.NONE)
                         .run(args);
-        try{
-            VectorService vectorService = context.getBean(VectorService.class);
-            BenchmarkRunner runner = new BenchmarkRunner(vectorService);
-            int neighborCount = 10;
-            //String hdf5Path = "index-vector-server/src/main/resources/coco-i2i-512-angular.hdf5";
-            String hdf5Path = "index-vector-server/src/main/resources/mnist-784-euclidean.hdf5";
-            runner.run(neighborCount, hdf5Path);
-        }finally {
+
+        Mode mode = Mode.ANN_BENCHMARK_TEST;
+
+        if (mode == Mode.ANN_BENCHMARK_TEST){
+            try{
+                VectorService vectorService = context.getBean(VectorService.class);
+                BenchmarkTestRunner runner = new BenchmarkTestRunner(vectorService);
+                int neighborCount = 10;
+                String hdf5Path = "index-vector-server/src/main/resources/coco-i2i-512-angular.hdf5";
+                //String hdf5Path = "index-vector-server/src/main/resources/mnist-784-euclidean.hdf5";
+                runner.run(neighborCount, hdf5Path);
+
+            }catch (IllegalArgumentException e){
+                System.err.println();
+            }
+            finally {
+                context.close();
+            }
+        }else if (mode == Mode.N_CLIENTS){
             context.close();
+        }else if (mode == Mode.OUR_DATASET){
+            try{
+                VectorService vectorService = context.getBean(VectorService.class);
+                BenchmarkTestRunner runner = new BenchmarkTestRunner(vectorService);
+                int neighborCount = 10;
+                String hdf5Path = "index-vector-server/src/main/resources/coco-i2i-512-angular.hdf5";
+                //String hdf5Path = "index-vector-server/src/main/resources/mnist-784-euclidean.hdf5";
+                runner.run(neighborCount, hdf5Path);
+
+            }catch (IllegalArgumentException e){
+                System.err.println();
+            }
+            finally {
+                context.close();
+            }
         }
+
     }
 }

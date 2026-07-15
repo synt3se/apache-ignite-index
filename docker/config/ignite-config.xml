@@ -40,6 +40,9 @@
         </property>
 
         <!-- Node-singleton индексная плоскость: экземпляр на каждом сервере -->
+
+
+
         <property name="serviceConfiguration">
             <list>
                 <bean class="org.apache.ignite.services.ServiceConfiguration">
@@ -47,7 +50,13 @@
                     <property name="maxPerNodeCount" value="1"/>
                     <property name="totalCount" value="0"/>
                     <property name="service">
-                        <bean class="ru.nsu.fit.vector.node.service.LocalIndexServiceImpl"/>
+                        <!-- ВОТ ЗДЕСЬ ИЗМЕНИТЬ МОЖНО ИНДЕКС НА BRUTE_FORCE_INDEX-->
+                        <bean class="ru.nsu.fit.vector.node.service.LocalIndexServiceImpl">
+                            <property name="indexType">
+                                <util:constant static-field="ru.nsu.fit.vector.common.indextype.IndexType.BRUTE_FORCE_INDEX"/>
+                            </property>
+                            <!-- <property name="indexType" value="BRUTE_FORCE_INDEX"/>-->
+                        </bean>
                     </property>
                 </bean>
                 <bean class="org.apache.ignite.services.ServiceConfiguration">

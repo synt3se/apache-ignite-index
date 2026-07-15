@@ -18,13 +18,7 @@ import io.github.jbellis.jvector.vector.types.VectorTypeSupport;
 import ru.nsu.fit.vector.common.ScoredVector;
 
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -42,6 +36,7 @@ public class JVectorPartitionIndex
     private static final double DELETE_REBUILD_RATIO = 0.20;
     private static final int MIN_ADDITIONS_BEFORE_REBUILD = 256;
     private final int dimension;
+
 
     private final ExecutorService rebuildExecutor =
             Executors.newSingleThreadExecutor(r -> {
@@ -77,10 +72,16 @@ public class JVectorPartitionIndex
     @Override
     public void add(long id, float[] vector) {
         validateVector(vector);
+
         boolean rebuildRequired = false;
 
         lock.writeLock().lock();
         try {
+            Integer ord = snapshot.idToOrdinal().get(id);
+
+            if (ord != null && !deletedFromGraph.contains(id)
+                    && Arrays.equals(snapshot.rawVectors().get(ord), vector)) {return;}
+
             if (snapshot.containsId(id)) {
                 deletedFromGraph.add(id);
             }
@@ -263,7 +264,7 @@ public class JVectorPartitionIndex
 
         int rerankK = Math.min(
                 snapshot.size(),
-                count * 3 //Math.max(count, DEFAULT_RERANK_K)
+                count * 2 //Math.max(count, DEFAULT_RERANK_K)
         );
 
         SearchResult searchResult;

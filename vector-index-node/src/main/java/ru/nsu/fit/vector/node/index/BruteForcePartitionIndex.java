@@ -82,14 +82,27 @@ public class BruteForcePartitionIndex implements PartitionVectorIndex {
     }
 
     private double cosineDistance(float[] a, float[] b) {
+        if (a == null || b == null) {
+            throw new IllegalArgumentException("vectors are required");
+        }
+
+        if (a.length != b.length) {
+            throw new IllegalArgumentException(
+                    "vector dimensions differ: " + a.length + " != " + b.length
+            );
+        }
+
         double dotProduct = 0.0;
         double normA = 0.0;
         double normB = 0.0;
 
         for (int i = 0; i < a.length; i++) {
-            dotProduct += a[i] * b[i];
-            normA += a[i] * a[i];
-            normB += b[i] * b[i];
+            double av = a[i];
+            double bv = b[i];
+
+            dotProduct += av * bv;
+            normA += av * av;
+            normB += bv * bv;
         }
 
         if (normA == 0.0 || normB == 0.0) {
@@ -97,7 +110,7 @@ public class BruteForcePartitionIndex implements PartitionVectorIndex {
         }
 
         double cosineSimilarity =
-                dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+                dotProduct / Math.sqrt(normA * normB);
 
         return 1.0 - cosineSimilarity;
     }
