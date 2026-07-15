@@ -29,7 +29,7 @@ import org.apache.ignite.events.EventType;
 import ru.nsu.fit.vector.common.ScoredVector;
 import ru.nsu.fit.vector.common.VectorObject;
 import ru.nsu.fit.vector.common.dto.NodeStats;
-
+import ru.nsu.fit.vector.common.indextype.IndexType;
 /**
  * Индексная плоскость узла: индекс - производная кэша.
  * События кэша - StripedApplier - applyKey.
@@ -63,9 +63,14 @@ public final class PartitionIndexManager {
     private final AtomicLong applied = new AtomicLong();
     private long lastAppliedLogged = 0;
 
-    public PartitionIndexManager(Ignite ignite, String cacheName) {
+    private final IndexType indexType;
+    private final int dimension;
+
+    public PartitionIndexManager(Ignite ignite, String cacheName, int dimension, IndexType indexType) {
         this.ignite = ignite;
         this.cacheName = cacheName;
+        this.dimension = dimension;
+        this.indexType = indexType;
     }
 
     public void start() {
@@ -220,8 +225,10 @@ public final class PartitionIndexManager {
         }
     }
 
+
     /** Скан партиции по кэшу без сети */
     private PartitionVectorIndex buildIndexFor(int partition) {
+
         log.info("[vindex] scan START partition=" + partition);
 
         Map<Long, float[]> vectors = new HashMap<>();
@@ -246,7 +253,16 @@ public final class PartitionIndexManager {
         log.info("[vindex] scan FINISHED partition=" + partition +
                 ", vectors=" + vectors.size());
 
-        PartitionVectorIndex idx = new JVectorPartitionIndex(512);
+        PartitionVectorIndex idx;
+
+
+        int dimension = 512;
+        if (indexType == IndexType.JVECTOR_INDEX){
+            idx = new JVectorPartitionIndex(dimension);
+        }else{
+            idx = new BruteForcePartitionIndex();
+        }
+
 
         log.info("[vindex] jvector build START partition=" + partition);
         idx.build(vectors);

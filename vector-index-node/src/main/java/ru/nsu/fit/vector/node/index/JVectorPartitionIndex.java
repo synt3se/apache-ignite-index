@@ -264,7 +264,7 @@ public class JVectorPartitionIndex
 
         int rerankK = Math.min(
                 snapshot.size(),
-                count * 3 //Math.max(count, DEFAULT_RERANK_K)
+                count * 2 //Math.max(count, DEFAULT_RERANK_K)
         );
 
         SearchResult searchResult;

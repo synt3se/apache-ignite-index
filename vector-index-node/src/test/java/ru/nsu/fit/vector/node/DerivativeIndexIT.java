@@ -26,6 +26,7 @@ import org.junit.jupiter.api.Test;
 
 import ru.nsu.fit.vector.common.ScoredVector;
 import ru.nsu.fit.vector.common.VectorObject;
+import ru.nsu.fit.vector.common.indextype.IndexType;
 import ru.nsu.fit.vector.node.index.PartitionIndexManager;
 
 /**
@@ -114,7 +115,7 @@ class DerivativeIndexIT {
     }
 
     private static PartitionIndexManager started(Ignite ignite) {
-        PartitionIndexManager m = new PartitionIndexManager(ignite, "vectors");
+        PartitionIndexManager m = new PartitionIndexManager(ignite, "vectors", 512, IndexType.JVECTOR_INDEX);
         m.start();
         return m;
     }
