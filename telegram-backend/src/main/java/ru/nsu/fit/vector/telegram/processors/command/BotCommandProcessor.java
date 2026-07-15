@@ -1,4 +1,4 @@
-package ru.nsu.fit.vector.telegram.command;
+package ru.nsu.fit.vector.telegram.processors.command;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

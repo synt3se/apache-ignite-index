@@ -3,6 +3,7 @@ package ru.nsu.fit.vector.telegram.service;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.telegram.telegrambots.meta.api.methods.AnswerCallbackQuery;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageReplyMarkup;
 import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageText;
@@ -96,6 +97,16 @@ public class BotMessageService {
             sender.execute(editMessage);
         } catch (TelegramApiException e) {
             log.error("Failed to edit text and markup for message {} in chat {}", messageId, chatId, e);
+        }
+    }
+
+    public void answerCallback(AbsSender sender, String callbackQueryId) {
+        AnswerCallbackQuery answer = new AnswerCallbackQuery();
+        answer.setCallbackQueryId(callbackQueryId);
+        try {
+            sender.execute(answer);
+        } catch (TelegramApiException e) {
+            log.error("Failed to answer callback query {}", callbackQueryId, e);
         }
     }
 }

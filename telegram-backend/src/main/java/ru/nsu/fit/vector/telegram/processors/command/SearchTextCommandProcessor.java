@@ -1,10 +1,9 @@
-package ru.nsu.fit.vector.telegram.command;
+package ru.nsu.fit.vector.telegram.processors.command;
 
 import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.meta.api.objects.Message;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.bots.AbsSender;
-import ru.nsu.fit.vector.telegram.Dto;
 import ru.nsu.fit.vector.telegram.service.BotMessageService;
 import ru.nsu.fit.vector.telegram.service.ImageSearchService;
 

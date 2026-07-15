@@ -1,4 +1,4 @@
-package ru.nsu.fit.vector.telegram.command;
+package ru.nsu.fit.vector.telegram.processors.command;
 
 import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.meta.api.objects.Message;
@@ -11,7 +11,6 @@ import ru.nsu.fit.vector.telegram.service.BotMessageService;
 import ru.nsu.fit.vector.telegram.service.ImageSearchService;
 
 import java.util.Collections;
-import java.util.Locale;
 
 // Команда получения записи в базе по id
 @Component
@@ -68,26 +67,10 @@ public class GetCommandProcessor extends BotCommandProcessor {
     }
 
     private String formatStringResult(Dto.VectorResponse response) {
-        String vectorPreview = formatVectorPreview(response.vector());
         return String.format(
                 "🆔 <code>%s</code>\n" +
-                        "<a href=\"%s\">🔗 Изображение</a>\n" +
-                        "Вектор: <code>%s</code>\n\n",
-                response.id(), response.url(), vectorPreview
-        );
-    }
-    private String formatVectorPreview(float[] vector) {
-        if (vector == null || vector.length == 0) return "[]";
-
-        int size = vector.length;
-        if (size <= 6) {
-            return java.util.Arrays.toString(vector);
-        }
-
-        return String.format(
-                "[%.3f, %.3f, %.3f, ..., %.3f, %.3f, %.3f]",
-                vector[0], vector[1], vector[2],
-                vector[size - 3], vector[size - 2], vector[size - 1]
+                        "<a href=\"%s\">🔗 Изображение</a>\n\n",
+                response.id(), response.url()
         );
     }
     private InlineKeyboardMarkup makeMarkup(long id) {
