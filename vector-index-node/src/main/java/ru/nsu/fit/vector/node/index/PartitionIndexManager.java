@@ -204,7 +204,7 @@ public final class PartitionIndexManager {
             }
             PartitionState st = partitions.computeIfAbsent(partition, PartitionState::new);
             again = st.rebuild(this::buildIndexFor, this::applyKey);
-            log.info("[vindex] partition " + partition + " rebuilt in "
+            log.info("[vindex] partition " + partition + " scanned+seeded in "
                     + (System.nanoTime() - t0) / 1_000_000 + " ms"
                     + (again ? " (heavy writes - extra pass)" : ""));
         }catch (IllegalArgumentException e) {
@@ -215,10 +215,7 @@ public final class PartitionIndexManager {
             dirty.add(partition);
             requestReconcile();
 
-            log.error(
-                    "[vindex] partition " + partition + " rebuild FAILED",
-                    e
-            );
+            log.error("[vindex] partition " + partition + " rebuild FAILED", e);
         } finally {
             rebuildQueued.remove(partition);
             if (again) scheduleRebuild(partition);
@@ -264,9 +261,9 @@ public final class PartitionIndexManager {
         }
 
 
-        log.info("[vindex] jvector build START partition=" + partition);
-        idx.build(vectors);
-        log.info("[vindex] jvector build FINISHED partition=" + partition);
+        log.info("[vindex] seed START partition=" + partition);
+        idx.seedAndBuildAsync(vectors);
+        log.info("[vindex] seed FINISHED partition=" + partition + " (graph builds in background)");
 
         return idx;
     }
@@ -283,8 +280,9 @@ public final class PartitionIndexManager {
         PriorityQueue<ScoredVector> top = new PriorityQueue<>(
                 Comparator.comparingDouble(ScoredVector::distance).reversed());
         for (PartitionState st : partitions.values()) {
-            if (!st.isActive()) continue;                     // только владельческие ACTIVE
-            for (ScoredVector c : st.indexOrNull().search(query, count)) {
+            PartitionVectorIndex idx = st.indexOrNull();
+            if (idx == null) continue;
+            for (ScoredVector c : idx.search(query, count)) {
                 if (top.size() < count) top.add(c);
                 else if (top.peek() != null && c.distance() < top.peek().distance()) {
                     top.poll();
