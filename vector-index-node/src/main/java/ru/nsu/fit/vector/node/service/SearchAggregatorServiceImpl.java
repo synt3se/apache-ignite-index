@@ -75,6 +75,7 @@ public class SearchAggregatorServiceImpl implements SearchAggregationService {
                 }
             } catch (Exception e) {
                 // timeout or node failure - degradation
+                System.err.println("[aggregator] node skipped: " + e);
             }
         }
 
