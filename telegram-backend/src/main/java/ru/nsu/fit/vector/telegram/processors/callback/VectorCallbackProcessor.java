@@ -40,7 +40,6 @@ public class VectorCallbackProcessor {
                     response -> sendVectorFile(chatId, response.id(), response.vector(), sender),
                     error -> {
                         log.error("Failed to fetch vector for file download: {}", error.getMessage());
-                        // Опционально: можно отправить сообщение об ошибке пользователю
                     }
             );
         } catch (NumberFormatException e) {

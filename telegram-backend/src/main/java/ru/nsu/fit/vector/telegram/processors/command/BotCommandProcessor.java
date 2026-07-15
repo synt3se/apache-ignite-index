@@ -124,17 +124,18 @@ public abstract class BotCommandProcessor {
 
     protected String getStringTop(Dto.Neighbor[] top) {
         StringBuilder string = new StringBuilder();
-        string.append("🔍 <b>РЕЗУЛЬТАТЫ ПОИСКА</b>\n━━━━━━━━━━━━━━━━━━\n\n");
+        string.append("✅ <b>РЕЗУЛЬТАТЫ ПОИСКА</b>\n\n");
         for (Dto.Neighbor neighbor : top) {
             String similarity = String.format(Locale.US, "%.1f", 100*(1 - neighbor.score()));
 
             string.append(String.format(
                     "🆔 <code>%s</code>\n" +
-                            "Сходство: <b>%s %%</b>\n" +
-                            "<a href=\"%s\">🔗 Открыть изображение</a>\n\n",
+                            "\uD83D\uDD0D Сходство: <b>%s %%</b>\n" +
+                            "<a href=\"%s\">🔗 Изображение</a>\n\n",
                     neighbor.id(), similarity, neighbor.url()
             ));
         }
+        string.append("⬇\uFE0F <b>Предпросмотр самого похожего</b>\n");
         if (string.length() == 0) return "Сервер вернул пустой список :(";
         return string.toString();
     }

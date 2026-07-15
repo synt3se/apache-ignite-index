@@ -4,6 +4,7 @@ import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.meta.api.objects.Message;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.bots.AbsSender;
+import ru.nsu.fit.vector.telegram.Dto;
 import ru.nsu.fit.vector.telegram.service.BotMessageService;
 import ru.nsu.fit.vector.telegram.service.ImageSearchService;
 
@@ -47,17 +48,23 @@ public class AddCommandProcessor extends BotCommandProcessor {
 
         imageSearchService.addVector(link).subscribe(
                 response -> {
-                    String resultText = "✅ Успешно добавлено!\nID: " + response.id() + "\nURL: " + response.url();
-                    if (response.metadata() != null && !response.metadata().isBlank()) {
-                        resultText += "\nMETADATA: " + response.metadata();
-                    }
-                    messageService.editText(sender, chatId, messageIdToEdit, resultText);
+                    String resultText = formatStringResult(response);
+                    messageService.editText(sender, chatId, messageIdToEdit, resultText, "HTML");
                 },
                 error -> {
                     log.warn("Error adding vector: " + error.getMessage());
                     String errorText = getErrorMessage(error);
                     messageService.editText(sender, chatId, messageIdToEdit, errorText);
                 }
+        );
+    }
+
+    private String formatStringResult(Dto.VectorResponse response) {
+        return String.format(
+                "✅ <b>Успешно добавлено!\n</b>" +
+                "🆔 <code>%s</code>\n\n" +
+                "Вы можете увидеть эту запись с помощью /id",
+                response.id(), response.url()
         );
     }
 }
