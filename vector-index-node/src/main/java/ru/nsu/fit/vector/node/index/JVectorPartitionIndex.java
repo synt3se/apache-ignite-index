@@ -433,7 +433,35 @@ public class JVectorPartitionIndex
         }
     }
 
+    @Override
+    public void seedAndBuildAsync(Map<Long, float[]> vectors) {
+        if (vectors == null) {
+            throw new IllegalArgumentException("vectors are required");
+        }
+        if (vectors.isEmpty()) { return; }
 
+        Map<Long, float[]> vectorsCopy = new HashMap<>(vectors.size());
+        for (Map.Entry<Long, float[]> entry : vectors.entrySet()) {
+            if (entry.getKey() == null) {
+                throw new IllegalArgumentException("vector id is required");
+            }
+            validateVector(entry.getValue());
+            vectorsCopy.put(entry.getKey(), entry.getValue().clone());
+        }
+
+        lock.writeLock().lock();
+        try {
+            if (!snapshot.isEmpty() || !pendingVectors.isEmpty() || !deletedFromGraph.isEmpty()) {
+                throw new IllegalStateException("seedAndBuildAsync can only be called on an empty index");
+            }
+            pendingVectors.putAll(vectorsCopy);
+            rebuildInProgress = true;
+        } finally {
+            lock.writeLock().unlock();
+        }
+
+        rebuildAsync();
+    }
 
     private IndexSnapshot buildSnapshot(Map<Long, float[]> activeVectors) {
         if (activeVectors.isEmpty()) {
