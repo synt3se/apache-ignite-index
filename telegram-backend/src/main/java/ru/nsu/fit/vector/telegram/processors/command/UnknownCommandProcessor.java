@@ -16,7 +16,7 @@ public class UnknownCommandProcessor extends BotCommandProcessor {
     }
     @Override
     protected String getReplyPrompt() {
-        return "Пожалуйста, отправьте поддерживаемую команду или ответьте на необходимое сообщение";
+        return "❌ Сообщение не распознано. Пожалуйста, отправьте поддерживаемую команду или ответьте на необходимое сообщение";
     }
 
     @Override
