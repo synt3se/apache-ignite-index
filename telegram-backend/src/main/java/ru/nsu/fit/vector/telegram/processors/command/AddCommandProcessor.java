@@ -29,12 +29,18 @@ public class AddCommandProcessor extends BotCommandProcessor {
 
     @Override
     public boolean canProcessCondition(Update update) {
-        return update.getMessage().hasText();
+        return update.getMessage().hasText() ||
+                update.getMessage().hasPhoto() ||
+                update.getMessage().hasDocument();
     }
 
     @Override
     public void processArgument(Update update, long chatId, AbsSender sender) {
         Message message = update.getMessage();
+        if (!update.getMessage().hasText()) {
+            messageService.sendText(sender, chatId, "❌ В базу данных можно загружать только ссылки на картинки.");
+        }
+
         String link = message.getText().trim();
 
         if (!isLink(link)) {
@@ -46,7 +52,7 @@ public class AddCommandProcessor extends BotCommandProcessor {
         if (statusMessage == null) return;
         int messageIdToEdit = statusMessage.getMessageId();
 
-        imageSearchService.addVector(link).subscribe(
+        imageSearchService.addVector(link, getUserNameOrDefault(sender, chatId, String.valueOf(chatId))).subscribe(
                 response -> {
                     String resultText = formatStringResult(response);
                     messageService.editText(sender, chatId, messageIdToEdit, resultText, "HTML");

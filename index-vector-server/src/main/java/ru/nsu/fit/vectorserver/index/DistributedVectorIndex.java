@@ -139,7 +139,7 @@ public class DistributedVectorIndex implements Index {
     @Override
     public void save(String path) {
         try (BufferedWriter bw = new BufferedWriter(new FileWriter(path))) {
-            bw.write("id;url;embedding");
+            bw.write("id;url;embedding;metadata");
             bw.newLine();
 
             long savedCount = 0;
@@ -163,7 +163,14 @@ public class DistributedVectorIndex implements Index {
                     }
                     vectorBuilder.append("]");
 
-                    String csvLine = String.format("%d;%s;%s", id, obj.getUrl(), vectorBuilder.toString());
+                    String metadata = obj.getMetadata() != null ? obj.getMetadata() : "";
+
+                    String csvLine = String.format("%d;%s;%s;%s",
+                            id,
+                            obj.getUrl(),
+                            vectorBuilder.toString(),
+                            metadata
+                    );
 
                     bw.write(csvLine);
                     bw.newLine();
@@ -197,15 +204,22 @@ public class DistributedVectorIndex implements Index {
 
                 int firstSemicolon = line.indexOf(';');
                 int secondSemicolon = line.indexOf(';', firstSemicolon + 1);
-                if (firstSemicolon == -1 || secondSemicolon == -1) continue;
+                int thirdSemicolon = line.indexOf(';', secondSemicolon + 1);
+
+                if (firstSemicolon == -1 || secondSemicolon == -1 || thirdSemicolon == -1) {
+                    continue; // Пропускаем некорректные строки
+                }
 
                 long id = Long.parseLong(line.substring(0, firstSemicolon));
                 String url = line.substring(firstSemicolon + 1, secondSemicolon);
 
-                String vectorStr = line.substring(secondSemicolon + 1)
+                String vectorStr = line.substring(secondSemicolon + 1, thirdSemicolon)
                         .replace("[", "")
                         .replace("]", "")
                         .trim();
+
+                String metadataStr = line.substring(thirdSemicolon + 1).trim();
+                String metadata = metadataStr.isEmpty() ? null : metadataStr;
 
                 String[] tokens = vectorStr.split(",\\s*");
                 float[] vector = new float[tokens.length];
@@ -221,7 +235,7 @@ public class DistributedVectorIndex implements Index {
                     );
                 }
 
-                batch.put(id, new VectorObject(vector, url, null));
+                batch.put(id, new VectorObject(vector, url, metadata));
                 importedCount++;
                 maxId = Math.max(maxId, id);
 

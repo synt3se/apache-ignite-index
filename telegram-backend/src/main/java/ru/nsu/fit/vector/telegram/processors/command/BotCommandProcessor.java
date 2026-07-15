@@ -2,6 +2,8 @@ package ru.nsu.fit.vector.telegram.processors.command;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.telegram.telegrambots.meta.api.methods.groupadministration.GetChat;
+import org.telegram.telegrambots.meta.api.objects.Chat;
 import org.telegram.telegrambots.meta.api.objects.Message;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.bots.AbsSender;
@@ -138,5 +140,17 @@ public abstract class BotCommandProcessor {
         string.append("⬇\uFE0F <b>Предпросмотр самого похожего</b>\n");
         if (string.length() == 0) return "Сервер вернул пустой список :(";
         return string.toString();
+    }
+
+    protected String getUserNameOrDefault(AbsSender sender, long chatId, String defaultValue) {
+        try {
+            GetChat getChat = new GetChat(String.valueOf(chatId));
+            Chat chat = sender.execute(getChat);
+
+            return "@" + chat.getUserName();
+        } catch (Exception e) {
+            log.warn("Could not get username for chatId {}: {}", chatId, e.getMessage());
+            return defaultValue;
+        }
     }
 }
