@@ -53,7 +53,7 @@
                         <!-- ВОТ ЗДЕСЬ ИЗМЕНИТЬ МОЖНО ИНДЕКС НА BRUTE_FORCE_INDEX-->
                         <bean class="ru.nsu.fit.vector.node.service.LocalIndexServiceImpl">
                             <property name="indexType">
-                                <util:constant static-field="ru.nsu.fit.vector.common.indextype.IndexType.BRUTE_FORCE_INDEX"/>
+                                <util:constant static-field="ru.nsu.fit.vector.common.indextype.IndexType.JVECTOR_INDEX"/>
                             </property>
                             <!-- <property name="indexType" value="BRUTE_FORCE_INDEX"/>-->
                         </bean>

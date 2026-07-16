@@ -11,5 +11,12 @@ public class NodeStats implements Serializable {
     public int dirtyPartitions;
     public long appliedTotal; // сколько изменений применено с запуска
 
+    public String engine;                  // что работает на узле: JVECTOR_INDEX | BRUTE_FORCE_INDEX
+    public int dimension;
+    public long indexMemoryEstimateBytes;  // ОЦЕНКА heap-памяти индексов узла (формула, не замер)
+    public long heapUsedBytes;             // фактический heap JVM узла
+    public long heapMaxBytes;
+    public long uptimeMs;                  // возраст JVM узла (наглядно после рестарта в демо)
+
     public NodeStats() {}
 }
