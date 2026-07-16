@@ -1,5 +1,6 @@
 services:
   ignite-node-1:
+    restart: unless-stopped
     build:
       context: .
       dockerfile_inline: |
@@ -16,7 +17,6 @@ services:
     environment:
       CONFIG_URI: /config/ignite-config.xml
       JVM_OPTS: >-
-        -DIGNITE_QUIET=false
         --add-opens=java.base/java.nio=ALL-UNNAMED
         --add-opens=java.base/sun.nio.ch=ALL-UNNAMED
         --add-opens=java.base/java.lang=ALL-UNNAMED
@@ -28,10 +28,7 @@ services:
       - ./config:/config:ro
       - ./ignite-libs/vector-index-common-1.0-SNAPSHOT.jar:/opt/ignite/apache-ignite/libs/vector-index-common-1.0-SNAPSHOT.jar:ro
       - ./ignite-libs/vector-index-node-1.0-SNAPSHOT.jar:/opt/ignite/apache-ignite/libs/vector-index-node-1.0-SNAPSHOT.jar:ro
-      - ./ignite-libs/jvector-4.0.0-rc.8-hf1.jar:/opt/ignite/apache-ignite/libs/jvector-4.0.0-rc.8-hf1.jar:ro
-      - ./ignite-libs/slf4j-api-2.0.16.jar:/opt/ignite/apache-ignite/libs/slf4j-api-2.0.16.jar:ro
-      - ./ignite-libs/slf4j-simple-2.0.16.jar:/opt/ignite/apache-ignite/libs/slf4j-simple-2.0.16.jar:ro
-      - ./ignite-libs/agrona-1.22.0.jar:/opt/ignite/apache-ignite/libs/agrona-1.22.0.jar:ro
+      - ./ignite-libs:/opt/ignite/apache-ignite/libs/ext:ro
     ports:
       - "10800:10800"
       - "47100:47100"
@@ -40,6 +37,7 @@ services:
       - ignite-net
 
   ignite-node-2:
+    restart: unless-stopped
     image: ignite-java17:2.18.0
     container_name: ignite-node-2
     environment:
@@ -56,10 +54,7 @@ services:
       - ./config:/config:ro
       - ./ignite-libs/vector-index-common-1.0-SNAPSHOT.jar:/opt/ignite/apache-ignite/libs/vector-index-common-1.0-SNAPSHOT.jar:ro
       - ./ignite-libs/vector-index-node-1.0-SNAPSHOT.jar:/opt/ignite/apache-ignite/libs/vector-index-node-1.0-SNAPSHOT.jar:ro
-      - ./ignite-libs/jvector-4.0.0-rc.8-hf1.jar:/opt/ignite/apache-ignite/libs/jvector-4.0.0-rc.8-hf1.jar:ro
-      - ./ignite-libs/slf4j-api-2.0.16.jar:/opt/ignite/apache-ignite/libs/slf4j-api-2.0.16.jar:ro
-      - ./ignite-libs/slf4j-simple-2.0.16.jar:/opt/ignite/apache-ignite/libs/slf4j-simple-2.0.16.jar:ro
-      - ./ignite-libs/agrona-1.22.0.jar:/opt/ignite/apache-ignite/libs/agrona-1.22.0.jar:ro
+      - ./ignite-libs:/opt/ignite/apache-ignite/libs/ext:ro
     networks:
       - ignite-net
     depends_on:
