@@ -84,7 +84,7 @@ public class GatewayController {
         String url = request.url();
         byte[] imageBytes = downloadImage(url);
         float[] vector = clipClient.embedImage(imageBytes, url);
-        return indexClient.add(vector, url, null);
+        return indexClient.add(vector, url, request.metadata());
     }
 
     private byte[] downloadImage(String url) {

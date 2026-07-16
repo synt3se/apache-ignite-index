@@ -9,21 +9,18 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
 import ru.nsu.fit.vector.common.ScoredVector;
 import ru.nsu.fit.vector.common.VectorObject;
-import ru.nsu.fit.vector.common.dto.AddRequest;
-import ru.nsu.fit.vector.common.dto.ClusterStats;
-import ru.nsu.fit.vector.common.dto.Neighbor;
-import ru.nsu.fit.vector.common.dto.NodeStats;
+import ru.nsu.fit.vector.common.dto.*;
 import ru.nsu.fit.vector.node.compute.ClearVectorTask;
 import ru.nsu.fit.vector.node.compute.SearchVectorTask;
 import ru.nsu.fit.vector.node.compute.StatsTask;
+import ru.nsu.fit.vector.node.service.SearchAggregationService;
 import java.util.HashMap;
 import java.util.Map;
 import ru.nsu.fit.vector.node.compute.RebuildIndexesTask;
 
 import javax.cache.Cache;
 import java.io.*;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 
 @Primary
 @Component
@@ -32,6 +29,10 @@ public class DistributedVectorIndex implements Index {
     private final ClientCache<Long, VectorObject> cache;
     private final int dimension;
     private static final int LOAD_BATCH_SIZE = 5_000;
+
+    @Value("${search.mode:task}")
+    private String searchMode;
+    private SearchAggregationService aggregator;
 
     public DistributedVectorIndex(
             IgniteClient igniteClient,
@@ -92,10 +93,18 @@ public class DistributedVectorIndex implements Index {
 
     @Override
     public List<Neighbor> search(float[] queryVector, int count) {
+        if ("service".equalsIgnoreCase(searchMode)) {
+            SearchResponse resp = aggregator().search(queryVector, count);
+            List<Neighbor> result = new ArrayList<>(resp.results.size());
+            for (SearchHit h : resp.results) {
+                result.add(new Neighbor(h.id, h.distance, h.url, h.metadata));
+            }
+            return result;
+        }
+
         validateVector(queryVector);
 
         List<ScoredVector> scoredVectors;
-
         try {
             scoredVectors = igniteClient.compute().execute(
                     SearchVectorTask.class.getName(),
@@ -106,21 +115,22 @@ public class DistributedVectorIndex implements Index {
             throw new RuntimeException("Search vector task was interrupted", e);
         }
 
-        List<Neighbor> result = new ArrayList<>();
+        if (scoredVectors.isEmpty()) {
+            return List.of();
+        }
 
-        for (ScoredVector scoredVector : scoredVectors) {
-            VectorObject object = cache.get(scoredVector.id());
+        Set<Long> ids = new HashSet<>();
+        for (ScoredVector sv : scoredVectors) {
+            ids.add(sv.id());
+        }
 
-            if (object == null) {
-                continue;
-            }
+        Map<Long, VectorObject> loaded = cache.getAll(ids);
 
-            result.add(new Neighbor(
-                    scoredVector.id(),
-                    scoredVector.distance(),
-                    object.getUrl(),
-                    object.getMetadata()
-            ));
+        List<Neighbor> result = new ArrayList<>(scoredVectors.size());
+        for (ScoredVector sv : scoredVectors) {
+            VectorObject object = loaded.get(sv.id());
+            if (object == null) { continue; }
+            result.add(new Neighbor(sv.id(), sv.distance(), object.getUrl(), object.getMetadata()));
         }
 
         return result;
@@ -129,7 +139,7 @@ public class DistributedVectorIndex implements Index {
     @Override
     public void save(String path) {
         try (BufferedWriter bw = new BufferedWriter(new FileWriter(path))) {
-            bw.write("id,url,embedding");
+            bw.write("id;url;embedding;metadata");
             bw.newLine();
 
             long savedCount = 0;
@@ -153,7 +163,14 @@ public class DistributedVectorIndex implements Index {
                     }
                     vectorBuilder.append("]");
 
-                    String csvLine = String.format("%d,%s,\"%s\"", id, obj.getUrl(), vectorBuilder.toString());
+                    String metadata = obj.getMetadata() != null ? obj.getMetadata() : "";
+
+                    String csvLine = String.format("%d;%s;%s;%s",
+                            id,
+                            obj.getUrl(),
+                            vectorBuilder.toString(),
+                            metadata
+                    );
 
                     bw.write(csvLine);
                     bw.newLine();
@@ -171,6 +188,7 @@ public class DistributedVectorIndex implements Index {
             throw new RuntimeException("CSV export error: " + path, e);
         }
     }
+
     @Override
     public long load(String path) {
         long maxId = 0;
@@ -184,22 +202,31 @@ public class DistributedVectorIndex implements Index {
             while ((line = br.readLine()) != null) {
                 if (line.isBlank()) continue;
 
-                int firstComma = line.indexOf(';');
-                int secondComma = line.indexOf(';', firstComma + 1);
-                if (firstComma == -1 || secondComma == -1) continue;
+                int firstSemicolon = line.indexOf(';');
+                int secondSemicolon = line.indexOf(';', firstSemicolon + 1);
+                int thirdSemicolon = line.indexOf(';', secondSemicolon + 1);
 
-                long id = Long.parseLong(line.substring(0, firstComma));
-                String url = line.substring(firstComma + 1, secondComma);
-                String vectorStr = line.substring(secondComma + 1)
-                        .replace("\"", "")
+                if (firstSemicolon == -1 || secondSemicolon == -1 || thirdSemicolon == -1) {
+                    continue; // Пропускаем некорректные строки
+                }
+
+                long id = Long.parseLong(line.substring(0, firstSemicolon));
+                String url = line.substring(firstSemicolon + 1, secondSemicolon);
+
+                String vectorStr = line.substring(secondSemicolon + 1, thirdSemicolon)
                         .replace("[", "")
                         .replace("]", "")
                         .trim();
 
+                String metadataStr = line.substring(thirdSemicolon + 1).trim();
+                String metadata = metadataStr.isEmpty() ? null : metadataStr;
+
                 String[] tokens = vectorStr.split(",\\s*");
                 float[] vector = new float[tokens.length];
 
-                for (int i = 0; i < tokens.length; i++) vector[i] = Float.parseFloat(tokens[i]);
+                for (int i = 0; i < tokens.length; i++) {
+                    vector[i] = Float.parseFloat(tokens[i]);
+                }
 
                 if (vector.length != dimension) {
                     throw new IllegalArgumentException(
@@ -208,7 +235,7 @@ public class DistributedVectorIndex implements Index {
                     );
                 }
 
-                batch.put(id, new VectorObject(vector, url, null));
+                batch.put(id, new VectorObject(vector, url, metadata));
                 importedCount++;
                 maxId = Math.max(maxId, id);
 
@@ -291,9 +318,27 @@ public class DistributedVectorIndex implements Index {
         cs.nodes = nodes;
         cs.serverNodes = nodes.size();
         long live = 0;
-        for (NodeStats n : nodes) live += n.liveVectors;
+        long mem = 0;
+        for (NodeStats n : nodes) {
+            live += n.liveVectors;
+            mem += n.indexMemoryEstimateBytes;
+        }
         cs.totalLiveVectors = live;
+        cs.totalIndexMemoryEstimateBytes = mem;
         return cs;
+    }
+
+    private SearchAggregationService aggregator() {
+        if (aggregator == null) {
+            aggregator = igniteClient.services()
+                    .serviceProxy(SearchAggregationService.NAME, SearchAggregationService.class);
+        }
+        return aggregator;
+    }
+
+    @Override
+    public SearchResponse searchFull(float[] queryVector, int count) {
+        return aggregator().search(queryVector, count);   // напрямую через сервис, mode не важен
     }
 
 }

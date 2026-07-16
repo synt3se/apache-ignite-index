@@ -1,5 +1,6 @@
 package ru.nsu.fit.vector.node.index;
 
+import java.lang.management.ManagementFactory;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -212,7 +213,7 @@ public final class PartitionIndexManager {
             }
             PartitionState st = partitions.computeIfAbsent(partition, PartitionState::new);
             again = st.rebuild(this::buildIndexFor, this::applyKey);
-            log.info("[vindex] partition " + partition + " rebuilt in "
+            log.info("[vindex] partition " + partition + " scanned+seeded in "
                     + (System.nanoTime() - t0) / 1_000_000 + " ms"
                     + (again ? " (heavy writes - extra pass)" : ""));
         }catch (IllegalArgumentException e) {
@@ -223,10 +224,7 @@ public final class PartitionIndexManager {
             dirty.add(partition);
             requestReconcile();
 
-            log.error(
-                    "[vindex] partition " + partition + " rebuild FAILED",
-                    e
-            );
+            log.error("[vindex] partition " + partition + " rebuild FAILED", e);
         } finally {
             rebuildQueued.remove(partition);
             if (again) scheduleRebuild(partition);
@@ -274,9 +272,9 @@ public final class PartitionIndexManager {
         }
 
 
-        log.info("[vindex] jvector build START partition=" + partition);
-        idx.build(vectors);
-        log.info("[vindex] jvector build FINISHED partition=" + partition);
+        log.info("[vindex] seed START partition=" + partition);
+        idx.seedAndBuildAsync(vectors);
+        log.info("[vindex] seed FINISHED partition=" + partition + " (graph builds in background)");
 
         return idx;
     }
@@ -293,8 +291,9 @@ public final class PartitionIndexManager {
         PriorityQueue<ScoredVector> top = new PriorityQueue<>(
                 Comparator.comparingDouble(ScoredVector::distance).reversed());
         for (PartitionState st : partitions.values()) {
-            if (!st.isActive()) continue;                     // только владельческие ACTIVE
-            for (ScoredVector c : st.indexOrNull().search(query, count)) {
+            PartitionVectorIndex idx = st.indexOrNull();
+            if (idx == null) continue;
+            for (ScoredVector c : idx.search(query, count)) {
                 if (top.size() < count) top.add(c);
                 else if (top.peek() != null && c.distance() < top.peek().distance()) {
                     top.poll();
@@ -325,7 +324,29 @@ public final class PartitionIndexManager {
         s.applierBacklog = applier == null ? 0 : applier.backlog();
         s.dirtyPartitions = dirty.size();
         s.appliedTotal = applied.get();
+
+        s.engine = indexType.name();
+        s.dimension = dimension;
+        s.indexMemoryEstimateBytes = live * bytesPerVectorEstimate();
+        Runtime rt = Runtime.getRuntime();
+        s.heapUsedBytes = rt.totalMemory() - rt.freeMemory();
+        s.heapMaxBytes = rt.maxMemory();
+        s.uptimeMs = ManagementFactory.getRuntimeMXBean().getUptime();
+
         return s;
+    }
+
+    /**
+     * Оценка heap-памяти на вектор (ARCHITECTURE-V2 §11.2) — формула, не замер.
+     * JVector: ДВЕ копии вектора (float[] + VectorFloat движка) + рёбра графа
+     * (M=32) + служебные мапы. Brute-force: одна копия + запись мапы.
+     */
+    private long bytesPerVectorEstimate() {
+        long vectorBytes = 16L + (long) dimension * Float.BYTES;       // float[] с заголовком
+        if (indexType == IndexType.JVECTOR_INDEX) {
+            return 2 * vectorBytes + 2L * 32 * Integer.BYTES + 150;    // 4.5 КиБ при dim=512
+        }
+        return vectorBytes + 100;                                      // 2.1 КиБ при dim=512
     }
 
     public void clearAll() {

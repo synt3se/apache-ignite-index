@@ -9,7 +9,7 @@
 
     <bean class="org.apache.ignite.configuration.IgniteConfiguration">
 
-        <!-- События, на которых живёт индексная плоскость -->
+        <!-- События -->
         <property name="includeEventTypes">
             <list>
                 <util:constant static-field="org.apache.ignite.events.EventType.EVT_CACHE_OBJECT_PUT"/>
@@ -21,7 +21,7 @@
             </list>
         </property>
 
-        <!-- Кэш-источник истины: теперь объявлен явно (нужен серверам к старту сервиса) -->
+        <!-- Кэш-источник истины: теперь объявлен явно -->
         <property name="cacheConfiguration">
             <list>
                 <bean class="org.apache.ignite.configuration.CacheConfiguration">
@@ -71,6 +71,14 @@
                                 </bean>
                             </property>
                         </bean>
+                    </property>
+                </bean>
+                <bean class="org.apache.ignite.services.ServiceConfiguration">
+                    <property name="name" value="SearchAggregationService"/>
+                    <property name="maxPerNodeCount" value="1"/>
+                    <property name="totalCount" value="0"/>
+                    <property name="service">
+                        <bean class="ru.nsu.fit.vector.node.service.SearchAggregatorServiceImpl"/>
                     </property>
                 </bean>
             </list>

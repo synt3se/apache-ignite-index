@@ -60,7 +60,7 @@ public class VectorService {
     }
 
     public ResponseEntity<String> load(LoadRequest request) {
-        log.info("Received LoadRequest для пути: {}", request.file());
+        log.info("Received LoadRequest for path: {}", request.file());
 
         clear();
 
@@ -85,5 +85,9 @@ public class VectorService {
 
     public ResponseEntity<ClusterStats> stats() {
         return ResponseEntity.ok(index.stats());
+    }
+
+    public ResponseEntity<SearchResponse> searchFull(SearchRequest request) {
+        return ResponseEntity.ok(index.searchFull(request.vector(), request.count()));
     }
 }

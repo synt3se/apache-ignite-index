@@ -1,4 +1,4 @@
-package ru.nsu.fit.vector.telegram.command;
+package ru.nsu.fit.vector.telegram.processors.command;
 
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.bots.AbsSender;
@@ -16,7 +16,7 @@ public class UnknownCommandProcessor extends BotCommandProcessor {
     }
     @Override
     protected String getReplyPrompt() {
-        return "Пожалуйста, отправьте поддерживаемую команду или ответьте на необходимое сообщение";
+        return "❌ Сообщение не распознано. Пожалуйста, отправьте поддерживаемую команду или ответьте на необходимое сообщение";
     }
 
     @Override

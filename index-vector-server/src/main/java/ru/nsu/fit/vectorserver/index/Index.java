@@ -23,4 +23,8 @@ public interface Index {
     void rebuild();
 
     ClusterStats stats();
+
+    default ru.nsu.fit.vector.common.dto.SearchResponse searchFull(float[] vector, int count) {
+        throw new UnsupportedOperationException("full search requires aggregator service");
+    }
 }
