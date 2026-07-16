@@ -69,14 +69,14 @@ public class GetCommandProcessor extends BotCommandProcessor {
     }
 
     private String formatStringResult(Dto.VectorResponse response) {
-        String sourceValue = null;
+        String sourceValue;
         try {
             ObjectMapper objectMapper = new ObjectMapper();
             JsonNode jsonNode = objectMapper.readTree(response.metadata());
 
             sourceValue = jsonNode.get("source").asText();
         } catch (Exception e) {
-            throw new RuntimeException(e);
+            sourceValue = "unknown";
         }
         return String.format(
                 "🆔 <code>%s</code>\n" +
