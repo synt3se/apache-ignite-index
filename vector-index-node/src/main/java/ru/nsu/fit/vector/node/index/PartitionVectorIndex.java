@@ -14,6 +14,7 @@ public interface PartitionVectorIndex {
     default void seedAndBuildAsync(Map<Long, float[]> vectors) {
         build(vectors);
     }
+    default int pendingCount() { return 0; }
     void clear();
     int size();
 }

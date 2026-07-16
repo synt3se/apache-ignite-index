@@ -415,6 +415,8 @@ public class JVectorPartitionIndex
             for (Map.Entry<Long, float[]> entry : includedPending.entrySet()) {
                 pendingVectors.remove(entry.getKey(), entry.getValue());
             }
+            System.out.println("[jvector] graph rebuilt: live=" + newSnapshot.size()
+                    + ", pendingLeft=" + pendingVectors.size());
 
             deletedFromGraph.removeAll(includedDeleted);
 
@@ -452,6 +454,16 @@ public class JVectorPartitionIndex
         }
 
         rebuildAsync();
+    }
+
+    @Override
+    public int pendingCount() {
+        lock.readLock().lock();
+        try {
+            return pendingVectors.size();
+        } finally {
+            lock.readLock().unlock();
+        }
     }
 
     private IndexSnapshot buildSnapshot(Map<Long, float[]> activeVectors) {
