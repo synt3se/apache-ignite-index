@@ -318,8 +318,13 @@ public class DistributedVectorIndex implements Index {
         cs.nodes = nodes;
         cs.serverNodes = nodes.size();
         long live = 0;
-        for (NodeStats n : nodes) live += n.liveVectors;
+        long mem = 0;
+        for (NodeStats n : nodes) {
+            live += n.liveVectors;
+            mem += n.indexMemoryEstimateBytes;
+        }
         cs.totalLiveVectors = live;
+        cs.totalIndexMemoryEstimateBytes = mem;
         return cs;
     }
 

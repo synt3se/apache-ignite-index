@@ -1,5 +1,6 @@
 package ru.nsu.fit.vector.node.index;
 
+import java.lang.management.ManagementFactory;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -313,7 +314,29 @@ public final class PartitionIndexManager {
         s.applierBacklog = applier == null ? 0 : applier.backlog();
         s.dirtyPartitions = dirty.size();
         s.appliedTotal = applied.get();
+
+        s.engine = indexType.name();
+        s.dimension = dimension;
+        s.indexMemoryEstimateBytes = live * bytesPerVectorEstimate();
+        Runtime rt = Runtime.getRuntime();
+        s.heapUsedBytes = rt.totalMemory() - rt.freeMemory();
+        s.heapMaxBytes = rt.maxMemory();
+        s.uptimeMs = ManagementFactory.getRuntimeMXBean().getUptime();
+
         return s;
+    }
+
+    /**
+     * Оценка heap-памяти на вектор (ARCHITECTURE-V2 §11.2) — формула, не замер.
+     * JVector: ДВЕ копии вектора (float[] + VectorFloat движка) + рёбра графа
+     * (M=32) + служебные мапы. Brute-force: одна копия + запись мапы.
+     */
+    private long bytesPerVectorEstimate() {
+        long vectorBytes = 16L + (long) dimension * Float.BYTES;       // float[] с заголовком
+        if (indexType == IndexType.JVECTOR_INDEX) {
+            return 2 * vectorBytes + 2L * 32 * Integer.BYTES + 150;    // 4.5 КиБ при dim=512
+        }
+        return vectorBytes + 100;                                      // 2.1 КиБ при dim=512
     }
 
     public void clearAll() {
