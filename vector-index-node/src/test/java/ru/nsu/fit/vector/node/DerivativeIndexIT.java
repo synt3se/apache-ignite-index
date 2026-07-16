@@ -115,7 +115,7 @@ class DerivativeIndexIT {
     }
 
     private static PartitionIndexManager started(Ignite ignite) {
-        PartitionIndexManager m = new PartitionIndexManager(ignite, "vectors", 512, IndexType.JVECTOR_INDEX);
+        PartitionIndexManager m = new PartitionIndexManager(ignite, "vectors", 512, IndexType.JVECTOR_INDEX, null);
         m.start();
         return m;
     }

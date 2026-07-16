@@ -5,6 +5,7 @@ import org.apache.ignite.resources.IgniteInstanceResource;
 import org.apache.ignite.services.Service;
 import org.apache.ignite.services.ServiceContext;
 
+import ru.nsu.fit.vector.node.index.JVectorProperties;
 import ru.nsu.fit.vector.node.index.PartitionIndexManager;
 import ru.nsu.fit.vector.common.indextype.IndexType;
 
@@ -16,11 +17,24 @@ public class LocalIndexServiceImpl implements Service {
     private transient Ignite ignite;
     private transient PartitionIndexManager manager;
     private IndexType indexType = IndexType.JVECTOR_INDEX;
+
     private int dimension = 512;
+
+
+
+    public void setDimension(int dimension) {
+        this.dimension = dimension;
+    }
+
+
     public void setIndexType(IndexType indexType) {
         this.indexType = indexType;
     }
+    private JVectorProperties jvectorProperties;
 
+    public void setJvectorProperties(JVectorProperties jvectorProperties) {
+        this.jvectorProperties = jvectorProperties;
+    }
 
     @Override
     public void init(ServiceContext ctx) {
@@ -29,7 +43,8 @@ public class LocalIndexServiceImpl implements Service {
                 ignite,
                 "vectors",
                 dimension,
-                indexType
+                indexType,
+                jvectorProperties
         );
         manager.start();
     }

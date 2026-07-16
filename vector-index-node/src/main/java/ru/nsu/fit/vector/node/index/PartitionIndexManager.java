@@ -66,12 +66,20 @@ public final class PartitionIndexManager {
 
     private final IndexType indexType;
     private final int dimension;
+    private final JVectorProperties jVectorProperties;
 
-    public PartitionIndexManager(Ignite ignite, String cacheName, int dimension, IndexType indexType) {
+    public PartitionIndexManager(
+            Ignite ignite,
+            String cacheName,
+            int dimension,
+            IndexType indexType,
+            JVectorProperties jVectorProperties
+    ) {
         this.ignite = ignite;
         this.cacheName = cacheName;
         this.dimension = dimension;
         this.indexType = indexType;
+        this.jVectorProperties = jVectorProperties;
     }
 
     public void start() {
@@ -256,8 +264,10 @@ public final class PartitionIndexManager {
 
         int dimension = 512;
         if (indexType == IndexType.JVECTOR_INDEX){
-            idx = new JVectorPartitionIndex(dimension);
+            log.info("JVECTOR_INDEX start with param " + jVectorProperties.toString() + " ");
+            idx = new JVectorPartitionIndex(dimension, jVectorProperties);
         }else{
+            log.info("BTUR_FORCE_INDEX start");
             idx = new BruteForcePartitionIndex();
         }
 
