@@ -25,49 +25,49 @@ public class VectorService {
     }
 
     public ResponseEntity<VectorResponse> add(AddRequest request) {
-        log.info("Received AddRequest");
+        log.debug("Received AddRequest");
         long id = idGenerator.nextId();
         index.add(id, request);
         VectorResponse response = new VectorResponse(
                 id, request.vector(), request.url(), request.metadata());
-        log.info("AddRequest processed. VectorResponse: " + response);
+        log.debug("AddRequest processed. VectorResponse: " + response);
         return ResponseEntity.ok(response);
     }
 
     public ResponseEntity<VectorResponse> get(Long id) {
-        log.info("Received GetRequest");
+        log.debug("Received GetRequest");
         VectorObject obj = index.get(id);
         if (obj == null) {
             throw new ResourceNotFoundException("Vector with id " + id + " not found");
         }
         VectorResponse response = new VectorResponse(id, obj.getVector(), obj.getUrl(), obj.getMetadata());
-        log.info("GetRequest processed. VectorResponse: " + response);
+        log.debug("GetRequest processed. VectorResponse: " + response);
         return ResponseEntity.ok(response);
     }
 
     public ResponseEntity<List<Neighbor>> search(SearchRequest request) {
-        log.info("Received SearchRequest");
+        log.debug("Received SearchRequest");
         List<Neighbor> result = index.search(request.vector(), request.count());
-        log.info("SearchRequest processed. Neighbors: " + result);
+        log.debug("SearchRequest processed. Neighbors: " + result);
         return ResponseEntity.ok(result);
     }
 
     public ResponseEntity<String> save(SaveRequest request) {
-        log.info("Received SaveRequest");
+        log.debug("Received SaveRequest");
         index.save(request.file());
-        log.info("SaveRequest processed");
+        log.debug("SaveRequest processed");
         return ResponseEntity.ok("SaveRequest processed");
     }
 
     public ResponseEntity<String> load(LoadRequest request) {
-        log.info("Received LoadRequest for path: {}", request.file());
+        log.debug("Received LoadRequest for path: {}", request.file());
 
         clear();
 
         long maxId = index.load(request.file());
         idGenerator.setCounter(maxId);
 
-        log.info("LoadRequest processed. New ID counter: {}", maxId);
+        log.debug("LoadRequest processed. New ID counter: {}", maxId);
         return ResponseEntity.ok("LoadRequest processed.");
     }
 

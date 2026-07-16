@@ -50,7 +50,17 @@ def model():
         import torch
         from sentence_transformers import SentenceTransformer
         device = "cuda" if torch.cuda.is_available() else "cpu"
-        _model = SentenceTransformer("clip-ViT-B-32", device=device)
+
+        # Указываем локальный путь к сохраненной папке
+        local_model_path = "./models/clip-ViT-B-32"
+
+        if os.path.exists(local_model_path):
+            # Загрузка локально без каких-либо проверок в интернете
+            _model = SentenceTransformer(local_model_path, device=device)
+        else:
+            # Резервный вариант: если папки нет, качаем из сети (как было раньше)
+            _model = SentenceTransformer("clip-ViT-B-32", device=device)
+
     return _model
 
 
@@ -61,6 +71,12 @@ def fake_vector(seed: bytes) -> list[float]:
     norm = sum(x * x for x in v) ** 0.5 or 1.0
     return [x / norm for x in v]
 
+@app.on_event("startup")
+def startup_event():
+    if not FAKE:
+        print("Загрузка модели CLIP...")
+        model()  # Принудительно вызываем инициализацию при старте сервера
+        print("Модель успешно загружена!")
 
 @app.get("/health")
 def health():
