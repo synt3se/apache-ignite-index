@@ -7,6 +7,7 @@ import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ConfigurableApplicationContext;
 import ru.nsu.fit.vectorserver.VectorServerApplication;
 import ru.nsu.fit.vectorserver.VectorService;
+import ru.nsu.fit.vectorserver.benchmark.dataset.BenchmarkDatasetRunner;
 
 /*
 ======================== BEFORE RUNNING BENCHMARK =======================
@@ -24,15 +25,22 @@ public class BenchmarkMain {
         OUR_DATASET,
         N_CLIENTS
     }
+    private static final String DATABASE_PATH = "C:/Users/danil/Desktop/IgniteDB/database.csv";
 
+    private static final String QUERIES_PATH = "C:/Users/danil/Desktop/IgniteDB/quieries.csv";
+
+    private static final String RESULTS_PATH = "C:/Users/danil/Desktop/IgniteDB/results.csv";
+
+    private static final int NEIGHBOR_COUNT = 10;
+    //TODO сделать более удобные настройки
     public static void main(String[] args){
-        System.out.println("Hello");
+        System.out.println("Hello! Starting benchmark...");
         ConfigurableApplicationContext context =
                 new SpringApplicationBuilder(VectorServerApplication.class)
                         .web(WebApplicationType.NONE)
                         .run(args);
 
-        Mode mode = Mode.ANN_BENCHMARK_TEST;
+        Mode mode = Mode.OUR_DATASET;
 
         if (mode == Mode.ANN_BENCHMARK_TEST){
             try{
@@ -44,7 +52,7 @@ public class BenchmarkMain {
                 runner.run(neighborCount, hdf5Path);
 
             }catch (IllegalArgumentException e){
-                System.err.println();
+                System.err.println("[ERROR ILLEGAL ARGUMENT]: " + e.getMessage());
             }
             finally {
                 context.close();
@@ -53,15 +61,22 @@ public class BenchmarkMain {
             context.close();
         }else if (mode == Mode.OUR_DATASET){
             try{
-                VectorService vectorService = context.getBean(VectorService.class);
-                BenchmarkTestRunner runner = new BenchmarkTestRunner(vectorService);
-                int neighborCount = 10;
-                String hdf5Path = "index-vector-server/src/main/resources/coco-i2i-512-angular.hdf5";
-                //String hdf5Path = "index-vector-server/src/main/resources/mnist-784-euclidean.hdf5";
-                runner.run(neighborCount, hdf5Path);
+                System.out.println("Database benchmark");
+                VectorService service = context.getBean(VectorService.class);
+                BenchmarkDatasetRunner runner =
+                        new BenchmarkDatasetRunner(
+                                service,
+                                BenchmarkDatasetRunner.IndexType.JVECTOR
+                        );
 
+                runner.run(
+                        NEIGHBOR_COUNT,
+                        DATABASE_PATH,
+                        QUERIES_PATH,
+                        RESULTS_PATH
+                );
             }catch (IllegalArgumentException e){
-                System.err.println();
+                System.err.println("[ERROR ILLEGAL ARGUMENT]: " + e.getMessage());
             }
             finally {
                 context.close();

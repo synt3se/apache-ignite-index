@@ -184,8 +184,8 @@ public class DistributedVectorIndex implements Index {
             while ((line = br.readLine()) != null) {
                 if (line.isBlank()) continue;
 
-                int firstComma = line.indexOf(',');
-                int secondComma = line.indexOf(',', firstComma + 1);
+                int firstComma = line.indexOf(';');
+                int secondComma = line.indexOf(';', firstComma + 1);
                 if (firstComma == -1 || secondComma == -1) continue;
 
                 long id = Long.parseLong(line.substring(0, firstComma));
