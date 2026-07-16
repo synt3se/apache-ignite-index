@@ -273,8 +273,8 @@ public final class PartitionIndexManager {
 
 
         log.info("[vindex] seed START partition=" + partition);
-        // idx.seedAndBuildAsync(vectors);
-        idx.build(vectors);
+        idx.seedAndBuildAsync(vectors);
+        // idx.build(vectors);
         log.info("[vindex] seed FINISHED partition=" + partition + " (graph builds in background)");
 
         return idx;
@@ -292,8 +292,9 @@ public final class PartitionIndexManager {
         PriorityQueue<ScoredVector> top = new PriorityQueue<>(
                 Comparator.comparingDouble(ScoredVector::distance).reversed());
         for (PartitionState st : partitions.values()) {
-            if (!st.isActive()) continue;                     // только владельческие ACTIVE
-            for (ScoredVector c : st.indexOrNull().search(query, count)) {
+            PartitionVectorIndex idx = st.indexOrNull();
+            if (idx == null) continue;
+            for (ScoredVector c : idx.search(query, count)) {
                 if (top.size() < count) top.add(c);
                 else if (top.peek() != null && c.distance() < top.peek().distance()) {
                     top.poll();
@@ -318,6 +319,14 @@ public final class PartitionIndexManager {
                 if (idx != null) live += idx.size();
             }
         }
+
+        long enginePending = 0;
+        for (PartitionState st : partitions.values()) {
+            PartitionVectorIndex idx = st.indexOrNull();
+            if (idx != null) enginePending += idx.pendingCount();
+        }
+        s.enginePendingVectors = enginePending;
+
         s.ownedPartitions = partitions.size();
         s.activePartitions = active;
         s.liveVectors = live;

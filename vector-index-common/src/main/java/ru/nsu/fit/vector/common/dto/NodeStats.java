@@ -10,6 +10,7 @@ public class NodeStats implements Serializable {
     public long applierBacklog; // отставание индекса от кэша
     public int dirtyPartitions;
     public long appliedTotal; // сколько изменений применено с запуска
+    public long enginePendingVectors;
 
     public String engine;                  // что работает на узле: JVECTOR_INDEX | BRUTE_FORCE_INDEX
     public int dimension;

@@ -27,6 +27,7 @@ public class BenchmarkDatasetRunner {
     private static final int MAX_MEASURED_QUERY_COUNT = 100;
     private static final long INDEX_READY_TIMEOUT_MS = 30 * 60_000L;
     private static final double DISTANCE_EPSILON = 1e-6;
+    private static final int READY_STABLE_POLLS = 3;
 
     private final VectorService service;
     private final IndexType indexType;
@@ -112,7 +113,7 @@ public class BenchmarkDatasetRunner {
             );
         }
 
-        waitUntilIndexReady(expectedVectorCount);
+        waitUntilIndexReady();
 
         long loadEnd = System.nanoTime();
 
@@ -701,62 +702,59 @@ public class BenchmarkDatasetRunner {
         return count;
     }
 
-    private void waitUntilIndexReady(long expectedVectors) {
-        long deadline = System.currentTimeMillis()
-                + INDEX_READY_TIMEOUT_MS;
+    private void waitUntilIndexReady() {
+        long deadline = System.currentTimeMillis() + INDEX_READY_TIMEOUT_MS;
+        int stablePolls = 0;
 
         while (System.currentTimeMillis() < deadline) {
             ClusterStats stats = service.stats().getBody();
-
             if (stats == null) {
-                throw new IllegalStateException(
-                        "Stats response body is null"
-                );
+                throw new IllegalStateException("Stats response body is null");
             }
 
-            long indexedVectors = stats.totalLiveVectors;
-            long backlog = 0L;
-            int dirtyPartitions = 0;
+            long indexed = stats.totalLiveVectors;
+            long backlog = 0, enginePending = 0;
+            int dirty = 0, owned = 0, active = 0;
 
             for (NodeStats node : stats.nodes) {
                 backlog += node.applierBacklog;
-                dirtyPartitions += node.dirtyPartitions;
+                dirty += node.dirtyPartitions;
+                enginePending += node.enginePendingVectors;
+                owned += node.ownedPartitions;
+                active += node.activePartitions;
             }
 
-            System.out.println(
-                    "Index state: "
-                            + indexedVectors
-                            + "/"
-                            + expectedVectors
-                            + ", backlog="
-                            + backlog
-                            + ", dirty="
-                            + dirtyPartitions
-            );
+            boolean ready = indexed > 0
+                    && backlog == 0
+                    && dirty == 0
+                    && enginePending == 0        // графы движка построены
+                    && active == owned && owned > 0;   // ни одна партиция не застряла в REBUILDING
 
-            if (indexedVectors == expectedVectors
-                    && backlog == 0L
-                    && dirtyPartitions == 0) {
+            System.out.println("Index state: indexed=" + indexed
+                    + ", backlog=" + backlog
+                    + ", dirty=" + dirty
+                    + ", enginePending=" + enginePending
+                    + ", parts=" + active + "/" + owned
+                    + (ready ? "  [ok " + (stablePolls + 1) + "/" + READY_STABLE_POLLS + "]" : ""));
 
-                System.out.println("Index is ready");
-                return;
+            if (ready) {
+                if (++stablePolls >= READY_STABLE_POLLS) {
+                    System.out.println("Index is ready");
+                    return;
+                }
+            } else {
+                stablePolls = 0;               // условие мигнуло - стабильность считаем заново
             }
 
             try {
                 Thread.sleep(1_000L);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-
-                throw new RuntimeException(
-                        "Interrupted while waiting for index",
-                        e
-                );
+                throw new RuntimeException("Interrupted while waiting for index", e);
             }
         }
 
-        throw new IllegalStateException(
-                "Index was not ready before timeout"
-        );
+        throw new IllegalStateException("Index was not ready before timeout - check node logs for 'rebuild FAILED'");
     }
 
     private void printPerformanceMetrics(
