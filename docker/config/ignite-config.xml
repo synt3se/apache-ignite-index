@@ -50,12 +50,26 @@
                     <property name="maxPerNodeCount" value="1"/>
                     <property name="totalCount" value="0"/>
                     <property name="service">
-                        <!-- ВОТ ЗДЕСЬ ИЗМЕНИТЬ МОЖНО ИНДЕКС НА BRUTE_FORCE_INDEX-->
+                        <!--========================= ВОТ ЗДЕСЬ НАСТРОИТЬ ИНДЕКС =====================-->
                         <bean class="ru.nsu.fit.vector.node.service.LocalIndexServiceImpl">
                             <property name="indexType">
-                                <util:constant static-field="ru.nsu.fit.vector.common.indextype.IndexType.BRUTE_FORCE_INDEX"/>
+                                <util:constant static-field="ru.nsu.fit.vector.common.indextype.IndexType.JVECTOR_INDEX"/>
                             </property>
-                            <!-- <property name="indexType" value="BRUTE_FORCE_INDEX"/>-->
+                            <property name="dimension" value="512"/>
+                            <property name="jvectorProperties">
+                                <bean class="ru.nsu.fit.vector.node.index.JVectorProperties">
+                                    <property name="m" value="32"/>
+                                    <property name="efConstruction" value="100"/>
+                                    <property name="efSearch" value="1"/>
+                                    <property name="neighborOverflow" value="1.2"/>
+                                    <property name="alpha" value="1.2"/>
+                                    <property name="addHierarchy" value="true"/>
+                                    <property name="refineFinalGraph" value="true"/>
+                                    <property name="addRebuildRatio" value="0.10"/>
+                                    <property name="deleteRebuildRatio" value="0.20"/>
+                                    <property name="minAdditionsBeforeRebuild" value="256"/>
+                                </bean>
+                            </property>
                         </bean>
                     </property>
                 </bean>
@@ -73,6 +87,7 @@
                             </list>
                         </property>
                     </bean>
+
                 </property>
             </bean>
         </property>

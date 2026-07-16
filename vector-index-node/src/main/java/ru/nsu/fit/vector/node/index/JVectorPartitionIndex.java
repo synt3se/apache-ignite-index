@@ -26,26 +26,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 public class JVectorPartitionIndex
         implements PartitionVectorIndex, AutoCloseable {
 
-    private static final int M = 32;
-    private static final int EF_CONSTRUCTION = 100;
-    private static final float NEIGHBOR_OVERFLOW = 1.2f;
-    private static final float ALPHA = 1.2f;
-    private static final boolean ADD_HIERARCHY = true;
-    private static final boolean REFINE_FINAL_GRAPH = true;
-    private static final double ADD_REBUILD_RATIO = 0.10;
-    private static final double DELETE_REBUILD_RATIO = 0.20;
-    private static final int MIN_ADDITIONS_BEFORE_REBUILD = 256;
     private final int dimension;
-
-
-    private final ExecutorService rebuildExecutor =
-            Executors.newSingleThreadExecutor(r -> {
-                Thread thread = new Thread(r, "jvector-rebuild");
-                thread.setDaemon(true);
-                return thread;
-            });
-
-
 
     //Для преобразования float[] в VectorFloat
     private final VectorTypeSupport vectorTypeSupport =
@@ -62,12 +43,22 @@ public class JVectorPartitionIndex
     private boolean rebuildInProgress = false;
 
 
-    public JVectorPartitionIndex(int dimension) {
+    private final JVectorProperties jVectorProperties;
+
+    public JVectorPartitionIndex(int dimension, JVectorProperties jVectorProperties) {
         if (dimension <= 0)
             throw new IllegalArgumentException("dimension must be positive");
 
         this.dimension = dimension;
+        this.jVectorProperties = jVectorProperties;
     }
+
+    private final ExecutorService rebuildExecutor =
+            Executors.newSingleThreadExecutor(r -> {
+                Thread thread = new Thread(r, "jvector-rebuild");
+                thread.setDaemon(true);
+                return thread;
+            });
 
     @Override
     public void add(long id, float[] vector) {
@@ -264,7 +255,7 @@ public class JVectorPartitionIndex
 
         int rerankK = Math.min(
                 snapshot.size(),
-                count * 2 //Math.max(count, DEFAULT_RERANK_K)
+                count * jVectorProperties.getEfSearch()
         );
 
         SearchResult searchResult;
@@ -329,12 +320,12 @@ public class JVectorPartitionIndex
 
     private int additionsBeforeRebuild() {
         if (snapshot.isEmpty()) {
-            return MIN_ADDITIONS_BEFORE_REBUILD;
+            return jVectorProperties.minAdditionsBeforeRebuild();
         }
 
-        int relativeThreshold = (int) Math.ceil(snapshot.size() * ADD_REBUILD_RATIO);
+        int relativeThreshold = (int) Math.ceil(snapshot.size() * jVectorProperties.addRebuildRatio());
 
-        return Math.max(MIN_ADDITIONS_BEFORE_REBUILD, relativeThreshold);
+        return Math.max(jVectorProperties.minAdditionsBeforeRebuild(), relativeThreshold);
     }
 
     private boolean shouldRebuildAfterDelete() {
@@ -343,7 +334,7 @@ public class JVectorPartitionIndex
         }
 
         return deletedFromGraph.size()
-                >= snapshot.size() * DELETE_REBUILD_RATIO;
+                >= snapshot.size() * jVectorProperties.deleteRebuildRatio();
     }
 
     private void rebuildAsync() {
@@ -486,12 +477,12 @@ public class JVectorPartitionIndex
                      new GraphIndexBuilder(
                              buildScoreProvider,
                              dimension,
-                             M,
-                             EF_CONSTRUCTION,
-                             NEIGHBOR_OVERFLOW,
-                             ALPHA,
-                             ADD_HIERARCHY,
-                             REFINE_FINAL_GRAPH
+                             jVectorProperties.m(),
+                             jVectorProperties.efConstruction(),
+                             jVectorProperties.neighborOverflow(),
+                             jVectorProperties.alpha(),
+                             jVectorProperties.addHierarchy(),
+                             jVectorProperties.refineFinalGraph()
                      )) {
             graph = builder.build(vectorValues);
         } catch (IOException e) {
