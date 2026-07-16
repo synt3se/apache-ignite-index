@@ -15,6 +15,7 @@ import ru.nsu.fit.vector.telegram.service.ImageSearchService;
 @Component
 public class SearchImageCommandProcessor extends BotCommandProcessor {
     private final ImageSearchService imageSearchService;
+    public static final String BUTTON_NAME = "\uD83D\uDDBC\uFE0F Поиск по картинке";
 
     public SearchImageCommandProcessor(ImageSearchService imageSearchService, BotMessageService messageService) {
         super(messageService);
@@ -24,6 +25,10 @@ public class SearchImageCommandProcessor extends BotCommandProcessor {
     @Override
     protected String getCommandName() {
         return "/search_img";
+    }
+    @Override
+    protected String getCommandButtonName() {
+        return BUTTON_NAME;
     }
     @Override
     protected String getReplyPrompt() {
@@ -51,7 +56,7 @@ public class SearchImageCommandProcessor extends BotCommandProcessor {
             else {
                 String mime = update.getMessage().getDocument().getMimeType();
                  if (mime == null || !mime.startsWith("image/")) {
-                     messageService.sendText(sender, chatId, "❌ Документ должен быть изображением.");
+                     messageService.sendWithMenu(sender, chatId, "❌ Документ должен быть изображением.");
                  }
                 fileId = message.getDocument().getFileId();
             }
@@ -61,13 +66,13 @@ public class SearchImageCommandProcessor extends BotCommandProcessor {
                 handleSearchResponse(searchMono, chatId, "Скачиваю изображение из Telegram и анализирую...", sender);
             } catch (Exception e) {
                 log.error("Failed to process photo from Telegram", e);
-                messageService.sendText(sender, chatId, "❌ Произошла ошибка при получении файла из Telegram.");
+                messageService.sendWithMenu(sender, chatId, "❌ Произошла ошибка при получении файла из Telegram.");
             }
         }
         else {
             String url = update.getMessage().getText().trim();
             if (!isLink(url)) {
-                messageService.sendText(sender, chatId, "❌ Пожалуйста, отправьте корректную ссылку (http:// или https://) или изображение в ответ на то сообщение.");
+                messageService.sendWithMenu(sender, chatId, "❌ Пожалуйста, отправьте корректную ссылку (http:// или https://) или изображение в ответ на то сообщение.");
                 return;
             }
 
@@ -83,11 +88,15 @@ public class SearchImageCommandProcessor extends BotCommandProcessor {
         int messageIdToEdit = statusMessage.getMessageId();
 
         searchMono.subscribe(
-                serverResponse -> messageService.editText(sender, chatId, messageIdToEdit, getStringTop(serverResponse), "HTML"),
+                serverResponse -> {
+                    messageService.editText(sender, chatId, messageIdToEdit, getStringTop(serverResponse), "HTML");
+                    messageService.sendWithMenu(sender, chatId, "...");
+                },
                 error -> {
                     log.warn("Failed to search image: " + error.getMessage());
                     String errorText = getErrorMessage(error);
                     messageService.editText(sender, chatId, messageIdToEdit, errorText);
+                    messageService.sendWithMenu(sender, chatId, "...");
                 }
         );
     }

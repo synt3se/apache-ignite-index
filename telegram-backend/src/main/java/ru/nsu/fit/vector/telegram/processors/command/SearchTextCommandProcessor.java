@@ -11,6 +11,8 @@ import ru.nsu.fit.vector.telegram.service.ImageSearchService;
 @Component
 public class SearchTextCommandProcessor extends BotCommandProcessor {
     private final ImageSearchService imageSearchService;
+    public static final String BUTTON_NAME = "\uD83D\uDD0D Поиск по тексту";
+
 
     public SearchTextCommandProcessor(ImageSearchService imageSearchService, BotMessageService messageService) {
         super(messageService);
@@ -20,6 +22,10 @@ public class SearchTextCommandProcessor extends BotCommandProcessor {
     @Override
     protected String getCommandName() {
         return "/search_txt";
+    }
+    @Override
+    protected String getCommandButtonName() {
+        return BUTTON_NAME;
     }
     @Override
     protected String getReplyPrompt() {
@@ -39,11 +45,15 @@ public class SearchTextCommandProcessor extends BotCommandProcessor {
         int messageIdToEdit = statusMessage.getMessageId();
 
         imageSearchService.searchTxt(content).subscribe(
-                serverResponse -> messageService.editText(sender, chatId, messageIdToEdit, getStringTop(serverResponse), "HTML"),
+                serverResponse -> {
+                    messageService.editText(sender, chatId, messageIdToEdit, getStringTop(serverResponse), "HTML");
+                    messageService.sendWithMenu(sender, chatId, "...");
+                },
                 error -> {
                     log.warn("Failed to search by text: " + error.getMessage());
                     String errorText = getErrorMessage(error);
                     messageService.editText(sender, chatId, messageIdToEdit, errorText);
+                    messageService.sendWithMenu(sender, chatId, "...");
                 }
         );
     }

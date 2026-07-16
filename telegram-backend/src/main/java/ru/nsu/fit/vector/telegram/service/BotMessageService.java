@@ -10,8 +10,18 @@ import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageTe
 import org.telegram.telegrambots.meta.api.objects.Message;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.ForceReplyKeyboard;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.ReplyKeyboardMarkup;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.KeyboardButton;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.KeyboardRow;
 import org.telegram.telegrambots.meta.bots.AbsSender;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
+import ru.nsu.fit.vector.telegram.processors.command.AddCommandProcessor;
+import ru.nsu.fit.vector.telegram.processors.command.GetCommandProcessor;
+import ru.nsu.fit.vector.telegram.processors.command.SearchImageCommandProcessor;
+import ru.nsu.fit.vector.telegram.processors.command.SearchTextCommandProcessor;
+
+import java.util.ArrayList;
+import java.util.List;
 
 // Отвечает за отправку сообщений пользователю телеграм-бота
 @Service
@@ -107,6 +117,43 @@ public class BotMessageService {
             sender.execute(answer);
         } catch (TelegramApiException e) {
             log.error("Failed to answer callback query {}", callbackQueryId, e);
+        }
+    }
+
+
+    public void sendWithMenu(AbsSender sender, long chatId, String text) {
+        SendMessage message = new SendMessage();
+        message.setChatId(String.valueOf(chatId));
+        if (text != null) message.setText(text);
+
+        ReplyKeyboardMarkup keyboardMarkup = new ReplyKeyboardMarkup();
+        keyboardMarkup.setSelective(true);
+        keyboardMarkup.setResizeKeyboard(true); // Кнопки будут аккуратными по высоте, а не на пол-экрана
+        keyboardMarkup.setOneTimeKeyboard(false); // Клавиатура не скроется после одного нажатия
+
+        // Создаем строки кнопок
+        List<KeyboardRow> keyboard = new ArrayList<>();
+
+        // Строка 1: Поиск
+        KeyboardRow row1 = new KeyboardRow();
+        row1.add(new KeyboardButton(SearchImageCommandProcessor.BUTTON_NAME));
+        row1.add(new KeyboardButton(SearchTextCommandProcessor.BUTTON_NAME));
+
+        // Строка 2: Управление базой
+        KeyboardRow row2 = new KeyboardRow();
+        row2.add(new KeyboardButton(AddCommandProcessor.BUTTON_NAME));
+        row2.add(new KeyboardButton(GetCommandProcessor.BUTTON_NAME));
+
+        keyboard.add(row1);
+        keyboard.add(row2);
+
+        keyboardMarkup.setKeyboard(keyboard);
+        message.setReplyMarkup(keyboardMarkup);
+
+        try {
+            sender.execute(message);
+        } catch (Exception e) {
+            log.error("Menu error: {}", e.getMessage());
         }
     }
 }

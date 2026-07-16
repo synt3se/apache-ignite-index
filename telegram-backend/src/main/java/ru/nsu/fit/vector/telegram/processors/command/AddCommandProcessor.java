@@ -12,6 +12,7 @@ import ru.nsu.fit.vector.telegram.service.ImageSearchService;
 @Component
 public class AddCommandProcessor extends BotCommandProcessor {
     private final ImageSearchService imageSearchService;
+    public static final String BUTTON_NAME = "\uD83D\uDCA5 Добавить";
 
     public AddCommandProcessor(ImageSearchService imageSearchService, BotMessageService messageService) {
         super(messageService);
@@ -21,6 +22,11 @@ public class AddCommandProcessor extends BotCommandProcessor {
     @Override
     protected String getCommandName() {
         return "/add";
+    }
+
+    @Override
+     protected String getCommandButtonName() {
+        return BUTTON_NAME;
     }
     @Override
     protected String getReplyPrompt() {
@@ -38,13 +44,13 @@ public class AddCommandProcessor extends BotCommandProcessor {
     public void processArgument(Update update, long chatId, AbsSender sender) {
         Message message = update.getMessage();
         if (!update.getMessage().hasText()) {
-            messageService.sendText(sender, chatId, "❌ В базу данных можно загружать только ссылки на картинки.");
+            messageService.sendWithMenu(sender, chatId, "❌ В базу данных можно загружать только ссылки на картинки.");
         }
 
         String link = message.getText().trim();
 
         if (!isLink(link)) {
-            messageService.sendText(sender, chatId, "❌ Пожалуйста, отправьте корректную ссылку на изображение (http:// или https://) в ответ на то сообщение.");
+            messageService.sendWithMenu(sender, chatId, "❌ Пожалуйста, отправьте корректную ссылку на изображение (http:// или https://) в ответ на то сообщение.");
             return;
         }
 
@@ -56,12 +62,14 @@ public class AddCommandProcessor extends BotCommandProcessor {
                 response -> {
                     String resultText = formatStringResult(response);
                     messageService.editText(sender, chatId, messageIdToEdit, resultText, "HTML");
+                    messageService.sendWithMenu(sender, chatId, "...");
                 },
                 error -> {
                     log.warn("Error adding vector: " + error.getMessage());
                     String errorText = getErrorMessage(error);
                     messageService.editText(sender, chatId, messageIdToEdit, errorText);
-                }
+                    messageService.sendWithMenu(sender, chatId, "...");
+                    }
         );
     }
 

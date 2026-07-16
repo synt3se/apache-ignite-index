@@ -16,7 +16,16 @@ public class UnknownCommandProcessor extends BotCommandProcessor {
     }
     @Override
     protected String getReplyPrompt() {
-        return "❌ Сообщение не распознано. Пожалуйста, отправьте поддерживаемую команду или ответьте на необходимое сообщение";
+        return "";
+    }
+    @Override
+    protected String getCommandButtonName() {
+        return null;
+    }
+
+    @Override
+    public void process(Update update, long chatId, AbsSender sender) {
+        messageService.sendWithMenu(sender, chatId, "❌ Сообщение не распознано. Пожалуйста, отправьте поддерживаемую команду или ответьте на необходимое сообщение");
     }
 
     @Override

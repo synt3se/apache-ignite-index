@@ -23,15 +23,19 @@ public abstract class BotCommandProcessor {
         this.messageService = messageService;
     }
 
+
     protected abstract String getCommandName();
     protected abstract String getReplyPrompt();
+    protected abstract String getCommandButtonName();
 
     public abstract boolean canProcessCondition(Update update);
     public boolean canProcess(Update update) {
         if (!update.hasMessage()) return false;
         Message message = update.getMessage();
         Message prompt = message.getReplyToMessage();
-        if (message.hasText() && message.getText().equals(getCommandName())) {
+        if (message.hasText() && (message.getText().equals(getCommandName()) ||
+                getCommandButtonName() != null && message.getText().equals(getCommandButtonName())
+                )) {
             return true;
         }
         if (prompt != null && prompt.hasText() && canProcessCondition(update)) {
@@ -43,7 +47,11 @@ public abstract class BotCommandProcessor {
     public void process(Update update, long chatId, AbsSender sender) {
         Message message = update.getMessage();
         if (this instanceof UnknownCommandProcessor ||
-                message.getReplyToMessage() == null && message.getText() != null && message.getText().startsWith("/")) { // Ответ на саму команду
+                message.getReplyToMessage() == null &&
+                        message.getText() != null &&
+                        (message.getText().startsWith("/") ||
+                                getCommandButtonName() != null &&
+                                        message.getText().equals(getCommandButtonName()))) { // Ответ на саму команду
             log.info("Received command '{}' from chatId: {}", getCommandName(), chatId);
             if (hasArgument()) {
                 messageService.sendForceReply(sender, chatId, getCommandName() + "\n" + getReplyPrompt());
@@ -66,14 +74,14 @@ public abstract class BotCommandProcessor {
             Long id = Long.parseLong(raw);
             if (id < 1) {
                 log.warn("Incorrect ID format: id <= 0");
-                messageService.sendText(sender, chatId, "❌ Неверный формат id: '" + raw + "'. Число должно быть > 0.");
+                messageService.sendWithMenu(sender, chatId, "❌ Неверный формат id: '" + raw + "'. Число должно быть > 0.");
                 return null;
             }
             return id;
         }
         catch (NumberFormatException e) {
             log.warn("Incorrect ID format: " + e.getMessage());
-            messageService.sendText(sender, chatId, "❌ Неверный формат id: '" + raw + "'. id должен быть числом.");
+            messageService.sendWithMenu(sender, chatId, "❌ Неверный формат id: '" + raw + "'. id должен быть числом.");
             return null;
         }
     }
