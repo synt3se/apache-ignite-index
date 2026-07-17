@@ -20,29 +20,28 @@ import ru.nsu.fit.vectorserver.benchmark.dataset.BenchmarkDatasetRunner;
 @SpringBootApplication
 public class BenchmarkMain {
 
-    private enum Mode{
-        ANN_BENCHMARK_TEST,
-        OUR_DATASET,
-        N_CLIENTS
-    }
+    private enum Mode{ANN_BENCHMARK_TEST, OUR_DATASET, N_CLIENTS}
+
     private static final String DATABASE_PATH = "C:/Users/danil/Desktop/IgniteDB/database.csv";
-
     private static final String QUERIES_PATH = "C:/Users/danil/Desktop/IgniteDB/quieries.csv";
-
     private static final String RESULTS_PATH = "C:/Users/danil/Desktop/IgniteDB/results.csv";
-
     private static final int NEIGHBOR_COUNT = 10;
-    //TODO сделать более удобные настройки
+
+
+
+    private static final boolean LOAD_DATABASE = true;
+    private static final Mode BENCHMARK_MODE = Mode.OUR_DATASET;
+    private static final BenchmarkDatasetRunner.IndexType INDEX_MODE =
+            BenchmarkDatasetRunner.IndexType.JVECTOR;
+
+
     public static void main(String[] args){
-        System.out.println("Hello! Starting benchmark...");
         ConfigurableApplicationContext context =
                 new SpringApplicationBuilder(VectorServerApplication.class)
-                        .web(WebApplicationType.NONE)
-                        .run(args);
+                        .web(WebApplicationType.NONE).run(args);
 
-        Mode mode = Mode.OUR_DATASET;
 
-        if (mode == Mode.ANN_BENCHMARK_TEST){
+        if (BENCHMARK_MODE == Mode.ANN_BENCHMARK_TEST){
             try{
                 VectorService vectorService = context.getBean(VectorService.class);
                 BenchmarkTestRunner runner = new BenchmarkTestRunner(vectorService);
@@ -57,23 +56,20 @@ public class BenchmarkMain {
             finally {
                 context.close();
             }
-        }else if (mode == Mode.N_CLIENTS){
+        }else if (BENCHMARK_MODE == Mode.N_CLIENTS){
             context.close();
-        }else if (mode == Mode.OUR_DATASET){
+        }else if (BENCHMARK_MODE == Mode.OUR_DATASET){
             try{
-                System.out.println("Database benchmark");
                 VectorService service = context.getBean(VectorService.class);
                 BenchmarkDatasetRunner runner =
-                        new BenchmarkDatasetRunner(
-                                service,
-                                BenchmarkDatasetRunner.IndexType.JVECTOR
-                        );
+                        new BenchmarkDatasetRunner(service, INDEX_MODE);
 
                 runner.run(
                         NEIGHBOR_COUNT,
                         DATABASE_PATH,
                         QUERIES_PATH,
-                        RESULTS_PATH
+                        RESULTS_PATH,
+                        LOAD_DATABASE
                 );
             }catch (IllegalArgumentException e){
                 System.err.println("[ERROR ILLEGAL ARGUMENT]: " + e.getMessage());
