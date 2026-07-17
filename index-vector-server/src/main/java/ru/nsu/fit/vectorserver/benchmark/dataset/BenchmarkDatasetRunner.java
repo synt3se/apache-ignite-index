@@ -22,9 +22,9 @@ import java.util.Map;
 import java.util.Set;
 
 public class BenchmarkDatasetRunner {
-
+    //private static final int MAX_MEASURED_QUERY_COUNT = 100;
     private static final int WARMUP_QUERY_COUNT = 10;
-    private static final int MAX_MEASURED_QUERY_COUNT = 100;
+
     private static final long INDEX_READY_TIMEOUT_MS = 30 * 60_000L;
     private static final double DISTANCE_EPSILON = 1e-6;
     private static final int READY_STABLE_POLLS = 3;
@@ -33,10 +33,7 @@ public class BenchmarkDatasetRunner {
     private final IndexType indexType;
     private final GroundTruthFile groundTruthFile;
 
-    public BenchmarkDatasetRunner(
-            VectorService service,
-            IndexType indexType
-    ) {
+    public BenchmarkDatasetRunner(VectorService service, IndexType indexType) {
         if (service == null) {
             throw new IllegalArgumentException("service is required");
         }
@@ -55,39 +52,30 @@ public class BenchmarkDatasetRunner {
         JVECTOR
     }
 
-    public void run(
-            int neighborCount,
-            String databasePath,
-            String queriesPath,
-            String groundTruthPath
+    public void run(int neighborCount,
+                    String databasePath,
+                    String queriesPath,
+                    String groundTruthPath,
+                    boolean loadDatabase
     ) {
-        validateArguments(
-                neighborCount,
-                databasePath,
-                queriesPath,
-                groundTruthPath
-        );
+        System.out.println("======== BENCHMARK is running =================");
+        System.out.println("Load database: " + loadDatabase);
+        validateArguments(neighborCount, databasePath, queriesPath, groundTruthPath);
 
         File databaseFile = new File(databasePath);
         File queriesFile = new File(queriesPath);
 
         List<QueryVector> allQueries = readQueries(queriesFile);
-
         if (allQueries.isEmpty()) {
-            throw new IllegalStateException(
-                    "Queries file contains no vectors: " + queriesPath
-            );
+            throw new IllegalStateException("Queries file contains no vectors: " + queriesPath);
         }
 
-        int measuredQueryCount = Math.min(
-                MAX_MEASURED_QUERY_COUNT,
-                allQueries.size()
-        );
 
-        List<QueryVector> queries = allQueries; //TODO
+        //Можно ограничить количество запросов при необходимости
+        //int measuredQueryCount = Math.min(MAX_MEASURED_QUERY_COUNT, allQueries.size());
+        List<QueryVector> queries = allQueries;
 
-        long expectedVectorCount =
-                countDatabaseRows(databaseFile);
+        long expectedVectorCount = countDatabaseRows(databaseFile);
 
         System.out.println("=== Dataset benchmark STARTED ===");
         System.out.println("Index type: " + indexType);
@@ -98,47 +86,45 @@ public class BenchmarkDatasetRunner {
         System.out.println("Available queries: " + allQueries.size());
         System.out.println("Measured queries: " + queries.size());
         System.out.println("Neighbors count: " + neighborCount);
+        System.out.println("=================================");
 
-        service.clear();
 
-        long loadStart = System.nanoTime();
 
-        ResponseEntity<String> loadResponse = service.load(
-                new LoadRequest(databaseFile.getAbsolutePath())
-        );
 
-        if (!loadResponse.getStatusCode().is2xxSuccessful()) {
-            throw new IllegalStateException(
-                    "Database load failed: " + loadResponse
+        long preparationStart = System.nanoTime();
+
+        if (loadDatabase) {
+            service.clear();
+
+            ResponseEntity<String> loadResponse = service.load(
+                    new LoadRequest(databaseFile.getAbsolutePath())
+            );
+
+            if (!loadResponse.getStatusCode().is2xxSuccessful()) {
+                throw new IllegalStateException(
+                        "Database load failed: " + loadResponse
+                );
+            }
+
+            System.out.println(
+                    "Database loaded: " + loadResponse.getBody()
+            );
+        } else {
+            System.out.println(
+                    "Database loading skipped; using existing cluster data"
             );
         }
 
-        waitUntilIndexReady();
+        waitUntilIndexReady(expectedVectorCount);
 
-        long loadEnd = System.nanoTime();
-
-        System.out.println(
-                "Database loaded: " + loadResponse.getBody()
-        );
+        long preparationEnd = System.nanoTime();
 
         runWarmup(queries, neighborCount);
 
         if (indexType == IndexType.BRUTE_FORCE) {
-            runBruteForce(
-                    queries,
-                    neighborCount,
-                    groundTruthPath,
-                    loadStart,
-                    loadEnd
-            );
+            runBruteForce(queries, neighborCount, groundTruthPath, preparationStart, preparationEnd);
         } else {
-            runJVector(
-                    queries,
-                    neighborCount,
-                    groundTruthPath,
-                    loadStart,
-                    loadEnd
-            );
+            runJVector(queries, neighborCount, groundTruthPath, preparationStart, preparationEnd);
         }
 
         System.out.println("=== Dataset benchmark FINISHED ===");
@@ -151,8 +137,7 @@ public class BenchmarkDatasetRunner {
             long loadStart,
             long loadEnd
     ) {
-        Map<Long, List<Neighbor>> results =
-                new LinkedHashMap<>();
+        Map<Long, List<Neighbor>> results = new LinkedHashMap<>();
 
         BenchmarkMetrics metrics = new BenchmarkMetrics();
         long totalSearchNanos = 0L;
@@ -162,27 +147,16 @@ public class BenchmarkDatasetRunner {
 
             long searchStart = System.nanoTime();
 
-            List<Neighbor> neighbors = search(
-                    query.vector(),
-                    neighborCount
-            );
+            List<Neighbor> neighbors = search(query.vector(), neighborCount);
 
-            long searchNanos =
-                    System.nanoTime() - searchStart;
+            long searchNanos = System.nanoTime() - searchStart;
 
             totalSearchNanos += searchNanos;
             metrics.add(searchNanos / 1_000_000.0);
 
-            validateSearchResult(
-                    query.id(),
-                    neighbors,
-                    neighborCount
-            );
+            validateSearchResult(query.id(), neighbors, neighborCount);
 
-            results.put(
-                    query.id(),
-                    neighbors
-            );
+            results.put(query.id(), neighbors);
 
             if ((i + 1) % 10 == 0) {
                 System.out.println(
@@ -194,22 +168,11 @@ public class BenchmarkDatasetRunner {
             }
         }
 
-        groundTruthFile.write(
-                groundTruthPath,
-                results
-        );
+        groundTruthFile.write(groundTruthPath, results);
 
-        printPerformanceMetrics(
-                loadStart,
-                loadEnd,
-                totalSearchNanos,
-                metrics,
-                queries.size()
-        );
+        printPerformanceMetrics(loadStart, loadEnd, totalSearchNanos, metrics, queries.size());
 
-        System.out.println(
-                "Ground truth saved: " + groundTruthPath
-        );
+        System.out.println("Ground truth saved: " + groundTruthPath);
     }
 
     private void runJVector(
@@ -219,8 +182,7 @@ public class BenchmarkDatasetRunner {
             long loadStart,
             long loadEnd
     ) {
-        Map<Long, List<GroundTruthFile.ExpectedNeighbor>> groundTruth =
-                groundTruthFile.read(groundTruthPath);
+        Map<Long, List<GroundTruthFile.ExpectedNeighbor>> groundTruth = groundTruthFile.read(groundTruthPath);
 
         validateGroundTruth(
                 queries,
@@ -246,40 +208,24 @@ public class BenchmarkDatasetRunner {
 
             long searchStart = System.nanoTime();
 
-            List<Neighbor> actual = search(
-                    query.vector(),
-                    neighborCount
-            );
+            List<Neighbor> actual = search(query.vector(), neighborCount);
 
-            long searchNanos =
-                    System.nanoTime() - searchStart;
+            long searchNanos = System.nanoTime() - searchStart;
 
             totalSearchNanos += searchNanos;
             metrics.add(searchNanos / 1_000_000.0);
 
-            validateSearchResult(
-                    query.id(),
-                    actual,
-                    neighborCount
-            );
+            validateSearchResult(query.id(), actual, neighborCount);
 
-            List<GroundTruthFile.ExpectedNeighbor> expected =
-                    groundTruth.get(query.id());
+            List<GroundTruthFile.ExpectedNeighbor> expected = groundTruth.get(query.id());
 
-            ComparisonResult comparison = compare(
-                    expected,
-                    actual,
-                    neighborCount
-            );
+            ComparisonResult comparison = compare(expected, actual, neighborCount);
 
             totalIdMatches += comparison.idMatches();
             totalDistanceMatches += comparison.distanceMatches();
 
             totalDistanceError += comparison.totalDistanceError();
-            maximumDistanceError = Math.max(
-                    maximumDistanceError,
-                    comparison.maximumDistanceError()
-            );
+            maximumDistanceError = Math.max(maximumDistanceError, comparison.maximumDistanceError());
 
             comparedDistances +=
                     comparison.comparedDistanceCount();
@@ -292,37 +238,15 @@ public class BenchmarkDatasetRunner {
                 perfectDistanceQueries++;
             }
 
-            if (comparison.idMatches() < neighborCount
-                    || comparison.distanceMatches() < neighborCount) {
-
-                printMismatch(
-                        i,
-                        query.id(),
-                        expected,
-                        actual,
-                        comparison,
-                        neighborCount
-                );
+            if (comparison.idMatches() < neighborCount || comparison.distanceMatches() < neighborCount) {
+                printMismatch(i, query.id(), expected, actual, comparison, neighborCount);
             }
         }
 
-        printPerformanceMetrics(
-                loadStart,
-                loadEnd,
-                totalSearchNanos,
-                metrics,
-                queries.size()
-        );
 
-        printQualityMetrics(
-                neighborCount,
-                queries.size(),
-                totalIdMatches,
-                totalDistanceMatches,
-                perfectIdQueries,
-                perfectDistanceQueries,
-                totalDistanceError,
-                maximumDistanceError,
+        printPerformanceMetrics(loadStart, loadEnd, totalSearchNanos, metrics, queries.size());
+        printQualityMetrics(neighborCount, queries.size(), totalIdMatches, totalDistanceMatches,
+                perfectIdQueries, perfectDistanceQueries, totalDistanceError, maximumDistanceError,
                 comparedDistances
         );
     }
@@ -332,28 +256,21 @@ public class BenchmarkDatasetRunner {
             List<Neighbor> actual,
             int neighborCount
     ) {
-        Map<Long, Double> expectedDistanceById =
-                new LinkedHashMap<>();
+        Map<Long, Double> expectedDistanceById = new LinkedHashMap<>();
 
         Set<Long> expectedIds = new HashSet<>();
 
         for (int i = 0; i < neighborCount; i++) {
-            GroundTruthFile.ExpectedNeighbor neighbor =
-                    expected.get(i);
+            GroundTruthFile.ExpectedNeighbor neighbor = expected.get(i);
 
             expectedIds.add(neighbor.id());
 
-            expectedDistanceById.put(
-                    neighbor.id(),
-                    neighbor.distance()
-            );
+            expectedDistanceById.put(neighbor.id(), neighbor.distance());
         }
 
-        double cutoffDistance =
-                expected.get(neighborCount - 1).distance();
+        double cutoffDistance = expected.get(neighborCount - 1).distance();
 
-        double tolerance = DISTANCE_EPSILON
-                * Math.max(1.0, Math.abs(cutoffDistance));
+        double tolerance = DISTANCE_EPSILON * Math.max(1.0, Math.abs(cutoffDistance));
 
         int idMatches = 0;
         int distanceMatches = 0;
@@ -369,70 +286,42 @@ public class BenchmarkDatasetRunner {
                 idMatches++;
             }
 
-            if (neighbor.score()
-                    <= cutoffDistance + tolerance) {
-
+            if (neighbor.score() <= cutoffDistance + tolerance) {
                 distanceMatches++;
             }
 
-            Double expectedDistance =
-                    expectedDistanceById.get(neighbor.id());
+            Double expectedDistance = expectedDistanceById.get(neighbor.id());
 
             if (expectedDistance != null) {
-                double error = Math.abs(
-                        neighbor.score() - expectedDistance
-                );
+                double error = Math.abs(neighbor.score() - expectedDistance);
 
                 comparedDistanceCount++;
                 totalDistanceError += error;
 
-                maximumDistanceError = Math.max(
-                        maximumDistanceError,
-                        error
-                );
+                maximumDistanceError = Math.max(maximumDistanceError, error);
             }
         }
 
         return new ComparisonResult(
-                idMatches,
-                distanceMatches,
-                comparedDistanceCount,
-                totalDistanceError,
-                maximumDistanceError,
-                cutoffDistance
+                idMatches, distanceMatches, comparedDistanceCount,
+                totalDistanceError, maximumDistanceError, cutoffDistance
         );
     }
 
-    private void runWarmup(
-            List<QueryVector> queries,
-            int neighborCount
-    ) {
-        int warmupCount = Math.min(
-                WARMUP_QUERY_COUNT,
-                queries.size()
-        );
+    private void runWarmup(List<QueryVector> queries, int neighborCount) {
+        int warmupCount = Math.min(WARMUP_QUERY_COUNT, queries.size());
 
         System.out.println("Warmup queries: " + warmupCount);
 
         for (int i = 0; i < warmupCount; i++) {
-            search(
-                    queries.get(i).vector(),
-                    neighborCount
-            );
+            search(queries.get(i).vector(), neighborCount);
         }
     }
 
-    private List<Neighbor> search(
-            float[] queryVector,
-            int neighborCount
-    ) {
+    private List<Neighbor> search(float[] queryVector, int neighborCount) {
         Object response = service.search(
-                new SearchRequest(
-                        queryVector,
-                        neighborCount
-                )
+                new SearchRequest(queryVector, neighborCount)
         );
-
         return extractNeighbors(response);
     }
 
@@ -440,9 +329,7 @@ public class BenchmarkDatasetRunner {
         List<QueryVector> result = new ArrayList<>();
         Set<Long> ids = new HashSet<>();
 
-        try (BufferedReader reader = new BufferedReader(
-                new FileReader(file)
-        )) {
+        try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
             String header = reader.readLine();
 
             if (header == null) {
@@ -461,10 +348,7 @@ public class BenchmarkDatasetRunner {
 
                 if (line.isBlank()) continue;
 
-                QueryVector query = parseQueryLine(
-                        line,
-                        lineNumber
-                );
+                QueryVector query = parseQueryLine(line, lineNumber);
 
                 if (!ids.add(query.id())) {
                     throw new IllegalStateException(
@@ -581,20 +465,14 @@ public class BenchmarkDatasetRunner {
                     groundTruth.get(query.id());
 
             if (neighbors == null) {
-                throw new IllegalStateException(
-                        "Ground truth is missing query: "
-                                + query.id()
-                );
+                throw new IllegalStateException("Ground truth is missing query: " + query.id());
             }
 
             if (neighbors.size() < neighborCount) {
                 throw new IllegalStateException(
                         "Ground truth contains only "
-                                + neighbors.size()
-                                + " neighbors for query "
-                                + query.id()
-                                + ", required "
-                                + neighborCount
+                                + neighbors.size() + " neighbors for query " + query.id()
+                                + ", required " + neighborCount
                 );
             }
         }
@@ -607,12 +485,8 @@ public class BenchmarkDatasetRunner {
     ) {
         if (neighbors.size() != neighborCount) {
             throw new IllegalStateException(
-                    "Incorrect result count for query "
-                            + queryId
-                            + ": "
-                            + neighbors.size()
-                            + ", required "
-                            + neighborCount
+                    "Incorrect result count for query " + queryId + ": " + neighbors.size()
+                            + ", required " + neighborCount
             );
         }
 
@@ -621,18 +495,12 @@ public class BenchmarkDatasetRunner {
         for (Neighbor neighbor : neighbors) {
             if (!ids.add(neighbor.id())) {
                 throw new IllegalStateException(
-                        "Duplicate neighbor ID "
-                                + neighbor.id()
-                                + " for query "
-                                + queryId
+                        "Duplicate neighbor ID " + neighbor.id() + " for query " + queryId
                 );
             }
 
             if (!Double.isFinite(neighbor.score())) {
-                throw new IllegalStateException(
-                        "Non-finite distance for query "
-                                + queryId
-                );
+                throw new IllegalStateException("Non-finite distance for query " + queryId);
             }
         }
     }
@@ -653,8 +521,7 @@ public class BenchmarkDatasetRunner {
             );
         }
 
-        List<Neighbor> result =
-                new ArrayList<>(list.size());
+        List<Neighbor> result = new ArrayList<>(list.size());
 
         for (Object item : list) {
             if (!(item instanceof Neighbor neighbor)) {
@@ -702,7 +569,7 @@ public class BenchmarkDatasetRunner {
         return count;
     }
 
-    private void waitUntilIndexReady() {
+    private void waitUntilIndexReady(long expectedVectorCount) {
         long deadline = System.currentTimeMillis() + INDEX_READY_TIMEOUT_MS;
         int stablePolls = 0;
 
@@ -724,13 +591,13 @@ public class BenchmarkDatasetRunner {
                 active += node.activePartitions;
             }
 
-            boolean ready = indexed > 0
+            boolean ready = indexed == expectedVectorCount
                     && backlog == 0
                     && dirty == 0
                     && enginePending == 0        // графы движка построены
                     && active == owned && owned > 0;   // ни одна партиция не застряла в REBUILDING
 
-            System.out.println("Index state: indexed=" + indexed
+            System.out.println("Index state: indexed=" + indexed + "/" + expectedVectorCount
                     + ", backlog=" + backlog
                     + ", dirty=" + dirty
                     + ", enginePending=" + enginePending
@@ -764,18 +631,13 @@ public class BenchmarkDatasetRunner {
             BenchmarkMetrics metrics,
             int queryCount
     ) {
-        double loadAndBuildMs =
-                (loadEnd - loadStart) / 1_000_000.0;
+        double loadAndBuildMs = (loadEnd - loadStart) / 1_000_000.0;
 
-        double totalSearchMs =
-                totalSearchNanos / 1_000_000.0;
+        double totalSearchMs = totalSearchNanos / 1_000_000.0;
 
-        double totalSearchSeconds =
-                totalSearchNanos / 1_000_000_000.0;
+        double totalSearchSeconds = totalSearchNanos / 1_000_000_000.0;
 
-        double qps = totalSearchSeconds == 0.0
-                ? 0.0
-                : queryCount / totalSearchSeconds;
+        double qps = totalSearchSeconds == 0.0 ? 0.0 : queryCount / totalSearchSeconds;
 
         System.out.println();
         System.out.println("=== Performance ===");
@@ -783,14 +645,8 @@ public class BenchmarkDatasetRunner {
         System.out.println("load_and_build_ms: " + loadAndBuildMs);
         System.out.println("total_search_ms: " + totalSearchMs);
         System.out.println("avg_search_ms: " + metrics.average());
-        System.out.println(
-                "p95_search_ms: "
-                        + metrics.percentile(0.95)
-        );
-        System.out.println(
-                "p99_search_ms: "
-                        + metrics.percentile(0.99)
-        );
+        System.out.println("p95_search_ms: " + metrics.percentile(0.95));
+        System.out.println("p99_search_ms: " + metrics.percentile(0.99));
         System.out.println("measured_queries: " + metrics.count());
         System.out.println("qps: " + qps);
     }
@@ -808,60 +664,27 @@ public class BenchmarkDatasetRunner {
     ) {
         int totalExpected = queryCount * neighborCount;
 
-        double recall = totalExpected == 0
-                ? 0.0
-                : (double) totalIdMatches / totalExpected;
+        double recall = totalExpected == 0 ? 0.0 : (double) totalIdMatches / totalExpected;
 
-        double distanceRecall = totalExpected == 0
-                ? 0.0
-                : (double) totalDistanceMatches / totalExpected;
+        double distanceRecall = totalExpected == 0 ? 0.0 : (double) totalDistanceMatches / totalExpected;
 
-        double averageDistanceError = comparedDistances == 0
-                ? 0.0
-                : totalDistanceError / comparedDistances;
+        double averageDistanceError = comparedDistances == 0 ? 0.0 : totalDistanceError / comparedDistances;
 
         System.out.println();
         System.out.println("=== Quality ===");
 
-        System.out.printf(
-                Locale.US,
-                "Recall@%d: %.6f%%%n",
-                neighborCount,
-                recall * 100.0
+        System.out.printf(Locale.US, "Recall@%d: %.6f%%%n", neighborCount, recall * 100.0);
+
+        System.out.printf(Locale.US, "DistanceRecall@%d: %.6f%%%n",
+                neighborCount, distanceRecall * 100.0
         );
 
-        System.out.printf(
-                Locale.US,
-                "DistanceRecall@%d: %.6f%%%n",
-                neighborCount,
-                distanceRecall * 100.0
-        );
+        System.out.println("Perfect ID queries: " + perfectIdQueries + "/" + queryCount);
+        System.out.println("Perfect distance queries: " + perfectDistanceQueries + "/" + queryCount);
 
-        System.out.println(
-                "Perfect ID queries: "
-                        + perfectIdQueries
-                        + "/"
-                        + queryCount
-        );
+        System.out.printf(Locale.US, "Average distance error: %.12e%n", averageDistanceError);
 
-        System.out.println(
-                "Perfect distance queries: "
-                        + perfectDistanceQueries
-                        + "/"
-                        + queryCount
-        );
-
-        System.out.printf(
-                Locale.US,
-                "Average distance error: %.12e%n",
-                averageDistanceError
-        );
-
-        System.out.printf(
-                Locale.US,
-                "Maximum distance error: %.12e%n",
-                maximumDistanceError
-        );
+        System.out.printf(Locale.US, "Maximum distance error: %.12e%n", maximumDistanceError);
     }
 
     private void printMismatch(
