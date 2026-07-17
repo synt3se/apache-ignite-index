@@ -82,13 +82,21 @@
 
     <build>
         <plugins>
+            <!-- repackage: исполняемый fat-jar (Main-Class + вложенные зависимости).
+                 Без executions плагин БЕЗ spring-boot-starter-parent не делает ничего. -->
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <version>${spring.boot.version}</version>
+                <configuration>
+                    <!-- в src/main два main-класса (сервер и BenchmarkMain) - указываем главный явно -->
+                    <mainClass>ru.nsu.fit.vectorserver.VectorServerApplication</mainClass>
+                </configuration>
                 <executions>
                     <execution>
-                        <goals></goals>
+                        <goals>
+                            <goal>repackage</goal>
+                        </goals>
                     </execution>
                 </executions>
             </plugin>
@@ -103,4 +111,4 @@
         </plugins>
     </build>
 
-        </project>
+</project>
