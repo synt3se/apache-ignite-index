@@ -82,11 +82,15 @@
 
     <build>
         <plugins>
-            <!-- Чтобы можно было запускать через mvn spring-boot:run -->
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <version>${spring.boot.version}</version>
+                <executions>
+                    <execution>
+                        <goals></goals>
+                    </execution>
+                </executions>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -99,4 +103,4 @@
         </plugins>
     </build>
 
-</project>
+        </project>
