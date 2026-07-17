@@ -77,18 +77,18 @@ services:
       - index-server
       - clip
 
-  bot:
-    build:
-      context: .
-      target: bot
-    container_name: bot
-    restart: unless-stopped
-    environment:
-      GATEWAY_API_URL: http://gateway:8080
-      BOT_TOKEN: ${BOT_TOKEN}
-      BOT_USERNAME: ${BOT_USERNAME}
-    depends_on:
-      - gateway
+  #  bot:
+  #    build:
+  #      context: .
+  #      target: bot
+  #    container_name: bot
+  #    restart: unless-stopped
+  #    environment:
+  #      GATEWAY_API_URL: http://gateway:8080
+  #      BOT_TOKEN: ${BOT_TOKEN}
+  #      BOT_USERNAME: ${BOT_USERNAME}
+  #    depends_on:
+  #      - gateway
 
   edge:
     image: nginx:alpine

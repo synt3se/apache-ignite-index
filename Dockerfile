@@ -27,7 +27,15 @@ COPY --from=builder /src/vector-index-node/target/dependency/*.jar            /o
 FROM eclipse-temurin:17-jre AS server
 COPY --from=builder /src/index-vector-server/target/*.jar /app.jar
 EXPOSE 8081
-ENTRYPOINT ["java", "-Xmx512m", "-jar", "/app.jar"]
+ENTRYPOINT ["java", \
+  "--add-opens=java.base/java.nio=ALL-UNNAMED", \
+  "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED", \
+  "--add-opens=java.base/java.lang=ALL-UNNAMED", \
+  "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED", \
+  "--add-opens=java.base/java.util=ALL-UNNAMED", \
+  "--add-opens=java.base/java.io=ALL-UNNAMED", \
+  "--add-opens=java.base/jdk.internal.misc=ALL-UNNAMED", \
+  "-Xmx512m", "-jar", "/app.jar"]
 
 FROM eclipse-temurin:17-jre AS gateway
 COPY --from=builder /src/gateway-service/target/*.jar /app.jar

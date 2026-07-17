@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:util="http://www.springframework.org/schema/util"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans
+                           http://www.springframework.org/schema/beans/spring-beans.xsd
+                           http://www.springframework.org/schema/util
+                           http://www.springframework.org/schema/util/spring-util.xsd">
+
+    <bean class="org.apache.ignite.configuration.IgniteConfiguration">
+
+        <property name="includeEventTypes">
+            <list>
+                <util:constant static-field="org.apache.ignite.events.EventType.EVT_CACHE_OBJECT_PUT"/>
+                <util:constant static-field="org.apache.ignite.events.EventType.EVT_CACHE_OBJECT_REMOVED"/>
+                <util:constant static-field="org.apache.ignite.events.EventType.EVT_NODE_JOINED"/>
+                <util:constant static-field="org.apache.ignite.events.EventType.EVT_NODE_LEFT"/>
+                <util:constant static-field="org.apache.ignite.events.EventType.EVT_NODE_FAILED"/>
+                <util:constant static-field="org.apache.ignite.events.EventType.EVT_CACHE_REBALANCE_STOPPED"/>
+            </list>
+        </property>
+
+        <property name="cacheConfiguration">
+            <list>
+                <bean class="org.apache.ignite.configuration.CacheConfiguration">
+                    <property name="name" value="vectors"/>
+                    <property name="cacheMode" value="PARTITIONED"/>
+                    <property name="atomicityMode" value="ATOMIC"/>
+                    <property name="backups" value="1"/>
+                    <property name="affinity">
+                        <bean class="org.apache.ignite.cache.affinity.rendezvous.RendezvousAffinityFunction">
+                            <constructor-arg value="false"/>
+                            <constructor-arg value="32"/>
+                        </bean>
+                    </property>
+                </bean>
+            </list>
+        </property>
+
+        <property name="serviceConfiguration">
+            <list>
+                <bean class="org.apache.ignite.services.ServiceConfiguration">
+                    <property name="name" value="LocalIndexService"/>
+                    <property name="maxPerNodeCount" value="1"/>
+                    <property name="totalCount" value="0"/>
+                    <property name="service">
+                        <!-- ПРОД/СЕРВЕР: всегда JVECTOR; brute-force - только локально для GT-прогонов -->
+                        <bean class="ru.nsu.fit.vector.node.service.LocalIndexServiceImpl">
+                            <property name="indexType">
+                                <util:constant static-field="ru.nsu.fit.vector.common.indextype.IndexType.JVECTOR_INDEX"/>
+                            </property>
+                            <property name="dimension" value="512"/>
+                            <property name="jvectorProperties">
+                                <bean class="ru.nsu.fit.vector.node.index.JVectorProperties">
+                                    <property name="m" value="32"/>
+                                    <property name="efConstruction" value="100"/>
+                                    <!-- ширина поиска; проверенное на 183k значение - 3 (recall 98.3%).
+                                         ВНИМАНИЕ: если поле - абсолютный ef, а не множитель k, ставить 30 -->
+                                    <property name="efSearch" value="3"/>
+                                    <property name="neighborOverflow" value="1.2"/>
+                                    <property name="alpha" value="1.2"/>
+                                    <property name="addHierarchy" value="true"/>
+                                    <property name="refineFinalGraph" value="true"/>
+                                    <property name="addRebuildRatio" value="0.10"/>
+                                    <property name="deleteRebuildRatio" value="0.20"/>
+                                    <property name="minAdditionsBeforeRebuild" value="256"/>
+                                </bean>
+                            </property>
+                        </bean>
+                    </property>
+                </bean>
+                <bean class="org.apache.ignite.services.ServiceConfiguration">
+                    <property name="name" value="SearchAggregationService"/>
+                    <property name="maxPerNodeCount" value="1"/>
+                    <property name="totalCount" value="0"/>
+                    <property name="service">
+                        <bean class="ru.nsu.fit.vector.node.service.SearchAggregatorServiceImpl"/>
+                    </property>
+                </bean>
+            </list>
+        </property>
+
+        <property name="discoverySpi">
+            <bean class="org.apache.ignite.spi.discovery.tcp.TcpDiscoverySpi">
+                <property name="ipFinder">
+                    <bean class="org.apache.ignite.spi.discovery.tcp.ipfinder.vm.TcpDiscoveryVmIpFinder">
+                        <property name="addresses">
+                            <list>
+                                <value>ignite-node-1:47500..47509</value>
+                                <value>ignite-node-2:47500..47509</value>
+                                <value>ignite-node-3:47500..47509</value>
+                            </list>
+                        </property>
+                    </bean>
+                </property>
+            </bean>
+        </property>
+
+        <property name="clientConnectorConfiguration">
+            <bean class="org.apache.ignite.configuration.ClientConnectorConfiguration">
+                <property name="port" value="10800"/>
+                <property name="thinClientConfiguration">
+                    <bean class="org.apache.ignite.configuration.ThinClientConfiguration">
+                        <property name="maxActiveComputeTasksPerConnection" value="100"/>
+                    </bean>
+                </property>
+            </bean>
+        </property>
+
+    </bean>
+</beans>
