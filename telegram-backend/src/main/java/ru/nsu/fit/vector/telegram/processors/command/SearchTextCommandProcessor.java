@@ -47,13 +47,11 @@ public class SearchTextCommandProcessor extends BotCommandProcessor {
         imageSearchService.searchTxt(content).subscribe(
                 serverResponse -> {
                     messageService.editText(sender, chatId, messageIdToEdit, getStringTop(serverResponse), "HTML");
-                    messageService.sendWithMenu(sender, chatId, "...");
                 },
                 error -> {
                     log.warn("Failed to search by text: " + error.getMessage());
                     String errorText = getErrorMessage(error);
                     messageService.editText(sender, chatId, messageIdToEdit, errorText);
-                    messageService.sendWithMenu(sender, chatId, "...");
                 }
         );
     }

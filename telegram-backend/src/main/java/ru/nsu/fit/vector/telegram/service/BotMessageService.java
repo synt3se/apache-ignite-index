@@ -128,18 +128,16 @@ public class BotMessageService {
 
         ReplyKeyboardMarkup keyboardMarkup = new ReplyKeyboardMarkup();
         keyboardMarkup.setSelective(true);
-        keyboardMarkup.setResizeKeyboard(true); // Кнопки будут аккуратными по высоте, а не на пол-экрана
-        keyboardMarkup.setOneTimeKeyboard(false); // Клавиатура не скроется после одного нажатия
+        keyboardMarkup.setResizeKeyboard(true);
+        keyboardMarkup.setOneTimeKeyboard(false);
+        keyboardMarkup.setIsPersistent(true);
 
-        // Создаем строки кнопок
         List<KeyboardRow> keyboard = new ArrayList<>();
 
-        // Строка 1: Поиск
         KeyboardRow row1 = new KeyboardRow();
         row1.add(new KeyboardButton(SearchImageCommandProcessor.BUTTON_NAME));
         row1.add(new KeyboardButton(SearchTextCommandProcessor.BUTTON_NAME));
 
-        // Строка 2: Управление базой
         KeyboardRow row2 = new KeyboardRow();
         row2.add(new KeyboardButton(AddCommandProcessor.BUTTON_NAME));
         row2.add(new KeyboardButton(GetCommandProcessor.BUTTON_NAME));

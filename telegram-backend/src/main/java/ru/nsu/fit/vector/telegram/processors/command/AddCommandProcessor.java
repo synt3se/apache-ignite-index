@@ -44,13 +44,13 @@ public class AddCommandProcessor extends BotCommandProcessor {
     public void processArgument(Update update, long chatId, AbsSender sender) {
         Message message = update.getMessage();
         if (!update.getMessage().hasText()) {
-            messageService.sendWithMenu(sender, chatId, "❌ В базу данных можно загружать только ссылки на картинки.");
+            messageService.sendText(sender, chatId, "❌ В базу данных можно загружать только ссылки на картинки.");
         }
 
         String link = message.getText().trim();
 
         if (!isLink(link)) {
-            messageService.sendWithMenu(sender, chatId, "❌ Пожалуйста, отправьте корректную ссылку на изображение (http:// или https://) в ответ на то сообщение.");
+            messageService.sendText(sender, chatId, "❌ Пожалуйста, отправьте корректную ссылку на изображение (http:// или https://) в ответ на то сообщение.");
             return;
         }
 
@@ -62,13 +62,11 @@ public class AddCommandProcessor extends BotCommandProcessor {
                 response -> {
                     String resultText = formatStringResult(response);
                     messageService.editText(sender, chatId, messageIdToEdit, resultText, "HTML");
-                    messageService.sendWithMenu(sender, chatId, "...");
                 },
                 error -> {
                     log.warn("Error adding vector: " + error.getMessage());
                     String errorText = getErrorMessage(error);
                     messageService.editText(sender, chatId, messageIdToEdit, errorText);
-                    messageService.sendWithMenu(sender, chatId, "...");
                     }
         );
     }

@@ -60,13 +60,11 @@ public class GetCommandProcessor extends BotCommandProcessor {
                 response -> {
                     String resultText = formatStringResult(response);
                     messageService.sendTextWithMarkup(sender, chatId, resultText, "HTML", makeMarkup(response.id()));
-                    messageService.sendWithMenu(sender, chatId, "...");
                 },
                 error -> {
                     log.warn("Error fetching vector by ID: " + error.getMessage());
                     String errorText = getErrorMessage(error);
                     messageService.editText(sender, chatId, messageIdToEdit, errorText);
-                    messageService.sendWithMenu(sender, chatId, "...");
 
                 }
         );

@@ -25,7 +25,7 @@ public class UnknownCommandProcessor extends BotCommandProcessor {
 
     @Override
     public void process(Update update, long chatId, AbsSender sender) {
-        messageService.sendWithMenu(sender, chatId, "❌ Сообщение не распознано. Пожалуйста, отправьте поддерживаемую команду или ответьте на необходимое сообщение");
+        messageService.sendText(sender, chatId, "❌ Сообщение не распознано. Пожалуйста, отправьте поддерживаемую команду или ответьте на необходимое сообщение");
     }
 
     @Override

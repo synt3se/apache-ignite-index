@@ -56,7 +56,7 @@ public class SearchImageCommandProcessor extends BotCommandProcessor {
             else {
                 String mime = update.getMessage().getDocument().getMimeType();
                  if (mime == null || !mime.startsWith("image/")) {
-                     messageService.sendWithMenu(sender, chatId, "❌ Документ должен быть изображением.");
+                     messageService.sendText(sender, chatId, "❌ Документ должен быть изображением.");
                  }
                 fileId = message.getDocument().getFileId();
             }
@@ -66,13 +66,13 @@ public class SearchImageCommandProcessor extends BotCommandProcessor {
                 handleSearchResponse(searchMono, chatId, "Скачиваю изображение из Telegram и анализирую...", sender);
             } catch (Exception e) {
                 log.error("Failed to process photo from Telegram", e);
-                messageService.sendWithMenu(sender, chatId, "❌ Произошла ошибка при получении файла из Telegram.");
+                messageService.sendText(sender, chatId, "❌ Произошла ошибка при получении файла из Telegram.");
             }
         }
         else {
             String url = update.getMessage().getText().trim();
             if (!isLink(url)) {
-                messageService.sendWithMenu(sender, chatId, "❌ Пожалуйста, отправьте корректную ссылку (http:// или https://) или изображение в ответ на то сообщение.");
+                messageService.sendText(sender, chatId, "❌ Пожалуйста, отправьте корректную ссылку (http:// или https://) или изображение в ответ на то сообщение.");
                 return;
             }
 
@@ -90,13 +90,11 @@ public class SearchImageCommandProcessor extends BotCommandProcessor {
         searchMono.subscribe(
                 serverResponse -> {
                     messageService.editText(sender, chatId, messageIdToEdit, getStringTop(serverResponse), "HTML");
-                    messageService.sendWithMenu(sender, chatId, "...");
                 },
                 error -> {
                     log.warn("Failed to search image: " + error.getMessage());
                     String errorText = getErrorMessage(error);
                     messageService.editText(sender, chatId, messageIdToEdit, errorText);
-                    messageService.sendWithMenu(sender, chatId, "...");
                 }
         );
     }

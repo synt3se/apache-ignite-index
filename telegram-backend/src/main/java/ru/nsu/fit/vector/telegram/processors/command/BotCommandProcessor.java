@@ -74,14 +74,14 @@ public abstract class BotCommandProcessor {
             Long id = Long.parseLong(raw);
             if (id < 1) {
                 log.warn("Incorrect ID format: id <= 0");
-                messageService.sendWithMenu(sender, chatId, "❌ Неверный формат id: '" + raw + "'. Число должно быть > 0.");
+                messageService.sendText(sender, chatId, "❌ Неверный формат id: '" + raw + "'. Число должно быть > 0.");
                 return null;
             }
             return id;
         }
         catch (NumberFormatException e) {
             log.warn("Incorrect ID format: " + e.getMessage());
-            messageService.sendWithMenu(sender, chatId, "❌ Неверный формат id: '" + raw + "'. id должен быть числом.");
+            messageService.sendText(sender, chatId, "❌ Неверный формат id: '" + raw + "'. id должен быть числом.");
             return null;
         }
     }
