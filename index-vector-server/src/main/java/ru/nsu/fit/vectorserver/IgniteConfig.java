@@ -16,7 +16,7 @@ public class IgniteConfig {
     @Bean
     public IgniteClient igniteClient(@Value("${ignite.address}") String igniteAddress) {
         ClientConfiguration configuration = new ClientConfiguration()
-                .setAddresses(igniteAddress);
+                .setAddresses(igniteAddress.split("\\s*,\\s*"));   // список адресов = failover
 
         igniteClient = Ignition.startClient(configuration);
         return igniteClient;

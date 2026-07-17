@@ -1,0 +1,9 @@
+.git
+.idea
+**/target
+*.csv
+*.csv.gz
+data/
+jfr/
+clip-cache/
+deploy/

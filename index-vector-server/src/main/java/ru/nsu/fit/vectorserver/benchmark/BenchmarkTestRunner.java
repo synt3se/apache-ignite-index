@@ -18,7 +18,7 @@ import java.util.Map;
 public class BenchmarkTestRunner {
 
     private static final int LOAD_BATCH_SIZE = 10_000;
-    private static final int WARMUP_QUERY_COUNT = 10;
+    private static final int WARMUP_QUERY_COUNT = 50;
     private static final int MEASURED_QUERY_COUNT = 100;
     private static final long INDEX_READY_TIMEOUT_MS = 10 * 60_000L;
 

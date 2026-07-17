@@ -1,0 +1,91 @@
+x-ignite-common: &ignite-common
+  build:
+    context: .
+    target: node
+  restart: unless-stopped
+  environment:
+    CONFIG_URI: /config/ignite-config.xml
+    JVM_OPTS: >-
+      -Xms1g -Xmx2g
+      --add-opens=java.base/java.nio=ALL-UNNAMED
+      --add-opens=java.base/sun.nio.ch=ALL-UNNAMED
+      --add-opens=java.base/java.lang=ALL-UNNAMED
+      --add-opens=java.base/java.lang.invoke=ALL-UNNAMED
+      --add-opens=java.base/java.util=ALL-UNNAMED
+      --add-opens=java.base/java.io=ALL-UNNAMED
+      --add-opens=java.base/jdk.internal.misc=ALL-UNNAMED
+  volumes:
+    - ./docker/config-server:/config:ro
+    - ./jfr:/jfr
+
+services:
+  ignite-node-1:
+    <<: *ignite-common
+    container_name: ignite-node-1
+
+  ignite-node-2:
+    <<: *ignite-common
+    container_name: ignite-node-2
+    depends_on:
+      - ignite-node-1
+
+  ignite-node-3:
+    <<: *ignite-common
+    container_name: ignite-node-3
+    depends_on:
+      - ignite-node-1
+
+  index-server:
+    build:
+      context: .
+      target: server
+    container_name: index-server
+    restart: unless-stopped
+    environment:
+      IGNITE_ADDRESS: ignite-node-1:10800,ignite-node-2:10800,ignite-node-3:10800
+    volumes:
+      - ./data:/data:ro
+    ports:
+      - "127.0.0.1:8081:8081"
+    depends_on:
+      - ignite-node-1
+      - ignite-node-2
+      - ignite-node-3
+
+  clip:
+    build: ./embedding
+    container_name: clip
+    restart: unless-stopped
+    volumes:
+      - ./clip-cache:/root/.cache
+    # аварийный режим без torch (фейковые эмбеддинги, только для отладки трубы):
+    # environment:
+    #   CLIP_FAKE: "1"
+
+  gateway:
+    build:
+      context: .
+      target: gateway
+    container_name: gateway
+    restart: unless-stopped
+    environment:
+      CLIP_URL: http://clip:8000
+      INDEX_URL: http://index-server:8081
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      - index-server
+      - clip
+
+  bot:
+    build:
+      context: .
+      target: bot
+    container_name: bot
+    restart: unless-stopped
+    environment:
+      GATEWAY_API_URL: http://gateway:8080
+      BOT_TOKEN: ${BOT_TOKEN}
+      BOT_USERNAME: ${BOT_USERNAME}
+    depends_on:
+      - gateway

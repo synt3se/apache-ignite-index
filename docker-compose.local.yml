@@ -1,0 +1,10 @@
+services:
+  ignite-node-1:
+    ports:
+      - "127.0.0.1:10800:10800"
+  ignite-node-2:
+    ports:
+      - "127.0.0.1:10801:10800"
+  ignite-node-3:
+    ports:
+      - "127.0.0.1:10802:10800"

@@ -80,3 +80,8 @@ desktop.ini
 # Docker local overrides (compose files themselves ARE committed)
 # ============================================================
 docker-compose.override.yml
+
+data/
+jfr/
+clip-cache/
+*.csv.gz

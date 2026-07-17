@@ -9,7 +9,6 @@
 
     <bean class="org.apache.ignite.configuration.IgniteConfiguration">
 
-        <!-- События -->
         <property name="includeEventTypes">
             <list>
                 <util:constant static-field="org.apache.ignite.events.EventType.EVT_CACHE_OBJECT_PUT"/>
@@ -21,7 +20,6 @@
             </list>
         </property>
 
-        <!-- Кэш-источник истины: теперь объявлен явно -->
         <property name="cacheConfiguration">
             <list>
                 <bean class="org.apache.ignite.configuration.CacheConfiguration">
@@ -39,10 +37,6 @@
             </list>
         </property>
 
-        <!-- Node-singleton индексная плоскость: экземпляр на каждом сервере -->
-
-
-
         <property name="serviceConfiguration">
             <list>
                 <bean class="org.apache.ignite.services.ServiceConfiguration">
@@ -50,25 +44,10 @@
                     <property name="maxPerNodeCount" value="1"/>
                     <property name="totalCount" value="0"/>
                     <property name="service">
-                        <!--========================= ВОТ ЗДЕСЬ НАСТРОИТЬ ИНДЕКС =====================-->
                         <bean class="ru.nsu.fit.vector.node.service.LocalIndexServiceImpl">
+                            <!-- ПРОД: всегда JVECTOR. brute-force - только локально для GT-прогонов -->
                             <property name="indexType">
                                 <util:constant static-field="ru.nsu.fit.vector.common.indextype.IndexType.JVECTOR_INDEX"/>
-                            </property>
-                            <property name="dimension" value="512"/>
-                            <property name="jvectorProperties">
-                                <bean class="ru.nsu.fit.vector.node.index.JVectorProperties">
-                                    <property name="m" value="32"/>
-                                    <property name="efConstruction" value="100"/>
-                                    <property name="efSearch" value="1"/>
-                                    <property name="neighborOverflow" value="1.2"/>
-                                    <property name="alpha" value="1.2"/>
-                                    <property name="addHierarchy" value="true"/>
-                                    <property name="refineFinalGraph" value="true"/>
-                                    <property name="addRebuildRatio" value="0.10"/>
-                                    <property name="deleteRebuildRatio" value="0.20"/>
-                                    <property name="minAdditionsBeforeRebuild" value="256"/>
-                                </bean>
                             </property>
                         </bean>
                     </property>
@@ -92,10 +71,10 @@
                             <list>
                                 <value>ignite-node-1:47500..47509</value>
                                 <value>ignite-node-2:47500..47509</value>
+                                <value>ignite-node-3:47500..47509</value>
                             </list>
                         </property>
                     </bean>
-
                 </property>
             </bean>
         </property>
