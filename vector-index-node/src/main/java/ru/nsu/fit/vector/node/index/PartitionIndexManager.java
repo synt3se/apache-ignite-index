@@ -322,11 +322,16 @@ public final class PartitionIndexManager {
         }
 
         long enginePending = 0;
+        long dedupSkipped = 0;
         for (PartitionState st : partitions.values()) {
             PartitionVectorIndex idx = st.indexOrNull();
-            if (idx != null) enginePending += idx.pendingCount();
+            if (idx != null) {
+                enginePending += idx.pendingCount();
+                dedupSkipped += idx.dedupSkippedCount();
+            }
         }
         s.enginePendingVectors = enginePending;
+        s.dedupSkippedTotal = dedupSkipped;
 
         s.ownedPartitions = partitions.size();
         s.activePartitions = active;

@@ -196,6 +196,8 @@ public class DistributedVectorIndex implements Index {
     public long load(String path) {
         long maxId = 0;
         long importedCount = 0;
+        long t0 = System.nanoTime();
+        long putWaitNanos = 0;
         Map<Long, VectorObject> batch = new HashMap<>(LOAD_BATCH_SIZE);
         List<IgniteClientFuture<Void>> inFlight = new ArrayList<>();
 
@@ -246,7 +248,7 @@ public class DistributedVectorIndex implements Index {
                     inFlight.add(cache.putAllAsync(batch));
                     batch = new HashMap<>(LOAD_BATCH_SIZE);   // отправленную мапу НЕ переиспользуем: она ещё в полёте
                     if (inFlight.size() >= MAX_IN_FLIGHT_BATCHES) {
-                        awaitOldest(inFlight);                 // backpressure: не больше 3 неподтверждённых
+                        putWaitNanos += awaitOldest(inFlight); // backpressure: не больше 3 неподтверждённых
                     }
                 }
                 if (importedCount % 50_000 == 0) {
@@ -255,9 +257,14 @@ public class DistributedVectorIndex implements Index {
             }
 
             if (!batch.isEmpty()) inFlight.add(cache.putAllAsync(batch));
-            while (!inFlight.isEmpty()) awaitOldest(inFlight);   // дождаться хвоста ДО rebuild
+            while (!inFlight.isEmpty()) putWaitNanos += awaitOldest(inFlight);   // дождаться хвоста ДО rebuild
 
-            System.out.println("=== Import completed! Lines: " + importedCount + " ===");
+            long totalMs = (System.nanoTime() - t0) / 1_000_000;
+            long putWaitMs = putWaitNanos / 1_000_000;
+            System.out.println("=== Import completed! Lines: " + importedCount
+                    + ", total=" + totalMs + " ms"
+                    + ", putAll-wait=" + putWaitMs + " ms"
+                    + ", parse+read=" + (totalMs - putWaitMs) + " ms ===");
             return maxId;
         } catch (IOException e) {
             throw new RuntimeException("CSV load error: " + path, e);
@@ -266,9 +273,11 @@ public class DistributedVectorIndex implements Index {
         }
     }
 
-    private void awaitOldest(List<IgniteClientFuture<Void>> inFlight) {
+    private long awaitOldest(List<IgniteClientFuture<Void>> inFlight) {
+        long waitT0 = System.nanoTime();
         try {
             inFlight.remove(0).get();
+            return System.nanoTime() - waitT0;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new RuntimeException("Bulk load interrupted", e);
