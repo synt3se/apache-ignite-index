@@ -4,12 +4,14 @@ import org.apache.ignite.compute.ComputeJobAdapter;
 import ru.nsu.fit.vector.node.index.NodeIndexContext;
 import ru.nsu.fit.vector.node.index.PartitionIndexManager;
 
+import java.util.concurrent.TimeUnit;
+
 public class ClearLocalIndexJob extends ComputeJobAdapter {
     @Override
     public Object execute() {
         PartitionIndexManager manager = NodeIndexContext.manager();
         if (manager != null) {
-            manager.pauseIndexing();   // bulk-режим до RebuildIndexesTask
+            manager.pauseIndexing(TimeUnit.MINUTES.toMillis(10));   // bulk-режим до RebuildIndexesTask
             manager.clearAll();
         }
         return null;

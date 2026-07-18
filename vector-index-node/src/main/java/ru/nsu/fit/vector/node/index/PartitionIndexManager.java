@@ -53,7 +53,7 @@ public final class PartitionIndexManager {
     private final AtomicBoolean reconcileDebounce = new AtomicBoolean();
     private final AtomicBoolean reconcileRunning = new AtomicBoolean();
     private volatile boolean stopped;
-    private volatile boolean bulkLoading;
+    private volatile long bulkPauseUntil;
 
     private Affinity<Long> affinity;
     private IgniteCache<Long, VectorObject> cache;
@@ -106,6 +106,11 @@ public final class PartitionIndexManager {
 
         housekeeper.schedule(() -> safeReconcile(true), 1, TimeUnit.SECONDS);
         housekeeper.scheduleWithFixedDelay(() -> {
+            long pauseUntil = bulkPauseUntil;
+            if (pauseUntil != 0 && System.currentTimeMillis() >= pauseUntil) {
+                log.warning("[vindex] bulk pause EXPIRED - load never finished? resuming with full rebuild");
+                resumeIndexing();
+            }
             long total = applied.get();
             long delta = total - lastAppliedLogged;
             lastAppliedLogged = total;
@@ -127,7 +132,7 @@ public final class PartitionIndexManager {
     }
 
     private boolean onCacheEvent(Event evt) {
-        if (stopped || bulkLoading) return true;
+        if (stopped || paused()) return true;
         if (!(evt instanceof CacheEvent ce) || !cacheName.equals(ce.cacheName())) return true;
         Object rawKey = ce.key();
         if (!(rawKey instanceof Number num)) return true;
@@ -165,7 +170,7 @@ public final class PartitionIndexManager {
     }
 
     private void safeReconcile(boolean rebuildAll) {
-        if (stopped || bulkLoading || !reconcileRunning.compareAndSet(false, true)) return;
+        if (stopped || paused() || !reconcileRunning.compareAndSet(false, true)) return;
         try {
             reconcile(rebuildAll);
         } catch (Exception ignored) {
@@ -351,6 +356,14 @@ public final class PartitionIndexManager {
         return s;
     }
 
+    public int activePartitionsCount() {
+        int active = 0;
+        for (PartitionState st : partitions.values()) {
+            if (st.isActive()) active++;
+        }
+        return active;
+    }
+
     /**
      * Оценка heap-памяти на вектор (ARCHITECTURE-V2 §11.2) — формула, не замер.
      * JVector: ДВЕ копии вектора (float[] + VectorFloat движка) + рёбра графа
@@ -372,16 +385,21 @@ public final class PartitionIndexManager {
         partitions.clear();
     }
 
-    /** Bulk-режим: события кэша игнорируются, сверка спит. Выход — resumeIndexing(). */
-    public void pauseIndexing() {
-        bulkLoading = true;
-        log.info("[vindex] indexing PAUSED (bulk load)");
+    /** Bulk-режим: события кэша игнорируются, сверка спит. Штатный выход — resumeIndexing().
+     *  TTL — страховка: если сервер умер посреди load, узел вернётся к жизни сам. */
+    public void pauseIndexing(long ttlMs) {
+        bulkPauseUntil = System.currentTimeMillis() + ttlMs;
+        log.info("[vindex] indexing PAUSED (bulk load, ttl=" + ttlMs + " ms)");
     }
 
     public void resumeIndexing() {
-        bulkLoading = false;
+        bulkPauseUntil = 0;
         log.info("[vindex] indexing RESUMED - full rebuild");
         forceReconcile(true);
+    }
+
+    private boolean paused() {
+        return System.currentTimeMillis() < bulkPauseUntil;
     }
 
     private static ThreadFactory factory(String prefix) {
