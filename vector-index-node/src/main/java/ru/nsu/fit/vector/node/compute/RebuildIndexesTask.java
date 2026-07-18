@@ -35,7 +35,7 @@ public class RebuildIndexesTask extends ComputeTaskAdapter<Void, Void> {
             PartitionIndexManager manager = NodeIndexContext.manager();
             if (manager == null) throw new IllegalStateException("PartitionIndexManager is not initialized");
 
-            manager.forceReconcile(true);
+            manager.resumeIndexing();   // снимает bulk-паузу и делает полный rebuild
             return null;
         }
     }

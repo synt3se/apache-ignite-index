@@ -53,6 +53,7 @@ public final class PartitionIndexManager {
     private final AtomicBoolean reconcileDebounce = new AtomicBoolean();
     private final AtomicBoolean reconcileRunning = new AtomicBoolean();
     private volatile boolean stopped;
+    private volatile boolean bulkLoading;
 
     private Affinity<Long> affinity;
     private IgniteCache<Long, VectorObject> cache;
@@ -126,7 +127,7 @@ public final class PartitionIndexManager {
     }
 
     private boolean onCacheEvent(Event evt) {
-        if (stopped) return true;
+        if (stopped || bulkLoading) return true;
         if (!(evt instanceof CacheEvent ce) || !cacheName.equals(ce.cacheName())) return true;
         Object rawKey = ce.key();
         if (!(rawKey instanceof Number num)) return true;
@@ -164,7 +165,7 @@ public final class PartitionIndexManager {
     }
 
     private void safeReconcile(boolean rebuildAll) {
-        if (stopped || !reconcileRunning.compareAndSet(false, true)) return;
+        if (stopped || bulkLoading || !reconcileRunning.compareAndSet(false, true)) return;
         try {
             reconcile(rebuildAll);
         } catch (Exception ignored) {
@@ -364,6 +365,18 @@ public final class PartitionIndexManager {
             if (idx != null) idx.clear();
         }
         partitions.clear();
+    }
+
+    /** Bulk-режим: события кэша игнорируются, сверка спит. Выход — resumeIndexing(). */
+    public void pauseIndexing() {
+        bulkLoading = true;
+        log.info("[vindex] indexing PAUSED (bulk load)");
+    }
+
+    public void resumeIndexing() {
+        bulkLoading = false;
+        log.info("[vindex] indexing RESUMED - full rebuild");
+        forceReconcile(true);
     }
 
     private static ThreadFactory factory(String prefix) {

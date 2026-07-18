@@ -8,7 +8,10 @@ public class ClearLocalIndexJob extends ComputeJobAdapter {
     @Override
     public Object execute() {
         PartitionIndexManager manager = NodeIndexContext.manager();
-        if (manager != null) manager.clearAll();
+        if (manager != null) {
+            manager.pauseIndexing();   // bulk-режим до RebuildIndexesTask
+            manager.clearAll();
+        }
         return null;
     }
 }

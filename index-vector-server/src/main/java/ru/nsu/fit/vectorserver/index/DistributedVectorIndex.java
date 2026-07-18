@@ -4,6 +4,7 @@ import org.apache.ignite.cache.query.QueryCursor;
 import org.apache.ignite.cache.query.ScanQuery;
 import org.apache.ignite.client.ClientCache;
 import org.apache.ignite.client.IgniteClient;
+import org.apache.ignite.client.IgniteClientFuture;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
@@ -21,6 +22,7 @@ import ru.nsu.fit.vector.node.compute.RebuildIndexesTask;
 import javax.cache.Cache;
 import java.io.*;
 import java.util.*;
+import java.util.concurrent.ExecutionException;
 
 @Primary
 @Component
@@ -29,6 +31,7 @@ public class DistributedVectorIndex implements Index {
     private final ClientCache<Long, VectorObject> cache;
     private final int dimension;
     private static final int LOAD_BATCH_SIZE = 5_000;
+    private static final int MAX_IN_FLIGHT_BATCHES = 3;
 
     @Value("${search.mode:task}")
     private String searchMode;
@@ -194,6 +197,7 @@ public class DistributedVectorIndex implements Index {
         long maxId = 0;
         long importedCount = 0;
         Map<Long, VectorObject> batch = new HashMap<>(LOAD_BATCH_SIZE);
+        List<IgniteClientFuture<Void>> inFlight = new ArrayList<>();
 
         try (BufferedReader br = new BufferedReader(new FileReader(path))) {
             br.readLine();
@@ -223,7 +227,6 @@ public class DistributedVectorIndex implements Index {
 
                 String[] tokens = vectorStr.split(",\\s*");
                 float[] vector = new float[tokens.length];
-
                 for (int i = 0; i < tokens.length; i++) {
                     vector[i] = Float.parseFloat(tokens[i]);
                 }
@@ -239,19 +242,38 @@ public class DistributedVectorIndex implements Index {
                 importedCount++;
                 maxId = Math.max(maxId, id);
 
-                if (batch.size() >= LOAD_BATCH_SIZE) flushLoadBatch(batch);
+                if (batch.size() >= LOAD_BATCH_SIZE) {
+                    inFlight.add(cache.putAllAsync(batch));
+                    batch = new HashMap<>(LOAD_BATCH_SIZE);   // отправленную мапу НЕ переиспользуем: она ещё в полёте
+                    if (inFlight.size() >= MAX_IN_FLIGHT_BATCHES) {
+                        awaitOldest(inFlight);                 // backpressure: не больше 3 неподтверждённых
+                    }
+                }
                 if (importedCount % 50_000 == 0) {
                     System.out.println("Import from CSV: " + importedCount + " lines...");
                 }
             }
 
-            flushLoadBatch(batch);
-            rebuildIndexes();
+            if (!batch.isEmpty()) inFlight.add(cache.putAllAsync(batch));
+            while (!inFlight.isEmpty()) awaitOldest(inFlight);   // дождаться хвоста ДО rebuild
 
             System.out.println("=== Import completed! Lines: " + importedCount + " ===");
             return maxId;
         } catch (IOException e) {
             throw new RuntimeException("CSV load error: " + path, e);
+        } finally {
+            rebuildIndexes();   // ВСЕГДА: снимает bulk-паузу (resumeIndexing) даже если заливка упала
+        }
+    }
+
+    private void awaitOldest(List<IgniteClientFuture<Void>> inFlight) {
+        try {
+            inFlight.remove(0).get();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("Bulk load interrupted", e);
+        } catch (ExecutionException e) {
+            throw new RuntimeException("Batch write failed", e.getCause());
         }
     }
 
