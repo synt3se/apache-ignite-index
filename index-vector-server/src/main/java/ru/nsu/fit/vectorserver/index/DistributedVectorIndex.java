@@ -31,6 +31,7 @@ public class DistributedVectorIndex implements Index {
     private final ClientCache<Long, VectorObject> cache;
     private final int dimension;
     private static final int LOAD_BATCH_SIZE = 5_000;
+    private static final int PARSE_CHUNK = 20_000;
     private static final int MAX_IN_FLIGHT_BATCHES = 3;
 
     @Value("${search.mode:task}")
@@ -196,68 +197,50 @@ public class DistributedVectorIndex implements Index {
     public long load(String path) {
         long maxId = 0;
         long importedCount = 0;
-        long t0 = System.nanoTime();
-        long putWaitNanos = 0;
         Map<Long, VectorObject> batch = new HashMap<>(LOAD_BATCH_SIZE);
         List<IgniteClientFuture<Void>> inFlight = new ArrayList<>();
+        long t0 = System.nanoTime();
+        long putWaitNanos = 0;
 
         try (BufferedReader br = new BufferedReader(new FileReader(path))) {
-            br.readLine();
+            br.readLine();   // заголовок
 
+            List<String> chunk = new ArrayList<>(PARSE_CHUNK);
             String line;
-            while ((line = br.readLine()) != null) {
-                if (line.isBlank()) continue;
-
-                int firstSemicolon = line.indexOf(';');
-                int secondSemicolon = line.indexOf(';', firstSemicolon + 1);
-                int thirdSemicolon = line.indexOf(';', secondSemicolon + 1);
-
-                if (firstSemicolon == -1 || secondSemicolon == -1 || thirdSemicolon == -1) {
-                    continue; // Пропускаем некорректные строки
+            boolean eof = false;
+            while (!eof) {
+                line = br.readLine();
+                eof = (line == null);
+                if (!eof) {
+                    if (line.isBlank()) continue;
+                    chunk.add(line);
                 }
+                if (chunk.size() >= PARSE_CHUNK || (eof && !chunk.isEmpty())) {
+                    List<ParsedRow> rows = chunk.parallelStream()
+                            .map(this::parseCsvLine)
+                            .filter(Objects::nonNull)
+                            .toList();
+                    chunk.clear();
 
-                long id = Long.parseLong(line.substring(0, firstSemicolon));
-                String url = line.substring(firstSemicolon + 1, secondSemicolon);
+                    for (ParsedRow row : rows) {
+                        batch.put(row.id(), row.object());
+                        importedCount++;
+                        maxId = Math.max(maxId, row.id());
 
-                String vectorStr = line.substring(secondSemicolon + 1, thirdSemicolon)
-                        .replace("[", "")
-                        .replace("]", "")
-                        .trim();
-
-                String metadataStr = line.substring(thirdSemicolon + 1).trim();
-                String metadata = metadataStr.isEmpty() ? null : metadataStr;
-
-                String[] tokens = vectorStr.split(",\\s*");
-                float[] vector = new float[tokens.length];
-                for (int i = 0; i < tokens.length; i++) {
-                    vector[i] = Float.parseFloat(tokens[i]);
-                }
-
-                if (vector.length != dimension) {
-                    throw new IllegalArgumentException(
-                            "Incorrect vector dimension for id " + id +
-                                    ": " + vector.length + ", required: " + dimension
-                    );
-                }
-
-                batch.put(id, new VectorObject(vector, url, metadata));
-                importedCount++;
-                maxId = Math.max(maxId, id);
-
-                if (batch.size() >= LOAD_BATCH_SIZE) {
-                    inFlight.add(cache.putAllAsync(batch));
-                    batch = new HashMap<>(LOAD_BATCH_SIZE);   // отправленную мапу НЕ переиспользуем: она ещё в полёте
-                    if (inFlight.size() >= MAX_IN_FLIGHT_BATCHES) {
-                        putWaitNanos += awaitOldest(inFlight); // backpressure: не больше 3 неподтверждённых
+                        if (batch.size() >= LOAD_BATCH_SIZE) {
+                            inFlight.add(cache.putAllAsync(batch));
+                            batch = new HashMap<>(LOAD_BATCH_SIZE);   // отправленную мапу НЕ переиспользуем
+                            if (inFlight.size() >= MAX_IN_FLIGHT_BATCHES) {
+                                putWaitNanos += awaitOldest(inFlight);
+                            }
+                        }
                     }
-                }
-                if (importedCount % 50_000 == 0) {
                     System.out.println("Import from CSV: " + importedCount + " lines...");
                 }
             }
 
             if (!batch.isEmpty()) inFlight.add(cache.putAllAsync(batch));
-            while (!inFlight.isEmpty()) putWaitNanos += awaitOldest(inFlight);   // дождаться хвоста ДО rebuild
+            while (!inFlight.isEmpty()) putWaitNanos += awaitOldest(inFlight);
 
             long totalMs = (System.nanoTime() - t0) / 1_000_000;
             long putWaitMs = putWaitNanos / 1_000_000;
@@ -269,7 +252,7 @@ public class DistributedVectorIndex implements Index {
         } catch (IOException e) {
             throw new RuntimeException("CSV load error: " + path, e);
         } finally {
-            rebuildIndexes();   // ВСЕГДА: снимает bulk-паузу (resumeIndexing) даже если заливка упала
+            rebuildIndexes();   // ВСЕГДА: снимает bulk-паузу даже если заливка упала
         }
     }
 
@@ -284,6 +267,48 @@ public class DistributedVectorIndex implements Index {
         } catch (ExecutionException e) {
             throw new RuntimeException("Batch write failed", e.getCause());
         }
+    }
+
+    private record ParsedRow(long id, VectorObject object) {}
+
+    private ParsedRow parseCsvLine(String line) {
+        int firstSemicolon = line.indexOf(';');
+        int secondSemicolon = line.indexOf(';', firstSemicolon + 1);
+        int thirdSemicolon = line.indexOf(';', secondSemicolon + 1);
+        if (firstSemicolon == -1 || secondSemicolon == -1 || thirdSemicolon == -1) return null;
+
+        long id = Long.parseLong(line.substring(0, firstSemicolon));
+        String url = line.substring(firstSemicolon + 1, secondSemicolon);
+        String metadataStr = line.substring(thirdSemicolon + 1).trim();
+        String metadata = metadataStr.isEmpty() ? null : metadataStr;
+
+        float[] vector = parseVectorFast(line.substring(secondSemicolon + 1, thirdSemicolon));
+        if (vector.length != dimension) {
+            throw new IllegalArgumentException("Incorrect vector dimension for id " + id
+                    + ": " + vector.length + ", required: " + dimension);
+        }
+        return new ParsedRow(id, new VectorObject(vector, url, metadata));
+    }
+
+    /** Ручной парс "[f, f, ...]" без regex: два прохода, ноль промежуточных массивов строк. */
+    private float[] parseVectorFast(String s) {
+        int start = s.indexOf('[') + 1;
+        int end = s.lastIndexOf(']');
+        if (end < 0) end = s.length();
+
+        int count = 1;
+        for (int i = start; i < end; i++) {
+            if (s.charAt(i) == ',') count++;
+        }
+        float[] v = new float[count];
+        int pos = start;
+        for (int i = 0; i < count; i++) {
+            int comma = s.indexOf(',', pos);
+            if (comma < 0 || comma > end) comma = end;
+            v[i] = Float.parseFloat(s.substring(pos, comma).trim());
+            pos = comma + 1;
+        }
+        return v;
     }
 
     private void flushLoadBatch(Map<Long, VectorObject> batch) {
