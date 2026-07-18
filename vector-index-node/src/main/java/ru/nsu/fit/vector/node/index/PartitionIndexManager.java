@@ -295,12 +295,17 @@ public final class PartitionIndexManager {
     }
 
     public List<ScoredVector> searchLocal(float[] query, int count) {
+        List<List<ScoredVector>> perPartition = partitions.values().parallelStream()
+                .map(st -> {
+                    PartitionVectorIndex idx = st.indexOrNull();
+                    return idx == null ? List.<ScoredVector>of() : idx.search(query, count);
+                })
+                .toList();
+
         PriorityQueue<ScoredVector> top = new PriorityQueue<>(
                 Comparator.comparingDouble(ScoredVector::distance).reversed());
-        for (PartitionState st : partitions.values()) {
-            PartitionVectorIndex idx = st.indexOrNull();
-            if (idx == null) continue;
-            for (ScoredVector c : idx.search(query, count)) {
+        for (List<ScoredVector> partial : perPartition) {
+            for (ScoredVector c : partial) {
                 if (top.size() < count) top.add(c);
                 else if (top.peek() != null && c.distance() < top.peek().distance()) {
                     top.poll();
