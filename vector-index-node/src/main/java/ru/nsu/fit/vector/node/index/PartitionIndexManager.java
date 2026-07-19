@@ -53,6 +53,7 @@ public final class PartitionIndexManager {
     private final AtomicBoolean reconcileDebounce = new AtomicBoolean();
     private final AtomicBoolean reconcileRunning = new AtomicBoolean();
     private volatile boolean stopped;
+    private volatile long bulkPauseUntil;
 
     private Affinity<Long> affinity;
     private IgniteCache<Long, VectorObject> cache;
@@ -105,6 +106,11 @@ public final class PartitionIndexManager {
 
         housekeeper.schedule(() -> safeReconcile(true), 1, TimeUnit.SECONDS);
         housekeeper.scheduleWithFixedDelay(() -> {
+            long pauseUntil = bulkPauseUntil;
+            if (pauseUntil != 0 && System.currentTimeMillis() >= pauseUntil) {
+                log.warning("[vindex] bulk pause EXPIRED - load never finished? resuming with full rebuild");
+                resumeIndexing();
+            }
             long total = applied.get();
             long delta = total - lastAppliedLogged;
             lastAppliedLogged = total;
@@ -126,7 +132,7 @@ public final class PartitionIndexManager {
     }
 
     private boolean onCacheEvent(Event evt) {
-        if (stopped) return true;
+        if (stopped || paused()) return true;
         if (!(evt instanceof CacheEvent ce) || !cacheName.equals(ce.cacheName())) return true;
         Object rawKey = ce.key();
         if (!(rawKey instanceof Number num)) return true;
@@ -164,7 +170,7 @@ public final class PartitionIndexManager {
     }
 
     private void safeReconcile(boolean rebuildAll) {
-        if (stopped || !reconcileRunning.compareAndSet(false, true)) return;
+        if (stopped || paused() || !reconcileRunning.compareAndSet(false, true)) return;
         try {
             reconcile(rebuildAll);
         } catch (Exception ignored) {
@@ -289,12 +295,17 @@ public final class PartitionIndexManager {
     }
 
     public List<ScoredVector> searchLocal(float[] query, int count) {
+        List<List<ScoredVector>> perPartition = partitions.values().parallelStream()
+                .map(st -> {
+                    PartitionVectorIndex idx = st.indexOrNull();
+                    return idx == null ? List.<ScoredVector>of() : idx.search(query, count);
+                })
+                .toList();
+
         PriorityQueue<ScoredVector> top = new PriorityQueue<>(
                 Comparator.comparingDouble(ScoredVector::distance).reversed());
-        for (PartitionState st : partitions.values()) {
-            PartitionVectorIndex idx = st.indexOrNull();
-            if (idx == null) continue;
-            for (ScoredVector c : idx.search(query, count)) {
+        for (List<ScoredVector> partial : perPartition) {
+            for (ScoredVector c : partial) {
                 if (top.size() < count) top.add(c);
                 else if (top.peek() != null && c.distance() < top.peek().distance()) {
                     top.poll();
@@ -321,11 +332,16 @@ public final class PartitionIndexManager {
         }
 
         long enginePending = 0;
+        long dedupSkipped = 0;
         for (PartitionState st : partitions.values()) {
             PartitionVectorIndex idx = st.indexOrNull();
-            if (idx != null) enginePending += idx.pendingCount();
+            if (idx != null) {
+                enginePending += idx.pendingCount();
+                dedupSkipped += idx.dedupSkippedCount();
+            }
         }
         s.enginePendingVectors = enginePending;
+        s.dedupSkippedTotal = dedupSkipped;
 
         s.ownedPartitions = partitions.size();
         s.activePartitions = active;
@@ -343,6 +359,14 @@ public final class PartitionIndexManager {
         s.uptimeMs = ManagementFactory.getRuntimeMXBean().getUptime();
 
         return s;
+    }
+
+    public int activePartitionsCount() {
+        int active = 0;
+        for (PartitionState st : partitions.values()) {
+            if (st.isActive()) active++;
+        }
+        return active;
     }
 
     /**
@@ -364,6 +388,23 @@ public final class PartitionIndexManager {
             if (idx != null) idx.clear();
         }
         partitions.clear();
+    }
+
+    /** Bulk-режим: события кэша игнорируются, сверка спит. Штатный выход — resumeIndexing().
+     *  TTL — страховка: если сервер умер посреди load, узел вернётся к жизни сам. */
+    public void pauseIndexing(long ttlMs) {
+        bulkPauseUntil = System.currentTimeMillis() + ttlMs;
+        log.info("[vindex] indexing PAUSED (bulk load, ttl=" + ttlMs + " ms)");
+    }
+
+    public void resumeIndexing() {
+        bulkPauseUntil = 0;
+        log.info("[vindex] indexing RESUMED - full rebuild");
+        forceReconcile(true);
+    }
+
+    private boolean paused() {
+        return System.currentTimeMillis() < bulkPauseUntil;
     }
 
     private static ThreadFactory factory(String prefix) {

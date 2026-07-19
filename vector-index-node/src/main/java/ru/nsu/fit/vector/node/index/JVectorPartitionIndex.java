@@ -41,6 +41,7 @@ public class JVectorPartitionIndex
     //Текущее состояние графа (Наша реализация)
     private IndexSnapshot snapshot = IndexSnapshot.empty();
     private boolean rebuildInProgress = false;
+    private long dedupSkipped;
 
 
     private final JVectorProperties jVectorProperties;
@@ -71,7 +72,10 @@ public class JVectorPartitionIndex
             Integer ord = snapshot.idToOrdinal().get(id);
 
             if (ord != null && !deletedFromGraph.contains(id)
-                    && Arrays.equals(snapshot.rawVectors().get(ord), vector)) {return;}
+                    && Arrays.equals(snapshot.rawVectors().get(ord), vector)) {
+                dedupSkipped++;
+                return;
+            }
 
             if (snapshot.containsId(id)) {
                 deletedFromGraph.add(id);
@@ -400,12 +404,16 @@ public class JVectorPartitionIndex
             lock.readLock().unlock();
         }
 
+        long buildT0 = System.nanoTime();
         IndexSnapshot newSnapshot = buildSnapshot(vectorsForBuild);
+        long buildMs = (System.nanoTime() - buildT0) / 1_000_000;
 
         lock.writeLock().lock();
         try {
             if (snapshot != sourceSnapshot) {
                 closeGraph(newSnapshot.graph());
+                System.out.println("[jvector] build DISCARDED (lost race): size="
+                        + newSnapshot.size() + ", wasted " + buildMs + " ms");
                 return;
             }
 
@@ -416,7 +424,8 @@ public class JVectorPartitionIndex
                 pendingVectors.remove(entry.getKey(), entry.getValue());
             }
             System.out.println("[jvector] graph rebuilt: live=" + newSnapshot.size()
-                    + ", pendingLeft=" + pendingVectors.size());
+                    + ", pendingLeft=" + pendingVectors.size()
+                    + ", buildMs=" + buildMs);
 
             deletedFromGraph.removeAll(includedDeleted);
 
@@ -454,6 +463,16 @@ public class JVectorPartitionIndex
         }
 
         rebuildAsync();
+    }
+
+    @Override
+    public long dedupSkippedCount() {
+        lock.readLock().lock();
+        try {
+            return dedupSkipped;
+        } finally {
+            lock.readLock().unlock();
+        }
     }
 
     @Override

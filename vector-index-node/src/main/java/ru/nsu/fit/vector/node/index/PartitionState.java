@@ -1,6 +1,6 @@
 package ru.nsu.fit.vector.node.index;
 
-import java.util.ArrayDeque;
+import java.util.LinkedHashSet;
 
 final class PartitionState {
 
@@ -10,7 +10,7 @@ final class PartitionState {
 
     final int partition;
     private final Object lock = new Object();
-    private final ArrayDeque<Long> pending = new ArrayDeque<>();
+    private final LinkedHashSet<Long> pending = new LinkedHashSet<>();
     private boolean overflow;
 
     private volatile State state = State.REBUILDING;
@@ -49,8 +49,8 @@ final class PartitionState {
         }
         PartitionVectorIndex fresh = builder.buildFor(partition); // долго, ВНЕ замка
         synchronized (lock) {
-            Long key;
-            while ((key = pending.poll()) != null) applier.apply(fresh, key);
+            for (Long key : pending) applier.apply(fresh, key);
+            pending.clear();
             index = fresh;                 // атомарная подмена ссылки
             state = State.ACTIVE;
             boolean again = overflow;

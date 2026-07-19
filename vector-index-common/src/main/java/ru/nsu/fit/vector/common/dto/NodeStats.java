@@ -11,6 +11,7 @@ public class NodeStats implements Serializable {
     public int dirtyPartitions;
     public long appliedTotal; // сколько изменений применено с запуска
     public long enginePendingVectors;
+    public long dedupSkippedTotal;   // применения, свёрнутые дедупом движка (значение уже в графе)
 
     public String engine;                  // что работает на узле: JVECTOR_INDEX | BRUTE_FORCE_INDEX
     public int dimension;

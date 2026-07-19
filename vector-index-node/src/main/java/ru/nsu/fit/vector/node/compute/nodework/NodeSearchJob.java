@@ -26,6 +26,6 @@ public class NodeSearchJob implements IgniteCallable<NodeSearchResult> {
         }
         return new NodeSearchResult(
                 manager.searchLocal(queryVector, count),
-                manager.localStats().activePartitions);
+                manager.activePartitionsCount());
     }
 }
