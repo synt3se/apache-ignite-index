@@ -1,4 +1,4 @@
-package ru.nsu.fit.vectorserver.benchmark;
+package ru.nsu.fit.vectorserver.benchmark.recall;
 
 import io.jhdf.HdfFile;
 import io.jhdf.api.Dataset;
@@ -8,6 +8,7 @@ import ru.nsu.fit.vector.common.dto.Neighbor;
 import ru.nsu.fit.vector.common.dto.NodeStats;
 import ru.nsu.fit.vector.common.dto.SearchRequest;
 import ru.nsu.fit.vectorserver.VectorService;
+import ru.nsu.fit.vectorserver.benchmark.BenchmarkMetrics;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -221,3 +222,4 @@ public class BenchmarkTestRunner {
         return ids;
     }
 }
+
