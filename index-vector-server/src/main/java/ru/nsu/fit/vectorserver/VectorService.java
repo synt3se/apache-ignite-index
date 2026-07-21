@@ -47,7 +47,7 @@ public class VectorService {
 
     public ResponseEntity<List<Neighbor>> search(SearchRequest request) {
         log.debug("Received SearchRequest");
-        List<Neighbor> result = index.search(request.vector(), request.count());
+        List<Neighbor> result = index.search(request.vector(), request.count(), null); //TODO
         log.debug("SearchRequest processed. Neighbors: " + result);
         return ResponseEntity.ok(result);
     }
@@ -88,6 +88,6 @@ public class VectorService {
     }
 
     public ResponseEntity<SearchResponse> searchFull(SearchRequest request) {
-        return ResponseEntity.ok(index.searchFull(request.vector(), request.count()));
+        return ResponseEntity.ok(index.searchFull(request.vector(), request.count(), null)); //TODO
     }
 }

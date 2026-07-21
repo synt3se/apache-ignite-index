@@ -12,6 +12,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.LongPredicate;
 
 import javax.cache.Cache;
 
@@ -294,11 +295,11 @@ public final class PartitionIndexManager {
         applied.incrementAndGet();
     }
 
-    public List<ScoredVector> searchLocal(float[] query, int count) {
+    public List<ScoredVector> searchLocal(float[] query, int count, LongPredicate filter) {
         List<List<ScoredVector>> perPartition = partitions.values().parallelStream()
                 .map(st -> {
                     PartitionVectorIndex idx = st.indexOrNull();
-                    return idx == null ? List.<ScoredVector>of() : idx.search(query, count);
+                    return idx == null ? List.<ScoredVector>of() : idx.search(query, count, filter);
                 })
                 .toList();
 

@@ -7,6 +7,7 @@ import ru.nsu.fit.vector.common.dto.Neighbor;
 
 import java.util.List;
 import java.util.Map;
+import java.util.function.LongPredicate;
 
 public interface Index {
 
@@ -14,7 +15,7 @@ public interface Index {
     boolean delete(long id);
     void clear();
     VectorObject get(long id);
-    List<Neighbor> search(float[] vector, int count);
+    List<Neighbor> search(float[] vector, int count, LongPredicate filter);
 
     void save(String path);
     long load(String path);
@@ -24,7 +25,7 @@ public interface Index {
 
     ClusterStats stats();
 
-    default ru.nsu.fit.vector.common.dto.SearchResponse searchFull(float[] vector, int count) {
+    default ru.nsu.fit.vector.common.dto.SearchResponse searchFull(float[] vector, int count, LongPredicate filter) {
         throw new UnsupportedOperationException("full search requires aggregator service");
     }
 }

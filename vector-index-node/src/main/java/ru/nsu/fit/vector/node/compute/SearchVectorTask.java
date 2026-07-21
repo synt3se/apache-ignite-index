@@ -14,6 +14,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.PriorityQueue;
+import java.util.function.LongPredicate;
 
 public class SearchVectorTask
         extends ComputeTaskAdapter<SearchVectorTask.Arg, List<ScoredVector>> {
@@ -23,13 +24,15 @@ public class SearchVectorTask
     public static class Arg implements Serializable {
         private float[] queryVector;
         private int searchCount;
+        private LongPredicate filter;
 
         public Arg() {
         }
 
-        public Arg(float[] queryVector, int searchCount) {
+        public Arg(float[] queryVector, int searchCount, LongPredicate filter) {
             this.queryVector = queryVector;
             this.searchCount = searchCount;
+            this.filter = filter;
         }
 
         public float[] queryVector() {
@@ -52,7 +55,7 @@ public class SearchVectorTask
 
         for (ClusterNode node : subgrid) {
             jobs.put(
-                    new SearchLocalIndexJob(arg.queryVector(), arg.searchCount()),
+                    new SearchLocalIndexJob(arg.queryVector(), arg.searchCount(), arg.filter),
                     node
             );
         }
