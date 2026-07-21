@@ -1,0 +1,90 @@
+x-node-common: &node-common
+  restart: unless-stopped
+  build:
+    context: .
+    target: ${NODE_TARGET:-ignite-node}     # ignite-node | ignite-node-21 - решение по SIMD в .env.example
+  image: vindex-node:local
+  environment:
+    JVM_OPTS: ${NODE_JVM_OPTS}
+  healthcheck:
+    test: ["CMD-SHELL", "nc -z 127.0.0.1 10800 || exit 1"]
+    interval: 5s
+    timeout: 3s
+    retries: 30
+
+x-java-opts: &java-opts >-
+  --add-opens=java.base/jdk.internal.misc=ALL-UNNAMED
+  --add-opens=java.base/sun.nio.ch=ALL-UNNAMED
+  --add-opens=java.base/java.io=ALL-UNNAMED
+  --add-opens=java.base/java.nio=ALL-UNNAMED
+  --add-opens=java.base/java.util=ALL-UNNAMED
+  --add-opens=java.base/java.util.concurrent=ALL-UNNAMED
+  --add-opens=java.base/java.lang=ALL-UNNAMED
+  --add-opens=java.management/sun.management=ALL-UNNAMED
+  --add-opens=jdk.management/com.sun.management.internal=ALL-UNNAMED
+  --add-exports=java.base/jdk.internal.misc=ALL-UNNAMED
+  --add-exports=java.base/sun.nio.ch=ALL-UNNAMED
+  --add-exports=java.management/com.sun.jmx.mbeanserver=ALL-UNNAMED
+  --add-exports=jdk.internal.jvmstat/sun.jvmstat.monitor=ALL-UNNAMED
+  --add-exports=java.base/sun.reflect.generics.reflectiveObjects=ALL-UNNAMED
+
+services:
+  ignite-node-1:
+    <<: *node-common
+    container_name: ignite-node-1
+  ignite-node-2:
+    <<: *node-common
+    container_name: ignite-node-2
+    depends_on: [ignite-node-1]
+
+  vector-server:
+    restart: unless-stopped
+    build: { context: ., target: vector-server }
+    environment:
+      IGNITE_ADDRESS: ignite-node-1:10800,ignite-node-2:10800
+      JAVA_TOOL_OPTIONS: *java-opts
+    ports: ["8081:8081"]
+    depends_on:
+      ignite-node-1: { condition: service_healthy }
+      ignite-node-2: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8081/vectors/stats >/dev/null || exit 1"]
+      interval: 10s
+      retries: 12
+
+  clip:
+    restart: unless-stopped
+    build: { context: ., target: clip }
+    # порт проверьте по clip_service.py (обычно 8000)
+
+  gateway:
+    restart: unless-stopped
+    build: { context: ., target: gateway }
+    depends_on:
+      vector-server: { condition: service_healthy }
+      clip: { condition: service_started }
+    # env с адресами clip/vector-server — по вашим property
+
+  bot:
+    profiles: ["bot"]
+    restart: unless-stopped
+    build: { context: ., target: bot }
+    environment:
+      BOT_TOKEN: ${BOT_TOKEN}
+      GATEWAY_URL: ${GATEWAY_URL:-http://gateway:8080}
+
+  bench:
+    profiles: ["bench"]
+    build: { context: ., target: vector-server }   # тот же образ, другой main
+    entrypoint: ["java","-Dloader.main=ru.nsu.fit.vectorserver.benchmark.BenchmarkMain","-jar","/app/app.jar"]
+    environment:
+      IGNITE_ADDRESS: ignite-node-1:10800,ignite-node-2:10800
+      DATABASE_PATH: /data/dataset.csv
+      QUERIES_PATH: /data/quieries.csv
+      RESULTS_PATH: /data/results.csv
+      JAVA_TOOL_OPTIONS: *java-opts
+    volumes:
+      - ${DATA_DIR:-./data}:/data:ro
+    depends_on:
+      ignite-node-1: { condition: service_healthy }
+      ignite-node-2: { condition: service_healthy }
