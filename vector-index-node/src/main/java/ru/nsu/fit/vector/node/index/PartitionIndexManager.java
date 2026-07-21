@@ -12,6 +12,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.LongPredicate;
 
 import javax.cache.Cache;
 
@@ -30,6 +31,7 @@ import org.apache.ignite.events.EventType;
 import ru.nsu.fit.vector.common.ScoredVector;
 import ru.nsu.fit.vector.common.VectorObject;
 import ru.nsu.fit.vector.common.dto.NodeStats;
+import ru.nsu.fit.vector.common.filter.VectorMetadataFilter;
 import ru.nsu.fit.vector.common.indextype.IndexType;
 /**
  * Индексная плоскость узла: индекс - производная кэша.
@@ -294,11 +296,25 @@ public final class PartitionIndexManager {
         applied.incrementAndGet();
     }
 
-    public List<ScoredVector> searchLocal(float[] query, int count) {
+    public List<ScoredVector> searchLocal(float[] query, int count, String filter) {
+        VectorMetadataFilter metaFilter = (id, vectorObj) -> {
+            if (vectorObj == null || vectorObj.getMetadata() == null) {
+                return false;
+            }
+            return filter == null || vectorObj.getMetadata().contains(filter);
+        };
+        LongPredicate idFilter = (metaFilter == null) ? null : id -> {
+            VectorObject obj = cache.localPeek(id, CachePeekMode.PRIMARY, CachePeekMode.BACKUP);
+            if (obj == null) {
+                obj = cache.get(id);
+            }
+            return obj != null && metaFilter.test(id, obj);
+        };
+
         List<List<ScoredVector>> perPartition = partitions.values().parallelStream()
                 .map(st -> {
                     PartitionVectorIndex idx = st.indexOrNull();
-                    return idx == null ? List.<ScoredVector>of() : idx.search(query, count);
+                    return idx == null ? List.<ScoredVector>of() : idx.search(query, count, idFilter);
                 })
                 .toList();
 

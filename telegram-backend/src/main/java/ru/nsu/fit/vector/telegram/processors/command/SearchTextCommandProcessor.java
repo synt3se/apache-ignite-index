@@ -21,9 +21,11 @@ public class SearchTextCommandProcessor extends BotCommandProcessor {
     protected String getCommandName() {
         return "/search_txt";
     }
+
     @Override
     protected String getReplyPrompt() {
-        return "Отправьте описание изображения текстом в ответ на это сообщение";
+        return "Отправьте текст для поиска в ответ на это сообщение.\n\n" +
+                "💡 Опционально: Добавьте фильтр по источнику во 2-й строки после ссылки. Для этого просто напишите название источника.";
     }
 
     @Override
@@ -33,12 +35,17 @@ public class SearchTextCommandProcessor extends BotCommandProcessor {
 
     @Override
     public void processArgument(Update update, long chatId, AbsSender sender) {
-        String content = update.getMessage().getText().trim();
+        String fullText = update.getMessage().getText().trim();
+
+        String[] lines = fullText.split("\n", 2);
+        String searchText = lines[0].trim();
+        String filter = (lines.length > 1) ? lines[1].trim() : "";
+
         Message statusMessage = messageService.sendText(sender, chatId, "Ищу картинки по тексту...");
         if (statusMessage == null) return;
         int messageIdToEdit = statusMessage.getMessageId();
 
-        imageSearchService.searchTxt(content).subscribe(
+        imageSearchService.searchTxt(searchText, filter).subscribe(
                 serverResponse -> messageService.editText(sender, chatId, messageIdToEdit, getStringTop(serverResponse), "HTML"),
                 error -> {
                     log.warn("Failed to search by text: " + error.getMessage());

@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.PriorityQueue;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.LongPredicate;
 
 public class BruteForcePartitionIndex implements PartitionVectorIndex {
     private final Map<Long, float[]> vectors = new ConcurrentHashMap<>();
@@ -47,12 +48,17 @@ public class BruteForcePartitionIndex implements PartitionVectorIndex {
     }
 
     @Override
-    public List<ScoredVector> search(float[] queryVector, int count) {
+    public List<ScoredVector> search(float[] queryVector, int count, LongPredicate filter) {
         PriorityQueue<ScoredVector> top = new PriorityQueue<>(
                 Comparator.comparingDouble(ScoredVector::distance).reversed()
         );
 
         for (Map.Entry<Long, float[]> entry : vectors.entrySet()) {
+            long id = entry.getKey();
+            if (filter != null && !filter.test(id)) {
+                continue;
+            }
+
             double distance = cosineDistance(queryVector, entry.getValue());
 
             ScoredVector candidate = new ScoredVector(entry.getKey(), distance);
