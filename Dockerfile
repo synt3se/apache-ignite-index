@@ -12,7 +12,7 @@ COPY telegram-backend/pom.xml    telegram-backend/
 RUN --mount=type=cache,target=/root/.m2 mvn -q -B dependency:go-offline || true
 COPY . .
 RUN --mount=type=cache,target=/root/.m2 \
-    mvn -q -B -DskipTests package && \
+    mvn -q -B -DskipTests install && \
     mvn -q -B -pl vector-index-node dependency:copy-dependencies \
         -DincludeScope=runtime -DexcludeGroupIds=org.apache.ignite \
         -DoutputDirectory=/out/node-libs && \
