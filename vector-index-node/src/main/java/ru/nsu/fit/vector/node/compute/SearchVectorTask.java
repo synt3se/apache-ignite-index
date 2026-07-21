@@ -5,6 +5,7 @@ import org.apache.ignite.compute.ComputeJob;
 import org.apache.ignite.compute.ComputeJobResult;
 import org.apache.ignite.compute.ComputeTaskAdapter;
 import ru.nsu.fit.vector.common.ScoredVector;
+import ru.nsu.fit.vector.common.filter.VectorMetadataFilter;
 import ru.nsu.fit.vector.node.compute.nodework.SearchLocalIndexJob;
 
 import java.io.Serializable;
@@ -24,12 +25,12 @@ public class SearchVectorTask
     public static class Arg implements Serializable {
         private float[] queryVector;
         private int searchCount;
-        private LongPredicate filter;
+        private String filter;
 
         public Arg() {
         }
 
-        public Arg(float[] queryVector, int searchCount, LongPredicate filter) {
+        public Arg(float[] queryVector, int searchCount, String filter) {
             this.queryVector = queryVector;
             this.searchCount = searchCount;
             this.filter = filter;

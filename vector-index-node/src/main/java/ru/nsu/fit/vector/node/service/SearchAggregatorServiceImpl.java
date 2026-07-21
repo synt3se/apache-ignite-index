@@ -12,6 +12,7 @@ import ru.nsu.fit.vector.common.VectorObject;
 import ru.nsu.fit.vector.common.dto.NodeSearchResult;
 import ru.nsu.fit.vector.common.dto.SearchHit;
 import ru.nsu.fit.vector.common.dto.SearchResponse;
+import ru.nsu.fit.vector.common.filter.VectorMetadataFilter;
 import ru.nsu.fit.vector.node.compute.nodework.NodeSearchJob;
 
 import java.util.*;
@@ -46,7 +47,7 @@ public class SearchAggregatorServiceImpl implements SearchAggregationService {
     @Override public void cancel(ServiceContext ctx) {}
 
     @Override
-    public SearchResponse search(float[] vector, int count, LongPredicate filter) {
+    public SearchResponse search(float[] vector, int count, String filter) {
         long startNanos = System.nanoTime();
 
         List<ClusterNode> servers = new ArrayList<>(ignite.cluster().forServers().nodes());

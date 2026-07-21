@@ -320,7 +320,7 @@ public class BenchmarkDatasetRunner {
 
     private List<Neighbor> search(float[] queryVector, int neighborCount) {
         Object response = service.search(
-                new SearchRequest(queryVector, neighborCount)
+                new SearchRequest(queryVector, neighborCount, null)
         );
         return extractNeighbors(response);
     }

@@ -11,6 +11,7 @@ import org.springframework.stereotype.Component;
 import ru.nsu.fit.vector.common.ScoredVector;
 import ru.nsu.fit.vector.common.VectorObject;
 import ru.nsu.fit.vector.common.dto.*;
+import ru.nsu.fit.vector.common.filter.VectorMetadataFilter;
 import ru.nsu.fit.vector.node.compute.ClearVectorTask;
 import ru.nsu.fit.vector.node.compute.SearchVectorTask;
 import ru.nsu.fit.vector.node.compute.StatsTask;
@@ -97,7 +98,7 @@ public class DistributedVectorIndex implements Index {
     }
 
     @Override
-    public List<Neighbor> search(float[] queryVector, int count, LongPredicate filter) {
+    public List<Neighbor> search(float[] queryVector, int count, String filter) {
         if ("service".equalsIgnoreCase(searchMode)) {
             SearchResponse resp = aggregator().search(queryVector, count, filter);
             List<Neighbor> result = new ArrayList<>(resp.results.size());
@@ -394,7 +395,7 @@ public class DistributedVectorIndex implements Index {
     }
 
     @Override
-    public SearchResponse searchFull(float[] queryVector, int count, LongPredicate filter) {
+    public SearchResponse searchFull(float[] queryVector, int count, String filter) {
         return aggregator().search(queryVector, count, filter);   // напрямую через сервис, mode не важен
     }
 
