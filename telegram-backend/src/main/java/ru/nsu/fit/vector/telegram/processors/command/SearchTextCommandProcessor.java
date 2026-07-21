@@ -25,8 +25,7 @@ public class SearchTextCommandProcessor extends BotCommandProcessor {
     @Override
     protected String getReplyPrompt() {
         return "Отправьте текст для поиска в ответ на это сообщение.\n\n" +
-                "💡 <b>Опционально:</b> со второй строки вы можете указать фильтр метаданных, например:\n" +
-                "<code>красный кот\n\"source\": \"user\"</code>";
+                "💡 Опционально: Добавьте фильтр по источнику во 2-й строки после ссылки. Для этого просто напишите название источника.";
     }
 
     @Override
@@ -38,10 +37,9 @@ public class SearchTextCommandProcessor extends BotCommandProcessor {
     public void processArgument(Update update, long chatId, AbsSender sender) {
         String fullText = update.getMessage().getText().trim();
 
-        // Разделяем входной текст по переводу строки \n
         String[] lines = fullText.split("\n", 2);
         String searchText = lines[0].trim();
-        String filter = (lines.length > 1) ? lines[1].trim() : null;
+        String filter = (lines.length > 1) ? lines[1].trim() : "";
 
         Message statusMessage = messageService.sendText(sender, chatId, "Ищу картинки по тексту...");
         if (statusMessage == null) return;

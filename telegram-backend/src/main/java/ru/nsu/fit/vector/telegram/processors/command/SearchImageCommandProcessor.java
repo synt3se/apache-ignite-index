@@ -29,7 +29,7 @@ public class SearchImageCommandProcessor extends BotCommandProcessor {
     @Override
     protected String getReplyPrompt() {
         return "Отправьте картинку, файл или ссылку на изображение в ответ на это сообщение.\n\n" +
-                "💡 Опционально: Добавьте фильтр метаданных в подпись к фото или со 2-й строки после ссылки.";
+                "💡 Опционально: Добавьте фильтр по источнику во 2-й строки после ссылки. Для этого просто напишите название источника.";
     }
 
     @Override
@@ -60,7 +60,7 @@ public class SearchImageCommandProcessor extends BotCommandProcessor {
             }
 
             // Читаем фильтр из подписи к файлу/картинке (caption)
-            String filter = message.getCaption() != null ? message.getCaption().trim() : null;
+            String filter = message.getCaption() != null ? message.getCaption().trim() : "";
 
             try {
                 Mono<Dto.Neighbor[]> searchMono = imageSearchService.searchFile(fileId, (TelegramLongPollingBot) sender, filter);
