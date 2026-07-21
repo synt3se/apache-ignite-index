@@ -22,9 +22,9 @@ public class BenchmarkMain {
 
     private enum Mode{ANN_BENCHMARK_TEST, OUR_DATASET, N_CLIENTS}
 
-    private static final String DATABASE_PATH = "C:/Users/danil/Desktop/IgniteDB/database.csv";
-    private static final String QUERIES_PATH = "C:/Users/danil/Desktop/IgniteDB/quieries.csv";
-    private static final String RESULTS_PATH = "C:/Users/danil/Desktop/IgniteDB/results.csv";
+    private static final String DATABASE_PATH = env("DATABASE_PATH", "C:/Programming/Java_Projects/apache-ignite-mvp/apache-ignite-index/data/d260k.csv");
+    private static final String QUERIES_PATH = env("QUERIES_PATH", "C:/Programming/Java_Projects/apache-ignite-mvp/apache-ignite-index/data/quieries.csv");
+    private static final String RESULTS_PATH = env("RESULTS_PATH", "C:/Programming/Java_Projects/apache-ignite-mvp/apache-ignite-index/data/r260k.csv");
     private static final int NEIGHBOR_COUNT = 10;
 
 
@@ -79,5 +79,10 @@ public class BenchmarkMain {
             }
         }
 
+    }
+
+    private static String env(String key, String def) {
+        String v = System.getenv(key);
+        return v != null && !v.isBlank() ? v : def;
     }
 }
