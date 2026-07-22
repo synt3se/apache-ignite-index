@@ -4,7 +4,6 @@ import org.springframework.http.ResponseEntity;
 import ru.nsu.fit.vector.common.dto.Neighbor;
 import ru.nsu.fit.vector.common.dto.SearchRequest;
 import ru.nsu.fit.vectorserver.VectorService;
-import ru.nsu.fit.vectorserver.benchmark.highload.QueryReader;
 import ru.nsu.fit.vectorserver.benchmark.highload.QueryReader.QueryVector;
 
 import java.util.Arrays;
@@ -21,26 +20,23 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 public final class BenchmarkHighLoadRunner {
-
+    //TODO залогировать мб внедрить гистограму и вывод в реал тайм, таймаут
     private static final long WORKER_SHUTDOWN_TIMEOUT_SECONDS = 90;
 
     private final VectorService service;
     private final QueryReader queryReader = new QueryReader();
 
     public BenchmarkHighLoadRunner(VectorService service) {
-        if (service == null) {
-            throw new IllegalArgumentException("service is required");
-        }
-
+        if (service == null) throw new IllegalArgumentException("service is required");
         this.service = service;
     }
 
     public void run(
-            int maxInFlight,
-            int targetRps,
+            int maxInFlight, //Пул потоков //TODO не совсем понятно насчет ограничений
+            int targetRps, //Сколько запросов в секунду пытаемся создать
             int warmupSeconds,
-            int testSeconds,
-            int neighborCount,
+            int testSeconds, //продолжительность основной измеряемой фазы
+            int neighborCount, //Сколько соседей просим вернуть
             String queriesPath
     ) {
         validateArguments(maxInFlight, targetRps, warmupSeconds, testSeconds, neighborCount);
@@ -61,6 +57,7 @@ public final class BenchmarkHighLoadRunner {
         ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
 
         try {
+            boolean measured = false;
             if (warmupSeconds > 0) {
                 System.out.println("Warmup started...");
                 runPhase(
@@ -71,13 +68,15 @@ public final class BenchmarkHighLoadRunner {
                         targetRps,
                         warmupSeconds,
                         neighborCount,
-                        false
+                        measured
                 );
                 System.out.println("Warmup finished");
             }
 
+
             System.out.println("Measurement started...");
 
+            measured = true;
             PhaseResult result = runPhase(
                     scheduler,
                     workers,
@@ -86,7 +85,7 @@ public final class BenchmarkHighLoadRunner {
                     targetRps,
                     testSeconds,
                     neighborCount,
-                    true
+                    measured
             );
 
             printResult(result, targetRps, maxInFlight, neighborCount);
@@ -173,12 +172,7 @@ public final class BenchmarkHighLoadRunner {
 
         long phaseFinishedNanos = System.nanoTime();
 
-        return new PhaseResult(
-                metrics,
-                phaseStartNanos,
-                producerStoppedNanos,
-                phaseFinishedNanos
-        );
+        return new PhaseResult(metrics, phaseStartNanos, producerStoppedNanos, phaseFinishedNanos);
     }
 
     private void executeSearch(
@@ -210,7 +204,6 @@ public final class BenchmarkHighLoadRunner {
                 metrics.incompleteResponses.incrementAndGet();
                 return;
             }
-
             metrics.bytesOut.addAndGet((long) query.vector().length * Float.BYTES);
             metrics.bytesIn.addAndGet(estimateResponseBytes(neighbors));
             metrics.successful.incrementAndGet();
@@ -223,10 +216,6 @@ public final class BenchmarkHighLoadRunner {
             if (measured) {
                 metrics.latenciesNanos.add(finishedNanos - startedNanos);
                 metrics.queueWaitNanos.add(startedNanos - enqueueNanos);
-            }
-
-            if (!success && metrics.errors.get() == 0) {
-                // Неполный ответ уже учтён отдельно и не считается исключением.
             }
 
             metrics.completed.incrementAndGet();

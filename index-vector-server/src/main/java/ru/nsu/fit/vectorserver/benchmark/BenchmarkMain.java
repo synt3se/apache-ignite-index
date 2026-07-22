@@ -23,10 +23,8 @@ import ru.nsu.fit.vectorserver.benchmark.recall.BenchmarkTestRunner;
 public class BenchmarkMain {
 
     private enum Mode {
-        ANN_BENCHMARK_TEST,
-        OUR_DATASET,
-        HIGH_LOAD,
-        N_CLIENTS
+        ANN_BENCHMARK_TEST, OUR_DATASET,
+        HIGH_LOAD, N_CLIENTS
     }
 
     private static final String DATABASE_PATH = "C:/Users/danil/Desktop/IgniteDB/database.csv";
