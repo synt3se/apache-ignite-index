@@ -50,10 +50,14 @@ public class BenchmarkMain {
                      new SpringApplicationBuilder(VectorServerApplication.class)
                              .web(WebApplicationType.NONE).run(args))
         {
+            VectorService vectorService = context.getBean(VectorService.class);
+            if (LOAD_DATABASE ) {
+                new DatabaseLoader(vectorService).load(DATABASE_PATH);
+            }
             switch (BENCHMARK_MODE){
                 case ANN_BENCHMARK_TEST -> {
                     String hdf5Path = "index-vector-server/src/main/resources/coco-i2i-512-angular.hdf5";
-                    VectorService vectorService = context.getBean(VectorService.class);
+
                     BenchmarkTestRunner runner = new BenchmarkTestRunner(vectorService);
                     runner.run(NEIGHBOR_COUNT, hdf5Path);
                 }
@@ -63,9 +67,8 @@ public class BenchmarkMain {
                 }
 
                 case OUR_DATASET -> {
-                    VectorService service = context.getBean(VectorService.class);
                     BenchmarkDatasetRunner runner =
-                            new BenchmarkDatasetRunner(service, INDEX_MODE);
+                            new BenchmarkDatasetRunner(vectorService, INDEX_MODE);
 
                     runner.run(
                             NEIGHBOR_COUNT,
@@ -77,8 +80,7 @@ public class BenchmarkMain {
                 }
 
                 case HIGH_LOAD -> {
-                    VectorService service = context.getBean(VectorService.class);
-                    BenchmarkHighLoadRunner runner = new BenchmarkHighLoadRunner(service);
+                    BenchmarkHighLoadRunner runner = new BenchmarkHighLoadRunner(vectorService);
                     runner.run(
                             HIGHLOAD_MAX_IN_FLIGHT,
                             HIGHLOAD_TARGET_RPS,
