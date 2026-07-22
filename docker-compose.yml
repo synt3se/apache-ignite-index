@@ -12,6 +12,22 @@ x-node-common: &node-common
     timeout: 3s
     retries: 30
 
+x-java-opts: &java-opts >-
+  --add-opens=java.base/jdk.internal.misc=ALL-UNNAMED
+  --add-opens=java.base/sun.nio.ch=ALL-UNNAMED
+  --add-opens=java.base/java.io=ALL-UNNAMED
+  --add-opens=java.base/java.nio=ALL-UNNAMED
+  --add-opens=java.base/java.util=ALL-UNNAMED
+  --add-opens=java.base/java.util.concurrent=ALL-UNNAMED
+  --add-opens=java.base/java.lang=ALL-UNNAMED
+  --add-opens=java.management/sun.management=ALL-UNNAMED
+  --add-opens=jdk.management/com.sun.management.internal=ALL-UNNAMED
+  --add-exports=java.base/jdk.internal.misc=ALL-UNNAMED
+  --add-exports=java.base/sun.nio.ch=ALL-UNNAMED
+  --add-exports=java.management/com.sun.jmx.mbeanserver=ALL-UNNAMED
+  --add-exports=jdk.internal.jvmstat/sun.jvmstat.monitor=ALL-UNNAMED
+  --add-exports=java.base/sun.reflect.generics.reflectiveObjects=ALL-UNNAMED
+
 services:
   ignite-node-1:
     <<: *node-common
@@ -26,6 +42,7 @@ services:
     build: { context: ., target: vector-server }
     environment:
       IGNITE_ADDRESS: ignite-node-1:10800,ignite-node-2:10800
+      JAVA_TOOL_OPTIONS: *java-opts
     ports: ["8081:8081"]
     depends_on:
       ignite-node-1: { condition: service_healthy }
@@ -65,6 +82,7 @@ services:
       DATABASE_PATH: /data/d260k.csv
       QUERIES_PATH: /data/quieries.csv
       RESULTS_PATH: /data/results.csv
+      JAVA_TOOL_OPTIONS: *java-opts
     volumes:
       - ${DATA_DIR:-./data}:/data:ro
     depends_on:
