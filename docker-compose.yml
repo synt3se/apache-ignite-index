@@ -65,7 +65,8 @@ services:
       DATABASE_PATH: /data/d260k.csv
       QUERIES_PATH: /data/quieries.csv
       RESULTS_PATH: /data/results.csv
-    volumes: ["./data:/data"]
+    volumes:
+      - ${DATA_DIR:-./data}:/data:ro
     depends_on:
       ignite-node-1: { condition: service_healthy }
       ignite-node-2: { condition: service_healthy }
