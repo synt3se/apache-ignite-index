@@ -32,7 +32,6 @@ import ru.nsu.fit.sberlab.vectorindex.common.ScoredVector;
 import ru.nsu.fit.sberlab.vectorindex.common.VectorObject;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.NodeStats;
 import ru.nsu.fit.sberlab.vectorindex.common.indextype.IndexType;
-import ru.nsu.fit.sberlab.vectorindex.common.filter.VectorMetadataFilter;
 /**
  * Индексная плоскость узла: индекс - производная кэша.
  * События кэша - StripedApplier - applyKey.
@@ -296,25 +295,11 @@ public final class PartitionIndexManager {
         applied.incrementAndGet();
     }
 
-    public List<ScoredVector> searchLocal(float[] query, int count, String filter) {
-        VectorMetadataFilter metaFilter = (id, vectorObj) -> {
-            if (vectorObj == null || vectorObj.getMetadata() == null) {
-                return false;
-            }
-            return filter == null || vectorObj.getMetadata().contains(filter);
-        };
-        LongPredicate idFilter = (metaFilter == null) ? null : id -> {
-            VectorObject obj = cache.localPeek(id, CachePeekMode.PRIMARY, CachePeekMode.BACKUP);
-            if (obj == null) {
-                obj = cache.get(id);
-            }
-            return obj != null && metaFilter.test(id, obj);
-        };
-
+    public List<ScoredVector> searchLocal(float[] query, int count) {
         List<List<ScoredVector>> perPartition = partitions.values().parallelStream()
                 .map(st -> {
                     PartitionVectorIndex idx = st.indexOrNull();
-                    return idx == null ? List.<ScoredVector>of() : idx.search(query, count, idFilter);
+                    return idx == null ? List.<ScoredVector>of() : idx.search(query, count);
                 })
                 .toList();
 

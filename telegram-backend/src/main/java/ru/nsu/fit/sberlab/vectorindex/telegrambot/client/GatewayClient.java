@@ -25,8 +25,8 @@ public class GatewayClient {
         this.webClient = webClient;
     }
 
-    public Mono<Neighbor[]> searchUrl(String imageUrl, String filter) {
-        var requestBody = Map.of("url", imageUrl, "count", 5, "filter", filter);
+    public Mono<Neighbor[]> searchUrl(String imageUrl) {
+        var requestBody = Map.of("url", imageUrl, "count", 5);
         return webClient.post()
                 .uri("/search/image")
                 .bodyValue(requestBody)
@@ -36,8 +36,8 @@ public class GatewayClient {
                 .timeout(java.time.Duration.ofSeconds(30));
     }
 
-    public Mono<Neighbor[]> searchTxt(String text, String filter) {
-        var requestBody = Map.of("text", text, "count", 5, "filter", filter);
+    public Mono<Neighbor[]> searchTxt(String text) {
+        var requestBody = Map.of("text", text, "count", 5);
         return webClient.post()
                 .uri("/search/text")
                 .bodyValue(requestBody)

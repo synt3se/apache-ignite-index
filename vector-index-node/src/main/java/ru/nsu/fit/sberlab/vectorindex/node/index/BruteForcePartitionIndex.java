@@ -48,17 +48,12 @@ public class BruteForcePartitionIndex implements PartitionVectorIndex {
     }
 
     @Override
-    public List<ScoredVector> search(float[] queryVector, int count, LongPredicate filter) {
+    public List<ScoredVector> search(float[] queryVector, int count) {
         PriorityQueue<ScoredVector> top = new PriorityQueue<>(
                 Comparator.comparingDouble(ScoredVector::distance).reversed()
         );
 
         for (Map.Entry<Long, float[]> entry : vectors.entrySet()) {
-            long id = entry.getKey();
-            if (filter != null && !filter.test(id)) {
-                continue;
-            }
-
             double distance = cosineDistance(queryVector, entry.getValue());
 
             ScoredVector candidate = new ScoredVector(entry.getKey(), distance);

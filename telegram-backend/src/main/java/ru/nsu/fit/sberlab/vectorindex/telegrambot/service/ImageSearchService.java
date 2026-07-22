@@ -29,15 +29,15 @@ public class ImageSearchService {
         this.telegramFileService = telegramFileService;
     }
 
-    public Mono<Neighbor[]> searchUrl(String imageUrl, String filter) {
-        return client.searchUrl(imageUrl, filter);
+    public Mono<Neighbor[]> searchUrl(String imageUrl) {
+        return client.searchUrl(imageUrl);
     }
 
-    public Mono<Neighbor[]> searchTxt(String text, String filter) {
-        return client.searchTxt(text, filter);
+    public Mono<Neighbor[]> searchTxt(String text) {
+        return client.searchTxt(text);
     }
 
-    public Mono<Neighbor[]> searchFile(String fileId, TelegramLongPollingBot bot, String filter) throws TelegramApiException, IOException {
+    public Mono<Neighbor[]> searchFile(String fileId, TelegramLongPollingBot bot) throws TelegramApiException, IOException {
         InputStream is = telegramFileService.getFilePath(fileId, bot);
         byte[] imageBytes = is.readAllBytes();
 
@@ -50,9 +50,6 @@ public class ImageSearchService {
         };
         body.add("file", resource);
         body.add("count", "5");
-        if (filter != null && !filter.isBlank()) {
-            body.add("filter", filter);
-        }
 
         return client.searchFile(fileId, body);
     }

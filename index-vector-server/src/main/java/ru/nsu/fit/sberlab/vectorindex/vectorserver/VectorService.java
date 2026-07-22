@@ -5,7 +5,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.*;
-import ru.nsu.fit.sberlab.vectorindex.common.filter.VectorMetadataFilter;
 import ru.nsu.fit.sberlab.vectorindex.vectorserver.exception.ResourceNotFoundException;
 import ru.nsu.fit.sberlab.vectorindex.vectorserver.index.Index;
 
@@ -49,7 +48,7 @@ public class VectorService {
 
     public ResponseEntity<List<Neighbor>> search(SearchRequest request) {
         log.debug("Received SearchRequest");
-        List<Neighbor> result = index.search(request.vector(), request.count(), request.filter());
+        List<Neighbor> result = index.search(request.vector(), request.count());
         log.debug("SearchRequest processed. Neighbors: " + result);
         return ResponseEntity.ok(result);
     }
@@ -90,6 +89,6 @@ public class VectorService {
     }
 
     public ResponseEntity<SearchResponse> searchFull(SearchRequest request) {
-        return ResponseEntity.ok(index.searchFull(request.vector(), request.count(), request.filter()));
+        return ResponseEntity.ok(index.searchFull(request.vector(), request.count()));
     }
 }

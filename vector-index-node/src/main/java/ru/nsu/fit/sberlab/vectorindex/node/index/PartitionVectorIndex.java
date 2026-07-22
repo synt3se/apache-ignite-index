@@ -11,7 +11,7 @@ public interface PartitionVectorIndex {
 
     void build(Map<Long, float[]> vectors);
     void delete(long id);
-    List<ScoredVector> search(float[] queryVector, int count, LongPredicate filter);
+    List<ScoredVector> search(float[] queryVector, int count);
     default void seedAndBuildAsync(Map<Long, float[]> vectors) { build(vectors); }
     default long dedupSkippedCount() { return 0; }
     default int pendingCount() { return 0; }

@@ -11,6 +11,5 @@ public record SearchRequest(
         float[] vector,
         
         @Positive(message = "count must be greater than zero")
-        Integer count,
-        String filter
+        Integer count
 ){}

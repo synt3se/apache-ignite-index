@@ -11,7 +11,6 @@ import org.springframework.stereotype.Component;
 import ru.nsu.fit.sberlab.vectorindex.common.ScoredVector;
 import ru.nsu.fit.sberlab.vectorindex.common.VectorObject;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.*;
-import ru.nsu.fit.sberlab.vectorindex.common.filter.VectorMetadataFilter;
 import ru.nsu.fit.sberlab.vectorindex.node.compute.ClearVectorTask;
 import ru.nsu.fit.sberlab.vectorindex.node.compute.SearchVectorTask;
 import ru.nsu.fit.sberlab.vectorindex.node.compute.StatsTask;
@@ -98,9 +97,9 @@ public class DistributedVectorIndex implements Index {
     }
 
     @Override
-    public List<Neighbor> search(float[] queryVector, int count, String filter) {
+    public List<Neighbor> search(float[] queryVector, int count) {
         if ("service".equalsIgnoreCase(searchMode)) {
-            SearchResponse resp = aggregator().search(queryVector, count, filter);
+            SearchResponse resp = aggregator().search(queryVector, count);
             List<Neighbor> result = new ArrayList<>(resp.results.size());
             for (SearchHit h : resp.results) {
                 result.add(new Neighbor(h.id, h.distance, h.url, h.metadata));
@@ -114,7 +113,7 @@ public class DistributedVectorIndex implements Index {
         try {
             scoredVectors = igniteClient.compute().execute(
                     SearchVectorTask.class.getName(),
-                    new SearchVectorTask.Arg(queryVector, count, filter)
+                    new SearchVectorTask.Arg(queryVector, count)
             );
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -395,8 +394,8 @@ public class DistributedVectorIndex implements Index {
     }
 
     @Override
-    public SearchResponse searchFull(float[] queryVector, int count, String filter) {
-        return aggregator().search(queryVector, count, filter);   // напрямую через сервис, mode не важен
+    public SearchResponse searchFull(float[] queryVector, int count) {
+        return aggregator().search(queryVector, count);   // напрямую через сервис, mode не важен
     }
 
 }
