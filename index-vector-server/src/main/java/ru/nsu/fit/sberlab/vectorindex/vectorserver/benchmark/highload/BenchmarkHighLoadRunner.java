@@ -220,7 +220,7 @@ public final class BenchmarkHighLoadRunner {
 
         try {
             ResponseEntity<List<Neighbor>> response = service.search(
-                    new SearchRequest(query.vector(), neighborCount, null)
+                    new SearchRequest(query.vector(), neighborCount)
             );
 
             List<Neighbor> neighbors = response.getBody();

@@ -100,7 +100,7 @@ public class BenchmarkTestRunner {
             System.out.println("Warmup queries: " + warmupQueryCount);
 
             for (int i = 0; i < warmupQueryCount; i++) {
-                service.search(new SearchRequest(queries[i], neighborCount, null));
+                service.search(new SearchRequest(queries[i], neighborCount));
             }
 
             BenchmarkMetrics searchMetrics = new BenchmarkMetrics();
@@ -110,7 +110,7 @@ public class BenchmarkTestRunner {
             for (int i = 0; i < measuredQueryCount; i++) {
                 long start = System.nanoTime();
 
-                Object searchResponse = service.search(new SearchRequest(queries[i], neighborCount, null));
+                Object searchResponse = service.search(new SearchRequest(queries[i], neighborCount));
 
                 long searchNanos = System.nanoTime() - start;
                 totalSearchNanos += searchNanos;
