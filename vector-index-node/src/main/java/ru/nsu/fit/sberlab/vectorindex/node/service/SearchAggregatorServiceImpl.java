@@ -13,7 +13,6 @@ import ru.nsu.fit.sberlab.vectorindex.common.dto.NodeSearchResult;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.SearchHit;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.SearchResponse;
 import ru.nsu.fit.sberlab.vectorindex.node.compute.nodework.NodeSearchJob;
-import ru.nsu.fit.sberlab.vectorindex.common.filter.VectorMetadataFilter;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.function.LongPredicate;
@@ -46,7 +45,7 @@ public class SearchAggregatorServiceImpl implements SearchAggregationService {
     @Override public void cancel(ServiceContext ctx) {}
 
     @Override
-    public SearchResponse search(float[] vector, int count, String filter) {
+    public SearchResponse search(float[] vector, int count) {
         long startNanos = System.nanoTime();
 
         List<ClusterNode> servers = new ArrayList<>(ignite.cluster().forServers().nodes());
@@ -54,7 +53,7 @@ public class SearchAggregatorServiceImpl implements SearchAggregationService {
         // Scatter
         List<IgniteFuture<NodeSearchResult>> futures = new ArrayList<>(servers.size());
         for (ClusterNode node : servers) {
-            futures.add(ignite.compute(ignite.cluster().forNode(node)).callAsync(new NodeSearchJob(vector, count, filter)));
+            futures.add(ignite.compute(ignite.cluster().forNode(node)).callAsync(new NodeSearchJob(vector, count)));
         }
 
         // Gather

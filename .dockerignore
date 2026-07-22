@@ -1,0 +1,27 @@
+data/
+**/*.csv
+**/*.hdf5
+**/*.zip
+
+# Git
+.git/
+
+# Maven output
+**/target/
+
+docker/ignite-libs/
+
+docker/data/
+docker/dump.txt
+docker/-Body
+docker/node1-threads.txt
+*.drawio
+
+# Python / IDE / доки
+**/__pycache__/
+**/*.pyc
+.idea/
+.vscode/
+*.iml
+docs/
+*.md

@@ -5,7 +5,6 @@ import ru.nsu.fit.sberlab.vectorindex.common.VectorObject;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.AddRequest;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.ClusterStats;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.Neighbor;
-import ru.nsu.fit.sberlab.vectorindex.common.filter.VectorMetadataFilter;
 
 import java.util.List;
 import java.util.Map;
@@ -17,7 +16,7 @@ public interface Index {
     boolean delete(long id);
     void clear();
     VectorObject get(long id);
-    List<Neighbor> search(float[] vector, int count, String filter);
+    List<Neighbor> search(float[] vector, int count);
 
     void save(String path);
     long load(String path);
@@ -27,7 +26,7 @@ public interface Index {
 
     ClusterStats stats();
 
-    default ru.nsu.fit.sberlab.vectorindex.common.dto.SearchResponse searchFull(float[] vector, int count, String filter) {
+    default ru.nsu.fit.sberlab.vectorindex.common.dto.SearchResponse searchFull(float[] vector, int count) {
         throw new UnsupportedOperationException("full search requires aggregator service");
     }
 }

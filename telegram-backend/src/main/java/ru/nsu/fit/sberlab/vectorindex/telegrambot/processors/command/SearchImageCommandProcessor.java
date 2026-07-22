@@ -28,8 +28,7 @@ public class SearchImageCommandProcessor extends BotCommandProcessor {
 
     @Override
     protected String getReplyPrompt() {
-        return "Отправьте картинку, файл или ссылку на изображение в ответ на это сообщение.\n\n" +
-                "💡 Опционально: Добавьте фильтр по источнику во 2-й строки после ссылки. Для этого просто напишите название источника.";
+        return "Отправьте картинку, файл или ссылку на изображение в ответ на это сообщение.\n";
     }
 
     @Override
@@ -59,28 +58,22 @@ public class SearchImageCommandProcessor extends BotCommandProcessor {
                 fileId = message.getDocument().getFileId();
             }
 
-            // Читаем фильтр из подписи к файлу/картинке (caption)
-            String filter = message.getCaption() != null ? message.getCaption().trim() : "";
-
             try {
-                Mono<Dto.Neighbor[]> searchMono = imageSearchService.searchFile(fileId, (TelegramLongPollingBot) sender, filter);
+                Mono<Dto.Neighbor[]> searchMono = imageSearchService.searchFile(fileId, (TelegramLongPollingBot) sender);
                 handleSearchResponse(searchMono, chatId, "Скачиваю изображение из Telegram и анализирую...", sender);
             } catch (Exception e) {
                 log.error("Failed to process photo from Telegram", e);
                 messageService.sendText(sender, chatId, "❌ Произошла ошибка при получении файла из Telegram.");
             }
         } else {
-            String fullText = message.getText().trim();
-            String[] lines = fullText.split("\n", 2);
-            String url = lines[0].trim();
-            String filter = (lines.length > 1) ? lines[1].trim() : "";
+            String url = message.getText().trim();
 
             if (!isLink(url)) {
                 messageService.sendText(sender, chatId, "❌ Пожалуйста, отправьте корректную ссылку (http:// или https://) или изображение в ответ на то сообщение.");
                 return;
             }
 
-            Mono<Dto.Neighbor[]> searchMono = imageSearchService.searchUrl(url, filter);
+            Mono<Dto.Neighbor[]> searchMono = imageSearchService.searchUrl(url);
             handleSearchResponse(searchMono, chatId, "Отправляю на сервер...", sender);
         }
     }

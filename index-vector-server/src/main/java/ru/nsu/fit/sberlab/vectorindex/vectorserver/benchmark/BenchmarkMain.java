@@ -103,4 +103,9 @@ public class BenchmarkMain {
             e.printStackTrace();
         }
     }
+
+    private static String env(String key, String def) {
+        String v = System.getenv(key);
+        return v != null && !v.isBlank() ? v : def;
+    }
 }
