@@ -17,7 +17,8 @@ RUN --mount=type=cache,target=/root/.m2 \
         -DincludeScope=runtime -DexcludeGroupIds=org.apache.ignite \
         -DoutputDirectory=/out/node-libs && \
     cp vector-index-node/target/vector-index-node-*.jar   /out/node-libs/ && \
-    cp vector-index-common/target/vector-index-common-*.jar /out/node-libs/
+    cp vector-index-common/target/vector-index-common-*.jar /out/node-libs/ && \
+    cp index-vector-server/target/index-vector-server-*.jar /out/server.jar
 
 ########## узел Ignite (Java 17, текущая конфигурация) ##########
 FROM apacheignite/ignite:2.18.0 AS ignite-node
@@ -42,7 +43,7 @@ ENV CONFIG_URI=/config/ignite-config.xml
 
 ########## index-vector-server (он же образ бенча) ##########
 FROM eclipse-temurin:17-jre AS vector-server
-COPY --from=build /src/index-vector-server/target/index-vector-server-*.jar /app/app.jar
+COPY --from=build /out/server.jar /app/app.jar
 ENTRYPOINT ["java","-jar","/app/app.jar"]
 
 ########## gateway ##########
