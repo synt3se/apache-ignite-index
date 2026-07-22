@@ -81,6 +81,7 @@
 
 
     <build>
+        <finalName>app</finalName>
         <plugins>
             <!-- Чтобы можно было запускать через mvn spring-boot:run -->
             <plugin>
