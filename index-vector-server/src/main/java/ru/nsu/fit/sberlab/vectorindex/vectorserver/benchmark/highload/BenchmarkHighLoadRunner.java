@@ -6,7 +6,8 @@ import org.springframework.http.ResponseEntity;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.Neighbor;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.SearchRequest;
 import ru.nsu.fit.sberlab.vectorindex.vectorserver.VectorService;
-import ru.nsu.fit.sberlab.vectorindex.vectorserver.benchmark.highload.QueryReader.QueryVector;
+import ru.nsu.fit.sberlab.vectorindex.vectorserver.benchmark.QueryReader;
+import ru.nsu.fit.sberlab.vectorindex.vectorserver.benchmark.QueryReader.QueryVector;
 
 import java.util.Arrays;
 import java.util.List;
@@ -24,8 +25,8 @@ import java.util.concurrent.atomic.AtomicLong;
 public final class BenchmarkHighLoadRunner {
     private static final Logger log = LoggerFactory.getLogger(BenchmarkHighLoadRunner.class);
 
-    //TODO залогировать мб внедрить гистограму и вывод в реал тайм, таймаут
-    //TODO  нормальный вывод ann бенчмарка
+    //todo мб внедрить гистограму и вывод в реал тайм, таймаут
+
     private static final long WORKER_SHUTDOWN_TIMEOUT_SECONDS = 90;
 
     private final VectorService service;
@@ -37,7 +38,7 @@ public final class BenchmarkHighLoadRunner {
     }
 
     public void run(
-            int maxInFlight, //Пул потоков //TODO не совсем понятно насчет ограничений
+            int maxInFlight, //Пул потоков
             int targetRps, //Сколько запросов в секунду пытаемся создать
             int warmupSeconds,
             int testSeconds, //продолжительность основной измеряемой фазы
@@ -174,7 +175,7 @@ public final class BenchmarkHighLoadRunner {
                 ));
             } catch (RuntimeException e) {
                 metrics.inFlight.decrementAndGet();
-                metrics.rejected.incrementAndGet();
+                metrics.errors.incrementAndGet();
                 permits.release();
                 log.error("Failed to submit search request to worker pool", e);
             }
@@ -216,8 +217,6 @@ public final class BenchmarkHighLoadRunner {
         long startedNanos = System.nanoTime();
         metrics.started.incrementAndGet();
 
-        boolean success = false;
-
         try {
             ResponseEntity<List<Neighbor>> response = service.search(
                     new SearchRequest(query.vector(), neighborCount, null)
@@ -234,13 +233,11 @@ public final class BenchmarkHighLoadRunner {
 
             if (neighbors.size() != neighborCount) {
                 metrics.incompleteResponses.incrementAndGet();
-                log.warn("Incomplete search response: expected={}, actual={}", neighborCount, neighbors.size());
                 return;
             }
             metrics.bytesOut.addAndGet((long) query.vector().length * Float.BYTES);
             metrics.bytesIn.addAndGet(estimateResponseBytes(neighbors));
             metrics.successful.incrementAndGet();
-            success = true;
         } catch (RuntimeException e) {
             metrics.errors.incrementAndGet();
             log.error("Search request failed", e);

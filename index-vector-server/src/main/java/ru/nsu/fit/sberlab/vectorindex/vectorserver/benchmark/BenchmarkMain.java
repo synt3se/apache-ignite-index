@@ -27,22 +27,25 @@ public class BenchmarkMain {
         HIGH_LOAD, N_CLIENTS
     }
 
-    private static final String DATABASE_PATH = "C:/Users/danil/Desktop/IgniteDB/database.csv";
-    private static final String QUERIES_PATH = "C:/Users/danil/Desktop/IgniteDB/quieries.csv";
-    private static final String RESULTS_PATH = "C:/Users/danil/Desktop/IgniteDB/results.csv";
+    // ================================================ INDEX ======================================
     private static final int NEIGHBOR_COUNT = 10;
-
-
-    private static final boolean LOAD_DATABASE = true;
     private static final Mode BENCHMARK_MODE = Mode.HIGH_LOAD;
     private static final BenchmarkDatasetRunner.IndexType INDEX_MODE =
             BenchmarkDatasetRunner.IndexType.JVECTOR;
 
+    //================================================= LOAD ========================================
+    private static final boolean LOAD_DATABASE = true;
+    private static final String DATABASE_PATH = "C:/Users/danil/Desktop/IgniteDB/database.csv";
+    private static final String QUERIES_PATH = "C:/Users/danil/Desktop/IgniteDB/quieries.csv";
+    private static final String RESULTS_PATH = "C:/Users/danil/Desktop/IgniteDB/results.csv";
 
+    //================================================= HIGHLOAD ====================================
     private static final int HIGHLOAD_MAX_IN_FLIGHT = 64;
     private static final int HIGHLOAD_TARGET_RPS = 100;
     private static final int HIGHLOAD_WARMUP_SECONDS = 10;
     private static final int HIGHLOAD_TEST_SECONDS = 60;
+
+    //todo убрать смайлики из ann
 
     public static void main(String[] args) {
 
@@ -51,7 +54,7 @@ public class BenchmarkMain {
                              .web(WebApplicationType.NONE).run(args))
         {
             VectorService vectorService = context.getBean(VectorService.class);
-            if (LOAD_DATABASE ) {
+            if (LOAD_DATABASE && BENCHMARK_MODE != Mode.OUR_DATASET) { //TODO dataset и так содержит loader так что надо фиксить пока так
                 new DatabaseLoader(vectorService).load(DATABASE_PATH);
             }
             switch (BENCHMARK_MODE){
@@ -81,6 +84,8 @@ public class BenchmarkMain {
 
                 case HIGH_LOAD -> {
                     BenchmarkHighLoadRunner runner = new BenchmarkHighLoadRunner(vectorService);
+
+
                     runner.run(
                             HIGHLOAD_MAX_IN_FLIGHT,
                             HIGHLOAD_TARGET_RPS,
