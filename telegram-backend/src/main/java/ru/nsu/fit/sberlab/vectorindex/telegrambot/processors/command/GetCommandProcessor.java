@@ -76,7 +76,7 @@ public class GetCommandProcessor extends BotCommandProcessor {
 
             sourceValue = jsonNode.get("source").asText();
         } catch (Exception e) {
-            throw new RuntimeException(e);
+            sourceValue = "unknown";
         }
         return String.format(
                 "🆔 <code>%s</code>\n" +

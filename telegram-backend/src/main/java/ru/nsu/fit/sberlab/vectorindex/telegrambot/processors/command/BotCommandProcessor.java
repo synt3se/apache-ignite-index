@@ -125,6 +125,7 @@ public abstract class BotCommandProcessor {
     }
 
     protected String getStringTop(Dto.Neighbor[] top) {
+        if (top.length == 0) return "Ничего не найдено :(";
         StringBuilder string = new StringBuilder();
         string.append("✅ <b>РЕЗУЛЬТАТЫ ПОИСКА</b>\n\n");
         for (Dto.Neighbor neighbor : top) {
@@ -138,7 +139,6 @@ public abstract class BotCommandProcessor {
             ));
         }
         string.append("⬇\uFE0F <b>Предпросмотр самого похожего</b>\n");
-        if (string.length() == 0) return "Сервер вернул пустой список :(";
         return string.toString();
     }
 

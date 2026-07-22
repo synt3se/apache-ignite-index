@@ -105,7 +105,7 @@ class DerivativeIndexIT {
     private static void assertConverged(int hot, PartitionIndexManager... managers) {
         List<ScoredVector> raw = new ArrayList<>();
         for (PartitionIndexManager m : managers) {
-            raw.addAll(m.searchLocal(oneHot(hot), 5));
+            raw.addAll(m.searchLocal(oneHot(hot), 5, null));
         }
         assertThat(raw).extracting(ScoredVector::id).doesNotHaveDuplicates(); // один primary на вектор
         assertThat(raw).extracting(ScoredVector::id).hasSize(5);              // ничего не потеряно

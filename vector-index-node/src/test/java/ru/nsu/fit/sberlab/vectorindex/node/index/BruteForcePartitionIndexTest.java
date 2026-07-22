@@ -22,7 +22,7 @@ class BruteForcePartitionIndexTest {
         BruteForcePartitionIndex idx = new BruteForcePartitionIndex();
         for (int i = 0; i < 5; i++) idx.add(i, oneHot(i));
 
-        List<ScoredVector> r = idx.search(oneHot(2), 3);
+        List<ScoredVector> r = idx.search(oneHot(2), 3, null);
 
         assertThat(r).hasSize(3);
         assertThat(r.get(0).id()).isEqualTo(2L);
@@ -38,7 +38,7 @@ class BruteForcePartitionIndexTest {
 
         idx.delete(1);
 
-        assertThat(idx.search(oneHot(1), 5))
+        assertThat(idx.search(oneHot(1), 5, null))
                 .extracting(ScoredVector::id)
                 .doesNotContain(1L);
     }

@@ -41,11 +41,11 @@ public class IndexClient {
                 .body(Dto.VectorResponse.class);
     }
 
-    public List<Dto.Neighbor> search(float[] vector, int count) {
+    public List<Dto.Neighbor> search(float[] vector, int count, String filter) {
         return http.post()
                 .uri("/vectors/search")
                 .contentType(MediaType.APPLICATION_JSON)
-                .body(new Dto.IndexSearchRequest(vector, count))
+                .body(new Dto.IndexSearchRequest(vector, count, filter))
                 .retrieve()
                 .body(new ParameterizedTypeReference<List<Dto.Neighbor>>() {});
     }

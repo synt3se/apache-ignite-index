@@ -22,6 +22,7 @@ import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.function.LongPredicate;
 
 public class JVectorPartitionIndex
         implements PartitionVectorIndex, AutoCloseable {
@@ -163,7 +164,8 @@ public class JVectorPartitionIndex
     @Override
     public List<ScoredVector> search(
             float[] queryVector,
-            int count
+            int count,
+            LongPredicate filter
     ) {
         validateVector(queryVector);
 
@@ -180,8 +182,8 @@ public class JVectorPartitionIndex
 
             Map<Long, Double> distances = new HashMap<>();
 
-            searchGraph(queryVector, count, distances);
-            searchPending(queryVector, distances);
+            searchGraph(queryVector, count, distances, filter);
+            searchPending(queryVector, distances, filter);
 
             return distances.entrySet().stream()
                     .map(entry -> new ScoredVector(
@@ -242,7 +244,8 @@ public class JVectorPartitionIndex
     private void searchGraph(
             float[] queryVector,
             int count,
-            Map<Long, Double> distances
+            Map<Long, Double> distances,
+            LongPredicate filter
     ) {
         if (snapshot.isEmpty()) {
             return;
@@ -264,7 +267,7 @@ public class JVectorPartitionIndex
 
         SearchResult searchResult;
 
-        Bits activeNodes = createActiveNodesBits();
+        Bits activeNodes = createActiveNodesBits(filter);
 
         try (GraphSearcher searcher = new GraphSearcher(snapshot.graph())) {
             searchResult = searcher.search(
@@ -292,12 +295,12 @@ public class JVectorPartitionIndex
         }
     }
 
-    private void searchPending(float[] queryVector, Map<Long, Double> distances) {
+    private void searchPending(float[] queryVector, Map<Long, Double> distances, LongPredicate filter) {
         for (Map.Entry<Long, float[]> entry : pendingVectors.entrySet()) {
-            distances.put(
-                    entry.getKey(),
-                    cosineDistance(queryVector, entry.getValue())
-            );
+            long id = entry.getKey();
+            if (filter == null || filter.test(id)) {
+                distances.put(id, cosineDistance(queryVector, entry.getValue()));
+            }
         }
     }
 
@@ -306,14 +309,18 @@ public class JVectorPartitionIndex
                 && !pendingVectors.containsKey(id);
     }
 
-    private Bits createActiveNodesBits() {
+    private Bits createActiveNodesBits(LongPredicate userFilter) {
         return ordinal -> {
             if (ordinal < 0 || ordinal >= snapshot.size()) {
                 return false;
             }
 
             long id = snapshot.ordinalToId().get(ordinal);
-            return isGraphIdActive(id);
+            if (!isGraphIdActive(id)) {
+                return false;
+            }
+
+            return userFilter == null || userFilter.test(id);
         };
     }
 

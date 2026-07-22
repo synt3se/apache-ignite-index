@@ -25,7 +25,7 @@ class SearchVectorTaskReduceTest {
         ComputeJobResult n2 = resultWith(List.of(new ScoredVector(1L, 0.2), new ScoredVector(3L, 2.0)));
 
         SearchVectorTask task = new SearchVectorTask();
-        task.map(List.of(), new SearchVectorTask.Arg(new float[]{1f}, 10)); // выставляет searchCount
+        task.map(List.of(), new SearchVectorTask.Arg(new float[]{1f}, 10, null)); // выставляет searchCount
         List<ScoredVector> out = task.reduce(List.of(n1, n2));
 
         assertThat(out).extracting(ScoredVector::id).containsExactlyInAnyOrder(1L, 2L, 3L);

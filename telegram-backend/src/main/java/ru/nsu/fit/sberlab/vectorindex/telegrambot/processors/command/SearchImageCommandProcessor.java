@@ -25,9 +25,11 @@ public class SearchImageCommandProcessor extends BotCommandProcessor {
     protected String getCommandName() {
         return "/search_img";
     }
+
     @Override
     protected String getReplyPrompt() {
-        return "Отправьте картинку, документ или ссылку на изображение в ответ на это сообщение";
+        return "Отправьте картинку, файл или ссылку на изображение в ответ на это сообщение.\n\n" +
+                "💡 Опционально: Добавьте фильтр по источнику во 2-й строки после ссылки. Для этого просто напишите название источника.";
     }
 
     @Override
@@ -40,45 +42,51 @@ public class SearchImageCommandProcessor extends BotCommandProcessor {
     @Override
     public void processArgument(Update update, long chatId, AbsSender sender) {
         Message message = update.getMessage();
+
         if (message.hasPhoto() || message.hasDocument()) {
-            String fileId = null;
+            String fileId;
             if (message.hasPhoto()) {
                 PhotoSize photo = message.getPhoto().stream()
                         .max(java.util.Comparator.comparing(PhotoSize::getFileSize))
                         .orElse(null);
                 fileId = photo.getFileId();
-            }
-            else {
-                String mime = update.getMessage().getDocument().getMimeType();
-                 if (mime == null || !mime.startsWith("image/")) {
-                     messageService.sendText(sender, chatId, "❌ Документ должен быть изображением.");
-                 }
+            } else {
+                String mime = message.getDocument().getMimeType();
+                if (mime == null || !mime.startsWith("image/")) {
+                    messageService.sendText(sender, chatId, "❌ Документ должен быть изображением.");
+                    return;
+                }
                 fileId = message.getDocument().getFileId();
             }
 
+            // Читаем фильтр из подписи к файлу/картинке (caption)
+            String filter = message.getCaption() != null ? message.getCaption().trim() : "";
+
             try {
-                Mono<Dto.Neighbor[]> searchMono = imageSearchService.searchFile(fileId, (TelegramLongPollingBot)sender);
+                Mono<Dto.Neighbor[]> searchMono = imageSearchService.searchFile(fileId, (TelegramLongPollingBot) sender, filter);
                 handleSearchResponse(searchMono, chatId, "Скачиваю изображение из Telegram и анализирую...", sender);
             } catch (Exception e) {
                 log.error("Failed to process photo from Telegram", e);
                 messageService.sendText(sender, chatId, "❌ Произошла ошибка при получении файла из Telegram.");
             }
-        }
-        else {
-            String url = update.getMessage().getText().trim();
+        } else {
+            String fullText = message.getText().trim();
+            String[] lines = fullText.split("\n", 2);
+            String url = lines[0].trim();
+            String filter = (lines.length > 1) ? lines[1].trim() : "";
+
             if (!isLink(url)) {
                 messageService.sendText(sender, chatId, "❌ Пожалуйста, отправьте корректную ссылку (http:// или https://) или изображение в ответ на то сообщение.");
                 return;
             }
 
-            Mono<Dto.Neighbor[]> searchMono = imageSearchService.searchUrl(url);
+            Mono<Dto.Neighbor[]> searchMono = imageSearchService.searchUrl(url, filter);
             handleSearchResponse(searchMono, chatId, "Отправляю на сервер...", sender);
         }
     }
 
     private void handleSearchResponse(Mono<Dto.Neighbor[]> searchMono, Long chatId, String statusText, AbsSender sender) {
         Message statusMessage = messageService.sendText(sender, chatId, statusText);
-
         if (statusMessage == null) return;
         int messageIdToEdit = statusMessage.getMessageId();
 

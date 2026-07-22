@@ -1,5 +1,7 @@
 package ru.nsu.fit.sberlab.vectorindex.telegrambot.client;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
@@ -23,8 +25,8 @@ public class GatewayClient {
         this.webClient = webClient;
     }
 
-    public Mono<Neighbor[]> searchUrl(String imageUrl) {
-        var requestBody = Map.of("url", imageUrl, "count", 5);
+    public Mono<Neighbor[]> searchUrl(String imageUrl, String filter) {
+        var requestBody = Map.of("url", imageUrl, "count", 5, "filter", filter);
         return webClient.post()
                 .uri("/search/image")
                 .bodyValue(requestBody)
@@ -34,8 +36,8 @@ public class GatewayClient {
                 .timeout(java.time.Duration.ofSeconds(30));
     }
 
-    public Mono<Neighbor[]> searchTxt(String text) {
-        var requestBody = Map.of("text", text, "count", 5);
+    public Mono<Neighbor[]> searchTxt(String text, String filter) {
+        var requestBody = Map.of("text", text, "count", 5, "filter", filter);
         return webClient.post()
                 .uri("/search/text")
                 .bodyValue(requestBody)
@@ -85,17 +87,31 @@ public class GatewayClient {
 
     private Mono<? extends Throwable> mapError(ClientResponse clientResponse) {
         int statusCode = clientResponse.statusCode().value();
+        return clientResponse.bodyToMono(String.class)
+                .flatMap(rawBody -> {
+                    String errorSign = "";
+                    String serverMessage = rawBody;
+                    try {
+                        ObjectMapper mapper = new ObjectMapper();
+                        JsonNode jsonNode = mapper.readTree(rawBody);
 
-        return clientResponse.bodyToMono(Map.class)
-                .flatMap(errorBody -> {
-                    String errorSign = errorBody.get("error") != null ? errorBody.get("error").toString() : "";
-                    String serverMessage = errorBody.get("message") != null ? errorBody.get("message").toString() : "Unknown error";
+                        if (jsonNode.has("error")) {
+                            errorSign = jsonNode.get("error").asText();
+                        }
+                        if (jsonNode.has("message")) {
+                            serverMessage = jsonNode.get("message").asText();
+                        }
+                    } catch (Exception ignored) {
+                    }
 
                     if ("image_download_error".equals(errorSign)) {
                         return Mono.<Throwable>error(new ImageDownloadException(serverMessage));
                     }
+
                     return Mono.<Throwable>error(new GatewayException(statusCode, serverMessage));
                 })
-                .switchIfEmpty(Mono.<Throwable>error(new GatewayException(statusCode, "Неизвестная ошибка сервера")));
+                .switchIfEmpty(Mono.<Throwable>error(
+                        new GatewayException(statusCode, "Неизвестная ошибка сервера (пустое тело ответа)"))
+                );
     }
 }

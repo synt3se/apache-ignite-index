@@ -39,13 +39,15 @@ public class GatewayController {
         byte[] imageBytes = downloadImage(request.url());
 
         float[] vector = clipClient.embedImage(imageBytes, request.url());
-        return indexClient.search(vector, request.count() != null ? request.count() : 5);
+        return indexClient.search(vector, request.count() != null ? request.count() : 5, request.filter());
     }
 
     @PostMapping(value = "/search/image/file", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public List<Dto.Neighbor> searchImageFile(
             @RequestParam("file") MultipartFile file,
-            @RequestParam(value = "count", required = false) Integer count) throws IOException {
+            @RequestParam(value = "count", required = false) Integer count,
+            String filter
+    ) throws IOException {
 
         if (file.isEmpty()) {
             throw new IllegalArgumentException("Uploaded file is empty");
@@ -54,18 +56,18 @@ public class GatewayController {
         byte[] imageBytes = file.getBytes();
 
         float[] vector = clipClient.embedImage(imageBytes, file.getOriginalFilename());
-        return indexClient.search(vector, count != null ? count : 5);
+        return indexClient.search(vector, count != null ? count : 5, filter);
     }
 
     @PostMapping("/search/text")
     public List<Dto.Neighbor> searchText(@RequestBody Dto.TextSearchRequest request) {
         float[] vec = clipClient.embedText(request.text());
-        return indexClient.search(vec, request.count() != null ? request.count() : 5);
+        return indexClient.search(vec, request.count() != null ? request.count() : 5, request.filter());
     }
 
     @PostMapping("/search/vector")
     public List<Dto.Neighbor> searchVector(@RequestBody Dto.SearchVectorRequest request) {
-        return indexClient.search(request.vector(), request.count() != null ? request.count() : 5);
+        return indexClient.search(request.vector(), request.count() != null ? request.count() : 5, request.filter());
     }
 
     @GetMapping("/images/{id}")

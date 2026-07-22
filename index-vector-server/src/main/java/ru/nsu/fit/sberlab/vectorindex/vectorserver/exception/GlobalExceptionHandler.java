@@ -71,4 +71,14 @@ public class GlobalExceptionHandler {
 
         return new ResponseEntity<>(response, HttpStatus.NOT_FOUND);
     }
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<Map<String, Object>> handleAll(Exception ex) {
+        log.error("Unhandled error during request processing", ex);
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("status", 500);
+        response.put("error", ex.getClass().getSimpleName());
+        response.put("message", ex.getMessage());
+        return new ResponseEntity<>(response, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
 }
