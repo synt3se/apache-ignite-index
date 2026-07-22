@@ -83,7 +83,7 @@
                 <version>${spring.boot.version}</version>
                 <configuration>
                     <layout>ZIP</layout>
-                    <mainClass>ru.nsu.fit.vectorserver.VectorServerApplication</mainClass>
+                    <mainClass>ru.nsu.fit.sberlab.vectorindex.vectorserver.VectorServerApplication</mainClass>
                 </configuration>
                 <executions>
                     <execution>

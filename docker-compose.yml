@@ -76,7 +76,7 @@ services:
   bench:
     profiles: ["bench"]
     build: { context: ., target: vector-server }   # тот же образ, другой main
-    entrypoint: ["java","-Dloader.main=ru.nsu.fit.vectorserver.benchmark.BenchmarkMain","-jar","/app/app.jar"]
+    entrypoint: ["java","-Dloader.main=ru.nsu.fit.sberlab.vectorindex.vectorserver.benchmark.BenchmarkMain","-jar","/app/app.jar"]
     environment:
       IGNITE_ADDRESS: ignite-node-1:10800,ignite-node-2:10800
       DATABASE_PATH: /data/dataset.csv
