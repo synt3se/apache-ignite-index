@@ -82,14 +82,19 @@
 
     <build>
         <plugins>
-            <!-- Чтобы можно было запускать через mvn spring-boot:run -->
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <version>${spring.boot.version}</version>
                 <configuration>
                     <layout>ZIP</layout>
+                    <mainClass>ru.nsu.fit.vectorserver.VectorServerApplication</mainClass>
                 </configuration>
+                <executions>
+                    <execution>
+                        <goals></goals>
+                    </execution>
+                </executions>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
