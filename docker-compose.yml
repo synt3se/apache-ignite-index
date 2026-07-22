@@ -79,9 +79,17 @@ services:
     entrypoint: ["java","-Dloader.main=ru.nsu.fit.sberlab.vectorindex.vectorserver.benchmark.BenchmarkMain","-jar","/app/app.jar"]
     environment:
       IGNITE_ADDRESS: ignite-node-1:10800,ignite-node-2:10800
+
       DATABASE_PATH: /data/dataset.csv
       QUERIES_PATH: /data/quieries.csv
       RESULTS_PATH: /data/results.csv
+
+      BENCHMARK_MODE: HIGH_LOAD
+      INDEX_MODE: JVECTOR
+      LOAD_DATABASE: "true"
+      HIGHLOAD_TARGET_RPS: "100"
+      HIGHLOAD_TEST_SECONDS: "60"
+
       JAVA_TOOL_OPTIONS: *java-opts
     volumes:
       - ${DATA_DIR:-./data}:/data:ro

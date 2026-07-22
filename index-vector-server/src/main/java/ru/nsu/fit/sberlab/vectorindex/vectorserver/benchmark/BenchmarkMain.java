@@ -27,22 +27,21 @@ public class BenchmarkMain {
         HIGH_LOAD, N_CLIENTS
     }
 
-    private static final String DATABASE_PATH = env("DATABASE_PATH", "C:/Programming/Java_Projects/apache-ignite-mvp/apache-ignite-index/data/d260k.csv");
-    private static final String QUERIES_PATH = env("QUERIES_PATH", "C:/Programming/Java_Projects/apache-ignite-mvp/apache-ignite-index/data/quieries.csv");
-    private static final String RESULTS_PATH = env("RESULTS_PATH", "C:/Programming/Java_Projects/apache-ignite-mvp/apache-ignite-index/data/r260k.csv");
-    private static final int NEIGHBOR_COUNT = 10;
+    private static final String DATABASE_PATH = env("DATABASE_PATH", "/srv/vindex-data/260k/dataset.csv");
+    private static final String QUERIES_PATH = env("QUERIES_PATH", "/srv/vindex-data/260k/quieries.csv");
+    private static final String RESULTS_PATH = env("RESULTS_PATH", "/srv/vindex-data/260k/results.csv");
+    private static final int NEIGHBOR_COUNT = Integer.parseInt(env("NEIGHBOR_COUNT", "10"));
 
 
-    private static final boolean LOAD_DATABASE = true;
-    private static final Mode BENCHMARK_MODE = Mode.HIGH_LOAD;
+    private static final boolean LOAD_DATABASE = Boolean.parseBoolean(env("LOAD_DATABASE", "true"));
+    private static final Mode BENCHMARK_MODE = Mode.valueOf(env("BENCHMARK_MODE", "OUR_DATASET"));
     private static final BenchmarkDatasetRunner.IndexType INDEX_MODE =
-            BenchmarkDatasetRunner.IndexType.JVECTOR;
+            BenchmarkDatasetRunner.IndexType.valueOf(env("INDEX_MODE", "JVECTOR"));
 
-
-    private static final int HIGHLOAD_MAX_IN_FLIGHT = 64;
-    private static final int HIGHLOAD_TARGET_RPS = 100;
-    private static final int HIGHLOAD_WARMUP_SECONDS = 10;
-    private static final int HIGHLOAD_TEST_SECONDS = 60;
+    private static final int HIGHLOAD_MAX_IN_FLIGHT = Integer.parseInt(env("HIGHLOAD_MAX_IN_FLIGHT", "64"));
+    private static final int HIGHLOAD_TARGET_RPS = Integer.parseInt(env("HIGHLOAD_TARGET_RPS", "100"));
+    private static final int HIGHLOAD_WARMUP_SECONDS = Integer.parseInt(env("HIGHLOAD_WARMUP_SECONDS", "10"));
+    private static final int HIGHLOAD_TEST_SECONDS = Integer.parseInt(env("HIGHLOAD_TEST_SECONDS", "60"));
 
     public static void main(String[] args) {
 
