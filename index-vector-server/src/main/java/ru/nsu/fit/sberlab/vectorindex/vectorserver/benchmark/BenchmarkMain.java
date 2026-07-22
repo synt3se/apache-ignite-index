@@ -34,7 +34,7 @@ public class BenchmarkMain {
 
 
     private static final boolean LOAD_DATABASE = true;
-    private static final Mode BENCHMARK_MODE = Mode.OUR_DATASET;
+    private static final Mode BENCHMARK_MODE = Mode.HIGH_LOAD;
     private static final BenchmarkDatasetRunner.IndexType INDEX_MODE =
             BenchmarkDatasetRunner.IndexType.JVECTOR;
 

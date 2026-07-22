@@ -1,5 +1,7 @@
 package ru.nsu.fit.sberlab.vectorindex.vectorserver.benchmark.highload;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.Neighbor;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.SearchRequest;
@@ -20,7 +22,10 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 public final class BenchmarkHighLoadRunner {
+    private static final Logger log = LoggerFactory.getLogger(BenchmarkHighLoadRunner.class);
+
     //TODO залогировать мб внедрить гистограму и вывод в реал тайм, таймаут
+    //TODO  нормальный вывод ann бенчмарка
     private static final long WORKER_SHUTDOWN_TIMEOUT_SECONDS = 90;
 
     private final VectorService service;
@@ -39,9 +44,14 @@ public final class BenchmarkHighLoadRunner {
             int neighborCount, //Сколько соседей просим вернуть
             String queriesPath
     ) {
+        log.info("Starting highload benchmark: maxInFlight={}, targetRps={}, warmupSeconds={}, testSeconds={}, neighborCount={}, queriesPath={}",
+                maxInFlight, targetRps, warmupSeconds, testSeconds, neighborCount, queriesPath);
+
         validateArguments(maxInFlight, targetRps, warmupSeconds, testSeconds, neighborCount);
 
         List<QueryVector> queries = queryReader.read(queriesPath);
+
+        log.info("Loaded {} queries with vector dimension {}", queries.size(), queries.get(0).vector().length);
 
         System.out.println("=== Highload benchmark STARTED ===");
         System.out.println("Queries: " + queries.size());
@@ -60,6 +70,8 @@ public final class BenchmarkHighLoadRunner {
             boolean measured = false;
             if (warmupSeconds > 0) {
                 System.out.println("Warmup started...");
+                log.info("Warmup started");
+
                 runPhase(
                         scheduler,
                         workers,
@@ -70,11 +82,14 @@ public final class BenchmarkHighLoadRunner {
                         neighborCount,
                         measured
                 );
+
+                log.info("Warmup finished");
                 System.out.println("Warmup finished");
             }
 
 
             System.out.println("Measurement started...");
+            log.info("Measurement started");
 
             measured = true;
             PhaseResult result = runPhase(
@@ -90,6 +105,8 @@ public final class BenchmarkHighLoadRunner {
 
             printResult(result, targetRps, maxInFlight, neighborCount);
         } finally {
+            log.info("Stopping benchmark executors");
+
             scheduler.shutdownNow();
             workers.shutdown();
 
@@ -98,15 +115,18 @@ public final class BenchmarkHighLoadRunner {
                         WORKER_SHUTDOWN_TIMEOUT_SECONDS,
                         TimeUnit.SECONDS
                 )) {
+                    log.warn("Worker pool did not stop in {} seconds, forcing shutdown", WORKER_SHUTDOWN_TIMEOUT_SECONDS);
                     workers.shutdownNow();
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
+                log.error("Interrupted while waiting for worker pool shutdown", e);
                 workers.shutdownNow();
             }
         }
 
         System.out.println("=== Highload benchmark FINISHED ===");
+        log.info("Highload benchmark finished");
     }
 
     private PhaseResult runPhase(
@@ -119,6 +139,8 @@ public final class BenchmarkHighLoadRunner {
             int neighborCount,
             boolean measured
     ) {
+        log.info("Phase started: measured={}, durationSeconds={}, targetRps={}", measured, durationSeconds, targetRps);
+
         PhaseMetrics metrics = new PhaseMetrics();
         Semaphore permits = new Semaphore(maxInFlight);
         AtomicInteger querySequence = new AtomicInteger();
@@ -154,6 +176,7 @@ public final class BenchmarkHighLoadRunner {
                 metrics.inFlight.decrementAndGet();
                 metrics.rejected.incrementAndGet();
                 permits.release();
+                log.error("Failed to submit search request to worker pool", e);
             }
         }, 0L, intervalNanos, TimeUnit.NANOSECONDS);
 
@@ -162,15 +185,22 @@ public final class BenchmarkHighLoadRunner {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             producer.cancel(false);
+            log.error("Highload benchmark phase interrupted", e);
             throw new RuntimeException("Highload benchmark interrupted", e);
         }
 
         producer.cancel(false);
         long producerStoppedNanos = System.nanoTime();
 
+        log.info("Request producer stopped, waiting for {} in-flight requests", metrics.inFlight.get());
+
         waitForRequests(metrics);
 
         long phaseFinishedNanos = System.nanoTime();
+
+        log.info("Phase finished: measured={}, scheduled={}, completed={}, successful={}, errors={}, incomplete={}, rejected={}",
+                measured, metrics.scheduled.get(), metrics.completed.get(), metrics.successful.get(),
+                metrics.errors.get(), metrics.incompleteResponses.get(), metrics.rejected.get());
 
         return new PhaseResult(metrics, phaseStartNanos, producerStoppedNanos, phaseFinishedNanos);
     }
@@ -190,18 +220,21 @@ public final class BenchmarkHighLoadRunner {
 
         try {
             ResponseEntity<List<Neighbor>> response = service.search(
-                    new SearchRequest(query.vector(), neighborCount)
+                    new SearchRequest(query.vector(), neighborCount, null)
             );
 
             List<Neighbor> neighbors = response.getBody();
 
             if (!response.getStatusCode().is2xxSuccessful() || neighbors == null) {
                 metrics.errors.incrementAndGet();
+                log.warn("Search returned invalid response: status={}, bodyPresent={}",
+                        response.getStatusCode(), neighbors != null);
                 return;
             }
 
             if (neighbors.size() != neighborCount) {
                 metrics.incompleteResponses.incrementAndGet();
+                log.warn("Incomplete search response: expected={}, actual={}", neighborCount, neighbors.size());
                 return;
             }
             metrics.bytesOut.addAndGet((long) query.vector().length * Float.BYTES);
@@ -210,6 +243,7 @@ public final class BenchmarkHighLoadRunner {
             success = true;
         } catch (RuntimeException e) {
             metrics.errors.incrementAndGet();
+            log.error("Search request failed", e);
         } finally {
             long finishedNanos = System.nanoTime();
 
@@ -230,6 +264,7 @@ public final class BenchmarkHighLoadRunner {
                 Thread.sleep(10L);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
+                log.error("Interrupted while waiting for benchmark requests", e);
                 throw new RuntimeException(
                         "Interrupted while waiting for benchmark requests",
                         e
@@ -310,6 +345,29 @@ public final class BenchmarkHighLoadRunner {
 
         printPercentiles("Latency", latency);
         printPercentiles("Queue wait", queueWait);
+
+        log.info("Benchmark result: targetRps={}, startedRps={}, successfulRps={}, scheduled={}, started={}, completed={}, successful={}, errors={}, incomplete={}, rejected={}, maxInFlight={}",
+                targetRps, String.format(Locale.US, "%.2f", startedRps),
+                String.format(Locale.US, "%.2f", successfulRps), metrics.scheduled.get(),
+                metrics.started.get(), metrics.completed.get(), metrics.successful.get(),
+                metrics.errors.get(), metrics.incompleteResponses.get(), metrics.rejected.get(),
+                metrics.maxInFlight.get());
+
+        log.info("Latency: min={} ms, avg={} ms, p50={} ms, p95={} ms, p99={} ms, p99.9={} ms, max={} ms",
+                formatMillis(latency.minMillis()), formatMillis(latency.averageMillis()),
+                formatMillis(latency.p50Millis()), formatMillis(latency.p95Millis()),
+                formatMillis(latency.p99Millis()), formatMillis(latency.p999Millis()),
+                formatMillis(latency.maxMillis()));
+
+        log.info("Queue wait: min={} ms, avg={} ms, p50={} ms, p95={} ms, p99={} ms, p99.9={} ms, max={} ms",
+                formatMillis(queueWait.minMillis()), formatMillis(queueWait.averageMillis()),
+                formatMillis(queueWait.p50Millis()), formatMillis(queueWait.p95Millis()),
+                formatMillis(queueWait.p99Millis()), formatMillis(queueWait.p999Millis()),
+                formatMillis(queueWait.maxMillis()));
+    }
+
+    private String formatMillis(double value) {
+        return String.format(Locale.US, "%.3f", value);
     }
 
     private void printPercentiles(String title, Percentiles values) {

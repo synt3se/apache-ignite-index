@@ -1,7 +1,7 @@
-package ru.nsu.fit.vector.common.filter;
+package ru.nsu.fit.sberlab.vectorindex.common.filter;
 
 import java.io.Serializable;
-import ru.nsu.fit.vector.common.VectorObject;
+import ru.nsu.fit.sberlab.vectorindex.common.VectorObject;
 
 @FunctionalInterface
 public interface VectorMetadataFilter extends Serializable {

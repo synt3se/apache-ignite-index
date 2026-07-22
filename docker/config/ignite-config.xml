@@ -2,10 +2,11 @@
 <beans xmlns="http://www.springframework.org/schema/beans"
        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
        xmlns:util="http://www.springframework.org/schema/util"
-       xsi:schemaLocation="http://www.springframework.org/schema/beans
-                           http://www.springframework.org/schema/beans/spring-beans.xsd
-                           http://www.springframework.org/schema/util
-                           http://www.springframework.org/schema/util/spring-util.xsd">
+       xsi:schemaLocation="
+           http://www.springframework.org/schema/beans
+           http://www.springframework.org/schema/beans/spring-beans.xsd
+           http://www.springframework.org/schema/util
+           http://www.springframework.org/schema/util/spring-util.xsd">
 
     <bean class="org.apache.ignite.configuration.IgniteConfiguration">
 
@@ -29,6 +30,7 @@
                     <property name="cacheMode" value="PARTITIONED"/>
                     <property name="atomicityMode" value="ATOMIC"/>
                     <property name="backups" value="1"/>
+
                     <property name="affinity">
                         <bean class="org.apache.ignite.cache.affinity.rendezvous.RendezvousAffinityFunction">
                             <constructor-arg value="false"/>
@@ -40,24 +42,24 @@
         </property>
 
         <!-- Node-singleton индексная плоскость: экземпляр на каждом сервере -->
-
-
-
         <property name="serviceConfiguration">
             <list>
                 <bean class="org.apache.ignite.services.ServiceConfiguration">
                     <property name="name" value="LocalIndexService"/>
                     <property name="maxPerNodeCount" value="1"/>
                     <property name="totalCount" value="0"/>
+
                     <property name="service">
                         <!--========================= ВОТ ЗДЕСЬ НАСТРОИТЬ ИНДЕКС =====================-->
-                        <bean class="ru.nsu.fit.vector.node.service.LocalIndexServiceImpl">
+                        <bean class="ru.nsu.fit.sberlab.vectorindex.node.service.LocalIndexServiceImpl">
                             <property name="indexType">
-                                <util:constant static-field="ru.nsu.fit.vector.common.indextype.IndexType.JVECTOR_INDEX"/>
+                                <util:constant static-field="ru.nsu.fit.sberlab.vectorindex.common.indextype.IndexType.JVECTOR_INDEX"/>
                             </property>
+
                             <property name="dimension" value="512"/>
+
                             <property name="jvectorProperties">
-                                <bean class="ru.nsu.fit.vector.node.index.JVectorProperties">
+                                <bean class="ru.nsu.fit.sberlab.vectorindex.node.index.JVectorProperties">
                                     <property name="m" value="32"/>
                                     <property name="efConstruction" value="100"/>
                                     <property name="efSearch" value="1"/>
@@ -73,12 +75,14 @@
                         </bean>
                     </property>
                 </bean>
+
                 <bean class="org.apache.ignite.services.ServiceConfiguration">
                     <property name="name" value="SearchAggregationService"/>
                     <property name="maxPerNodeCount" value="1"/>
                     <property name="totalCount" value="0"/>
+
                     <property name="service">
-                        <bean class="ru.nsu.fit.vector.node.service.SearchAggregatorServiceImpl"/>
+                        <bean class="ru.nsu.fit.sberlab.vectorindex.node.service.SearchAggregatorServiceImpl"/>
                     </property>
                 </bean>
             </list>
@@ -95,7 +99,6 @@
                             </list>
                         </property>
                     </bean>
-
                 </property>
             </bean>
         </property>
@@ -103,6 +106,7 @@
         <property name="clientConnectorConfiguration">
             <bean class="org.apache.ignite.configuration.ClientConnectorConfiguration">
                 <property name="port" value="10800"/>
+
                 <property name="thinClientConfiguration">
                     <bean class="org.apache.ignite.configuration.ThinClientConfiguration">
                         <property name="maxActiveComputeTasksPerConnection" value="100"/>
