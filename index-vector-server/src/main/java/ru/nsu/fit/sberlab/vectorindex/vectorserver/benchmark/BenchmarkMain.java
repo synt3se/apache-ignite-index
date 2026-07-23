@@ -46,7 +46,7 @@ public class BenchmarkMain {
     private static final int HIGHLOAD_TEST_SECONDS = 60;
 
     //todo убрать смайлики из ann
-
+    //todo надо переписать ann
     public static void main(String[] args) {
 
         try (ConfigurableApplicationContext context =

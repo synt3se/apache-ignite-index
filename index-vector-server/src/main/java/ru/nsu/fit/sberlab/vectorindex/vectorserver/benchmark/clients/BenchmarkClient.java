@@ -29,8 +29,7 @@ final class BenchmarkClient implements AutoCloseable {
         this.id = id;
 
         ClientConfiguration configuration = new ClientConfiguration()
-                .setAddresses(igniteAddress)
-                .setPartitionAwarenessEnabled(false);
+                .setAddresses(igniteAddress);
 
         this.igniteClient = Ignition.startClient(configuration);
         this.index = new DistributedVectorIndex(
