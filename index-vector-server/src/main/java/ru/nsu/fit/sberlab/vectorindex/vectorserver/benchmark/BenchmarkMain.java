@@ -13,6 +13,9 @@ import ru.nsu.fit.sberlab.vectorindex.vectorserver.benchmark.dataset.BenchmarkDa
 import ru.nsu.fit.sberlab.vectorindex.vectorserver.benchmark.highload.BenchmarkHighLoadRunner;
 import ru.nsu.fit.sberlab.vectorindex.vectorserver.benchmark.recall.BenchmarkTestRunner;
 
+import java.sql.SQLOutput;
+import java.util.Locale;
+
 /*
 ======================== BEFORE RUNNING BENCHMARK =======================
 - restart database
@@ -23,45 +26,16 @@ import ru.nsu.fit.sberlab.vectorindex.vectorserver.benchmark.recall.BenchmarkTes
 
 @SpringBootApplication
 public class BenchmarkMain {
-
-    private enum Mode {
-        ANN_BENCHMARK_TEST, OUR_DATASET,
-        HIGH_LOAD, N_CLIENTS
-    }
-
-    // ================================================ INDEX ======================================
-    private static final Mode BENCHMARK_MODE = Mode.valueOf(env("BENCHMARK_MODE", "OUR_DATASET"));
-    private static final BenchmarkDatasetRunner.IndexType INDEX_MODE =
-            BenchmarkDatasetRunner.IndexType.valueOf(env("INDEX_MODE", "JVECTOR"));
-    //================================================= LOAD ========================================
-
-    private static final boolean LOAD_DATABASE = Boolean.parseBoolean(env("LOAD_DATABASE", "true"));
-    private static final String DATABASE_PATH = env("DATABASE_PATH", "/srv/vindex-data/260k/dataset.csv");
-    private static final String QUERIES_PATH = env("QUERIES_PATH", "/srv/vindex-data/260k/quieries.csv");
-    private static final String RESULTS_PATH = env("RESULTS_PATH", "/srv/vindex-data/260k/results.csv");
-    private static final int NEIGHBOR_COUNT = Integer.parseInt(env("NEIGHBOR_COUNT", "10"));
-
-
-
-    //================================================= HIGHLOAD ====================================
-    private static final int HIGHLOAD_MAX_IN_FLIGHT = 64;
-    private static final int HIGHLOAD_TARGET_RPS = 350;
-    private static final int HIGHLOAD_WARMUP_SECONDS = 10;
-    private static final int HIGHLOAD_TEST_SECONDS = 60;
-
-
-    //================================================= N CLIENTS ====================================
-    private static final int N_CLIENTS_COUNT = 8;
-    private static final int N_CLIENTS_WARMUP_SECONDS = 10;
-    private static final int N_CLIENTS_TEST_SECONDS = 60;
-
     //todo убрать смайлики из ann
     //todo надо переписать ann
     //todo задержка переда даталоад
     //todo dataset benchmark startув  не оч
     //todo проверка игнайта
     //todo rename to qps
+    //todo удобно в докере сделать параметры
     public static void main(String[] args) {
+        printConfiguration();
+
         try (ConfigurableApplicationContext context =
                      new SpringApplicationBuilder(VectorServerApplication.class)
                              .web(WebApplicationType.NONE).run(args))
@@ -138,4 +112,59 @@ public class BenchmarkMain {
         String v = System.getenv(key);
         return v != null && !v.isBlank() ? v : def;
     }
+
+    private static BenchmarkDatasetRunner.IndexType readIndexMode() {
+        String value = System.getenv().getOrDefault(
+                "INDEX_TYPE",
+                "JVECTOR_INDEX"
+        );
+
+        return switch (value.trim().toUpperCase(Locale.ROOT)) {
+            case "JVECTOR_INDEX" ->
+                    BenchmarkDatasetRunner.IndexType.JVECTOR;
+
+            case "BRUTE_FORCE_INDEX" ->
+                    BenchmarkDatasetRunner.IndexType.BRUTE_FORCE;
+
+            default -> throw new IllegalArgumentException(
+                    "Unknown INDEX_TYPE: " + value
+            );
+        };
+    }
+    private static void printConfiguration(){
+        System.out.println("\n\n================ BENCHMARK MAIN STARTED =================");
+        System.out.println("RUN MODE: " + BENCHMARK_MODE.toString());
+        String index = System.getenv().getOrDefault(
+                "INDEX_TYPE",
+                "(Empty value) AUTO=JVECTOR_INDEX"
+        );
+        System.out.println("INDEX_TYPE: " + index);
+        System.out.println("Load database: " + LOAD_DATABASE);
+        System.out.println("Database path: " + DATABASE_PATH);
+        System.out.println("Queries path: " + QUERIES_PATH);
+        System.out.println("Results path: " + RESULTS_PATH);
+        System.out.println("Neighbor count: " + NEIGHBOR_COUNT);
+        System.out.println("=======================================================");
+
+    }
+    private static final BenchmarkDatasetRunner.IndexType INDEX_MODE = readIndexMode();
+    private static final boolean LOAD_DATABASE = Boolean.parseBoolean(env("LOAD_DATABASE", "true"));
+    private static final String DATABASE_PATH = env("DATABASE_PATH", "/srv/vindex-data/260k/dataset.csv");
+    private static final String QUERIES_PATH = env("QUERIES_PATH", "/srv/vindex-data/260k/quieries.csv");
+    private static final String RESULTS_PATH = env("RESULTS_PATH", "/srv/vindex-data/260k/results.csv");
+    private static final int NEIGHBOR_COUNT = Integer.parseInt(env("NEIGHBOR_COUNT", "10"));
+    private static final int HIGHLOAD_MAX_IN_FLIGHT = Integer.parseInt(env("HIGHLOAD_MAX_IN_FLIGHT", "64"));
+    private static final int HIGHLOAD_TARGET_RPS = Integer.parseInt(env("HIGHLOAD_TARGET_RPS", "350"));
+    private static final int HIGHLOAD_WARMUP_SECONDS = Integer.parseInt(env("HIGHLOAD_WARMUP_SECONDS", "10"));
+    private static final int HIGHLOAD_TEST_SECONDS = Integer.parseInt(env("HIGHLOAD_TEST_SECONDS", "60"));
+    private static final int N_CLIENTS_COUNT = Integer.parseInt(env("N_CLIENTS_COUNT", "8"));
+    private static final int N_CLIENTS_WARMUP_SECONDS = Integer.parseInt(env("N_CLIENTS_WARMUP_SECONDS", "10"));
+    private static final int N_CLIENTS_TEST_SECONDS = Integer.parseInt(env("N_CLIENTS_TEST_SECONDS", "60"));
+
+    private enum Mode {ANN_BENCHMARK_TEST, OUR_DATASET, HIGH_LOAD, N_CLIENTS}
+
+    private static final Mode BENCHMARK_MODE = Mode.valueOf(
+            env("BENCHMARK_MODE", "OUR_DATASET").trim().toUpperCase(Locale.ROOT)
+    );
+
 }
