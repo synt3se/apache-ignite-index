@@ -80,6 +80,7 @@ public final class BenchmarkNClientsRunner {
             log.info("N clients measurement started: clients={}, durationSeconds={}",
                     clientCount, testSeconds);
 
+            measure = true;
             PhaseResult result = runPhase(clients, workers, queries, testSeconds, neighborCount, measure);
             printResult(result, clientCount, neighborCount);
         } finally {

@@ -28,8 +28,13 @@ final class BenchmarkClient implements AutoCloseable {
 
         this.id = id;
 
+        String[] addresses = java.util.Arrays.stream(igniteAddress.split(","))
+                .map(String::trim)
+                .filter(address -> !address.isEmpty())
+                .toArray(String[]::new);
+
         ClientConfiguration configuration = new ClientConfiguration()
-                .setAddresses(igniteAddress);
+                .setAddresses(addresses);;
 
         this.igniteClient = Ignition.startClient(configuration);
         this.index = new DistributedVectorIndex(
