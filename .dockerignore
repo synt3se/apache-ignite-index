@@ -25,3 +25,5 @@ docker/node1-threads.txt
 *.iml
 docs/
 *.md
+
+monitoring/

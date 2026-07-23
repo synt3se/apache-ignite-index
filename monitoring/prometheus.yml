@@ -1,0 +1,7 @@
+global:
+  scrape_interval: 2s
+scrape_configs:
+  - job_name: vindex-server
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['vector-server:8081']
