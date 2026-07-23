@@ -6,6 +6,8 @@ x-node-common: &node-common
   image: vindex-node:local
   environment:
     JVM_OPTS: ${NODE_JVM_OPTS}
+  volumes:
+    - ./docker/config/ignite-config.xml:/config/ignite-config.xml:ro
   healthcheck:
     test: ["CMD-SHELL", "nc -z 127.0.0.1 10800 || exit 1"]
     interval: 5s
@@ -43,6 +45,8 @@ services:
     environment:
       IGNITE_ADDRESS: ignite-node-1:10800,ignite-node-2:10800
       JAVA_TOOL_OPTIONS: *java-opts
+    volumes:
+      - ${DATA_DIR:-./data}:/data
     ports: ["8081:8081"]
     depends_on:
       ignite-node-1: { condition: service_healthy }
@@ -85,14 +89,39 @@ services:
       RESULTS_PATH: /data/results.csv
 
       BENCHMARK_MODE: OUR_DATASET # ANN_BENCHMARK_TEST, OUR_DATASET, HIGH_LOAD, N_CLIENTS
-      INDEX_MODE: JVECTOR # JVECTOR, BRUTE_FORCE
+      INDEX_MODE: BRUTE_FORCE # JVECTOR, BRUTE_FORCE
       LOAD_DATABASE: "true"
       HIGHLOAD_TARGET_RPS: "100"
       HIGHLOAD_TEST_SECONDS: "60"
 
+      VINDEX_METRICS_ENABLED: "false"
+
       JAVA_TOOL_OPTIONS: *java-opts
     volumes:
-      - ${DATA_DIR:-./data}:/data:ro
+      - ${DATA_DIR:-./data}:/data
     depends_on:
       ignite-node-1: { condition: service_healthy }
       ignite-node-2: { condition: service_healthy }
+
+  prometheus:
+    profiles: ["metrics"]
+    image: prom/prometheus:v2.53.1
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports: ["9090:9090"]
+    restart: unless-stopped
+
+  grafana:
+    profiles: ["metrics"]
+    image: grafana/grafana:11.1.4
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/vindex.json
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports: ["3000:3000"]
+    depends_on: ["prometheus"]
+    restart: unless-stopped

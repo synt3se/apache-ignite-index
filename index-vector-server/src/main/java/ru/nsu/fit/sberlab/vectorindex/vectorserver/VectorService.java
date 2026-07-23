@@ -1,9 +1,11 @@
 package ru.nsu.fit.sberlab.vectorindex.vectorserver;
 
+import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import io.micrometer.core.instrument.Counter;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.*;
 import ru.nsu.fit.sberlab.vectorindex.vectorserver.exception.ResourceNotFoundException;
 import ru.nsu.fit.sberlab.vectorindex.vectorserver.index.Index;
@@ -19,10 +21,12 @@ public class VectorService {
     static final Logger log = LoggerFactory.getLogger(VectorService.class);
     private final Index index;
     private final IdGenerator idGenerator;
+    private final Counter searchPartial;
 
-    public VectorService(Index index, IdGenerator idGenerator) {
+    public VectorService(Index index, IdGenerator idGenerator, MeterRegistry registry) {
         this.index = index;
         this.idGenerator = idGenerator;
+        this.searchPartial = registry.counter("vindex.search.partial");
     }
 
     public ResponseEntity<VectorResponse> add(AddRequest request) {
@@ -89,6 +93,8 @@ public class VectorService {
     }
 
     public ResponseEntity<SearchResponse> searchFull(SearchRequest request) {
-        return ResponseEntity.ok(index.searchFull(request.vector(), request.count()));
+        SearchResponse resp = index.searchFull(request.vector(), request.count());
+        if (resp.partial) searchPartial.increment();
+        return ResponseEntity.ok(resp);
     }
 }
