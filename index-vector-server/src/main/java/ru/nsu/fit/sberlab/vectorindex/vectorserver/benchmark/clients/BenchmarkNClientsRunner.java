@@ -317,7 +317,7 @@ public final class BenchmarkNClientsRunner {
 
             System.out.printf(
                     Locale.US,
-                    "Client %d: RPS=%.2f, successful=%d, errors=%d, incomplete=%d, p50=%.3f ms, p95=%.3f ms, p99=%.3f ms%n",
+                    "Client %d: QPS=%.2f, successful=%d, errors=%d, incomplete=%d, p50=%.3f ms, p95=%.3f ms, p99=%.3f ms%n",
                     metrics.clientId,
                     clientRps,
                     metrics.successful,
@@ -352,10 +352,10 @@ public final class BenchmarkNClientsRunner {
                 "Total duration with final requests: %.3f s%n",
                 totalSeconds
         );
-        System.out.printf(Locale.US, "Aggregate successful RPS: %.2f%n", aggregateRps);
-        System.out.printf(Locale.US, "Average RPS per client: %.2f%n", averageClientRps);
-        System.out.printf(Locale.US, "Minimum client RPS: %.2f%n", minimumClientRps);
-        System.out.printf(Locale.US, "Maximum client RPS: %.2f%n", maximumClientRps);
+        System.out.printf(Locale.US, "Aggregate successful QPS: %.2f%n", aggregateRps);
+        System.out.printf(Locale.US, "Average QPS per client: %.2f%n", averageClientRps);
+        System.out.printf(Locale.US, "Minimum client QPS: %.2f%n", minimumClientRps);
+        System.out.printf(Locale.US, "Maximum client QPS: %.2f%n", maximumClientRps);
 
         System.out.println();
         System.out.println("Started requests: " + totalStarted);
@@ -369,7 +369,7 @@ public final class BenchmarkNClientsRunner {
         printPercentiles("Aggregate latency", aggregateLatency);
 
         log.info(
-                "N clients result: clients={}, aggregateRps={}, averageClientRps={}, minClientRps={}, maxClientRps={}, started={}, completed={}, successful={}, errors={}, incomplete={}",
+                "N clients result: clients={}, aggregateQps={}, averageClientQps={}, minClientQps={}, maxClientQps={}, started={}, completed={}, successful={}, errors={}, incomplete={}",
                 clientCount,
                 formatNumber(aggregateRps),
                 formatNumber(averageClientRps),

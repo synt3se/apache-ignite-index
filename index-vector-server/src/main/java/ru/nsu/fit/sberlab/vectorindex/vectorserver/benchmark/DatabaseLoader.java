@@ -87,7 +87,7 @@ public final class DatabaseLoader {
         return count;
     }
 
-    private void waitUntilIndexReady(long expectedVectorCount) {
+    public void waitUntilIndexReady(long expectedVectorCount) {
         long deadline = System.currentTimeMillis() + INDEX_READY_TIMEOUT_MS;
         int stablePolls = 0;
 
