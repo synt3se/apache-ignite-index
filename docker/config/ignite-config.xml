@@ -1,12 +1,18 @@
 <?xml version="1.0" encoding="UTF-8"?>
+
 <beans xmlns="http://www.springframework.org/schema/beans"
        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
        xmlns:util="http://www.springframework.org/schema/util"
+       xmlns:context="http://www.springframework.org/schema/context"
        xsi:schemaLocation="
            http://www.springframework.org/schema/beans
            http://www.springframework.org/schema/beans/spring-beans.xsd
            http://www.springframework.org/schema/util
-           http://www.springframework.org/schema/util/spring-util.xsd">
+           http://www.springframework.org/schema/util/spring-util.xsd
+           http://www.springframework.org/schema/context
+           http://www.springframework.org/schema/context/spring-context.xsd">
+
+    <context:property-placeholder/>
 
     <bean class="org.apache.ignite.configuration.IgniteConfiguration">
 
@@ -52,9 +58,7 @@
                     <property name="service">
                         <!--========================= ВОТ ЗДЕСЬ НАСТРОИТЬ ИНДЕКС =====================-->
                         <bean class="ru.nsu.fit.sberlab.vectorindex.node.service.LocalIndexServiceImpl">
-                            <property name="indexType">
-                                <util:constant static-field="ru.nsu.fit.sberlab.vectorindex.common.indextype.IndexType.JVECTOR_INDEX"/>
-                            </property>
+                            <property name="indexType" value="${INDEX_TYPE:JVECTOR_INDEX}"/>
 
                             <property name="dimension" value="512"/>
 
