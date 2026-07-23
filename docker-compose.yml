@@ -1,3 +1,20 @@
+x-java-opts: &java-opts >-
+  --add-opens=java.base/jdk.internal.misc=ALL-UNNAMED
+  --add-opens=java.base/sun.nio.ch=ALL-UNNAMED
+  --add-opens=java.base/java.io=ALL-UNNAMED
+  --add-opens=java.base/java.nio=ALL-UNNAMED
+  --add-opens=java.base/java.util=ALL-UNNAMED
+  --add-opens=java.base/java.util.concurrent=ALL-UNNAMED
+  --add-opens=java.base/java.lang=ALL-UNNAMED
+  --add-opens=java.base/java.lang.invoke=ALL-UNNAMED
+  --add-opens=java.management/sun.management=ALL-UNNAMED
+  --add-opens=jdk.management/com.sun.management.internal=ALL-UNNAMED
+  --add-exports=java.base/jdk.internal.misc=ALL-UNNAMED
+  --add-exports=java.base/sun.nio.ch=ALL-UNNAMED
+  --add-exports=java.management/com.sun.jmx.mbeanserver=ALL-UNNAMED
+  --add-exports=jdk.internal.jvmstat/sun.jvmstat.monitor=ALL-UNNAMED
+  --add-exports=java.base/sun.reflect.generics.reflectiveObjects=ALL-UNNAMED
+
 x-node-common: &node-common
   restart: unless-stopped
   build:
@@ -5,6 +22,7 @@ x-node-common: &node-common
     target: ${NODE_TARGET:-ignite-node}     # ignite-node | ignite-node-21 - решение по SIMD в .env.example
   image: vindex-node:local
   environment:
+    JAVA_TOOL_OPTIONS: *java-opts
     JVM_OPTS: ${NODE_JVM_OPTS}
   volumes:
     - ./docker/config/ignite-config.xml:/config/ignite-config.xml:ro
@@ -14,30 +32,21 @@ x-node-common: &node-common
     timeout: 3s
     retries: 30
 
-x-java-opts: &java-opts >-
-  --add-opens=java.base/jdk.internal.misc=ALL-UNNAMED
-  --add-opens=java.base/sun.nio.ch=ALL-UNNAMED
-  --add-opens=java.base/java.io=ALL-UNNAMED
-  --add-opens=java.base/java.nio=ALL-UNNAMED
-  --add-opens=java.base/java.util=ALL-UNNAMED
-  --add-opens=java.base/java.util.concurrent=ALL-UNNAMED
-  --add-opens=java.base/java.lang=ALL-UNNAMED
-  --add-opens=java.management/sun.management=ALL-UNNAMED
-  --add-opens=jdk.management/com.sun.management.internal=ALL-UNNAMED
-  --add-exports=java.base/jdk.internal.misc=ALL-UNNAMED
-  --add-exports=java.base/sun.nio.ch=ALL-UNNAMED
-  --add-exports=java.management/com.sun.jmx.mbeanserver=ALL-UNNAMED
-  --add-exports=jdk.internal.jvmstat/sun.jvmstat.monitor=ALL-UNNAMED
-  --add-exports=java.base/sun.reflect.generics.reflectiveObjects=ALL-UNNAMED
-
 services:
   ignite-node-1:
     <<: *node-common
     container_name: ignite-node-1
+    volumes:
+      - ./docker/config/ignite-config.xml:/config/ignite-config.xml:ro
+      - ./jfr/node1:/jfr
+
   ignite-node-2:
     <<: *node-common
     container_name: ignite-node-2
-    depends_on: [ignite-node-1]
+    depends_on: [ ignite-node-1 ]
+    volumes:
+      - ./docker/config/ignite-config.xml:/config/ignite-config.xml:ro
+      - ./jfr/node2:/jfr
 
   vector-server:
     restart: unless-stopped
@@ -45,8 +54,10 @@ services:
     environment:
       IGNITE_ADDRESS: ignite-node-1:10800,ignite-node-2:10800
       JAVA_TOOL_OPTIONS: *java-opts
+      JDK_JAVA_OPTIONS: "-XX:StartFlightRecording=filename=/jfr/server.jfr,dumponexit=true,disk=true,maxsize=200m,settings=profile"
     volumes:
       - ${DATA_DIR:-./data}:/data
+      - ./jfr:/jfr
     ports: ["8081:8081"]
     depends_on:
       ignite-node-1: { condition: service_healthy }
