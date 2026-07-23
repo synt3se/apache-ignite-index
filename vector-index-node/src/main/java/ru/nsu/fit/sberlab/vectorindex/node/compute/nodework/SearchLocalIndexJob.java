@@ -1,7 +1,6 @@
 package ru.nsu.fit.sberlab.vectorindex.node.compute.nodework;
 
 import java.util.List;
-import java.util.function.LongPredicate;
 
 import org.apache.ignite.compute.ComputeJobAdapter;
 import ru.nsu.fit.sberlab.vectorindex.common.ScoredVector;

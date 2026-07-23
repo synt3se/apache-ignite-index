@@ -1,4 +1,4 @@
-package ru.nsu.fit.sberlab.vectorindex.vectorserver.benchmark.highload;
+package ru.nsu.fit.sberlab.vectorindex.vectorserver.benchmark;
 
 import java.io.BufferedReader;
 import java.io.File;

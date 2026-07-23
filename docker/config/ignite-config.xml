@@ -53,7 +53,7 @@
                         <!--========================= ВОТ ЗДЕСЬ НАСТРОИТЬ ИНДЕКС =====================-->
                         <bean class="ru.nsu.fit.sberlab.vectorindex.node.service.LocalIndexServiceImpl">
                             <property name="indexType">
-                                <util:constant static-field="ru.nsu.fit.sberlab.vectorindex.common.indextype.IndexType.BRUTE_FORCE_INDEX"/>
+                                <util:constant static-field="ru.nsu.fit.sberlab.vectorindex.common.indextype.IndexType.JVECTOR_INDEX"/>
                             </property>
 
                             <property name="dimension" value="512"/>
