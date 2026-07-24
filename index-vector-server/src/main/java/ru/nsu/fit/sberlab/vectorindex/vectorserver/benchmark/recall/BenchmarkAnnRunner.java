@@ -165,9 +165,9 @@ public class BenchmarkAnnRunner {
             );
         }
 
-        service.rebuild();
         System.out.println("Vector loading finished");
         System.out.println("Starting partition index rebuild...");
+        service.rebuild();
 
         DatabaseLoader loader = new DatabaseLoader(service);
         loader.waitUntilIndexReady(vectorCount);
@@ -194,24 +194,18 @@ public class BenchmarkAnnRunner {
         long totalSearchNanos = 0L;
         double totalRecall = 0.0;
         int incompleteResponses = 0;
+        int perfectQueries = 0;
         System.out.println("Measurement started...");
 
         for (int i = 0; i < measuredQueryCount; i++) {
             long start = System.nanoTime();
 
-            Object searchResponse = service.search(
-                    new SearchRequest(
-                            queries[i],
-                            neighborCount
-                    )
-            );
+            Object searchResponse = service.search(new SearchRequest(queries[i], neighborCount));
 
             long searchNanos = System.nanoTime() - start;
 
             totalSearchNanos += searchNanos;
-            searchMetrics.add(
-                    searchNanos / 1_000_000.0
-            );
+            searchMetrics.add(searchNanos / 1_000_000.0);
 
             List<Long> foundIds = extractIdsFromResponse(searchResponse);
             if (foundIds.size() < neighborCount) {
@@ -235,7 +229,9 @@ public class BenchmarkAnnRunner {
                     matches++;
                 }
             }
-
+            if (matches == neighborCount) {
+                perfectQueries++;
+            }
             totalRecall += (double) matches / neighborCount;
         }
 
@@ -250,14 +246,16 @@ public class BenchmarkAnnRunner {
                 searchMetrics,
                 totalSearchNanos,
                 averageRecall,
-                incompleteResponses
+                incompleteResponses,
+                perfectQueries
         );
     }
     private record MeasurementResult(
             BenchmarkMetrics searchMetrics,
             long totalSearchNanos,
             double averageRecall,
-            int incompleteResponses
+            int incompleteResponses,
+            int perfectQueries
     ) {}
     private void printResult(
             long preparationNanos,
@@ -265,32 +263,34 @@ public class BenchmarkAnnRunner {
             int neighborCount,
             MeasurementResult result
     ) {
-        double preparationMs =
-                preparationNanos / 1_000_000.0;
+        double preparationMs = preparationNanos / 1_000_000.0;
 
-        double totalSearchMs =
-                result.totalSearchNanos() / 1_000_000.0;
+        double totalSearchMs = result.totalSearchNanos() / 1_000_000.0;
 
-        double totalSearchSeconds =
-                result.totalSearchNanos() / 1_000_000_000.0;
+        double totalSearchSeconds = result.totalSearchNanos() / 1_000_000_000.0;
 
-        double qps =
-                totalSearchSeconds == 0.0
-                        ? 0.0
-                        : measuredQueryCount / totalSearchSeconds;
+        double qps = totalSearchSeconds == 0.0 ? 0.0 : measuredQueryCount / totalSearchSeconds;
 
-        System.out.println();
-        System.out.println("=== ANN Benchmark summary ===");
+        double perfectQueryRate = measuredQueryCount == 0
+                ? 0.0
+                : (double) result.perfectQueries() / measuredQueryCount;
+
+        System.out.println("\n\n=== ANN Benchmark summary ===");
         System.out.println("data_load_and_index_ready_ms: " + preparationMs);
         System.out.println("total_search_ms: " + totalSearchMs);
+        System.out.println("min_search_ms: " + result.searchMetrics().min());
         System.out.println("avg_search_ms: " + result.searchMetrics().average());
+        System.out.println("max_search_ms: " + result.searchMetrics().max() + "\n");
         System.out.println("p50_search_ms: " + result.searchMetrics().percentile(0.50));
         System.out.println("p95_search_ms: " + result.searchMetrics().percentile(0.95));
         System.out.println("p99_search_ms: " + result.searchMetrics().percentile(0.99));
+        System.out.println("(Single client) qps: " + qps);
+        System.out.println("===== Quality: ====");
+        System.out.printf("Recall@%d: %.2f%%%n", neighborCount, result.averageRecall() * 100.0);
+        System.out.println("perfect_queries: " + result.perfectQueries() + "/" + measuredQueryCount);
+        System.out.printf("perfect_query_rate: %.2f%%%n", perfectQueryRate * 100.0);
         System.out.println("measured_queries: " + result.searchMetrics().count());
         System.out.println("incomplete_responses: " + result.incompleteResponses());
-        System.out.println("qps: " + qps);
-        System.out.printf("Recall@%d: %.2f%%%n", neighborCount, result.averageRecall() * 100.0);
         System.out.println("=== ANN Benchmark FINISHED ===");
     }
 }

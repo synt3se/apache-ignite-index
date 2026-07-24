@@ -16,11 +16,13 @@ import java.util.Locale;
 
 @SpringBootApplication
 public class BenchmarkMain {
-    //todo убрать смайлики из ann
-    //todo надо переписать ann
-
+    //todo возможность вывода для построения графиков времен
+    //todo графики всякие, метрики, таблички, мб в файлы записывать
+    //todo для каждого метрики нужные внедрить
+    //todo рефакторинг всего бенчмарка и проверка правильности замеров метрик и имен
+    //todo килл андер лоад
+    //todo jmh
     public static void main(String[] args) {
-        //todo возможность вывода для построения графиков времен
         try (ConfigurableApplicationContext context =
                      new SpringApplicationBuilder(VectorServerApplication.class)
                              .web(WebApplicationType.NONE).run(args))
