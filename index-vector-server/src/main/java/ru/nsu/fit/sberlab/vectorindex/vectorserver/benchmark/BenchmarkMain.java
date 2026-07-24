@@ -47,10 +47,6 @@ public class BenchmarkMain {
                         preparationNanos = new DatabaseLoader(vectorService).load(DATABASE_PATH);
                     }
 
-                    System.out.println("Clients: " + N_CLIENTS_COUNT);
-                    System.out.println("Warmup: " + N_CLIENTS_WARMUP_SECONDS + " s");
-                    System.out.println("Test duration: " + N_CLIENTS_TEST_SECONDS + " s");
-
                     Environment environment = context.getEnvironment();
                     String igniteAddress = environment.getRequiredProperty("ignite.address");
                     String cacheName = environment.getProperty(
@@ -68,7 +64,8 @@ public class BenchmarkMain {
                             QUERIES_PATH,
                             igniteAddress,
                             cacheName,
-                            dimension
+                            dimension,
+                            preparationNanos
                     );
                 }
 
