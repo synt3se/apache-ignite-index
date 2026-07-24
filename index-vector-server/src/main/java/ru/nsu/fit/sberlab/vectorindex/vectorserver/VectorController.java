@@ -32,7 +32,6 @@ public class VectorController {
         return vectorService.get(id);
     }
 
-    //TODO: добавить delete
 
     @PostMapping("/search")
     public ResponseEntity<?> search(@Valid @RequestBody SearchRequest request){

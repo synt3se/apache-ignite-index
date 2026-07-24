@@ -34,6 +34,12 @@ public class BenchmarkMain {
 
             VectorService vectorService = context.getBean(VectorService.class);
 
+            long preparationNanos = 0L;
+
+            if (LOAD_DATABASE && BENCHMARK_MODE != Mode.ANN_BENCHMARK_TEST) {
+                preparationNanos = new DatabaseLoader(vectorService).load(DATABASE_PATH);
+            }
+
             switch (BENCHMARK_MODE){
                 case ANN_BENCHMARK_TEST -> {
                     String hdf5Path = "/data/coco-i2i-512-angular.hdf5";
@@ -42,11 +48,6 @@ public class BenchmarkMain {
                 }
 
                 case N_CLIENTS -> {
-                    long preparationNanos = 0L;
-                    if (LOAD_DATABASE) {
-                        preparationNanos = new DatabaseLoader(vectorService).load(DATABASE_PATH);
-                    }
-
                     Environment environment = context.getEnvironment();
                     String igniteAddress = environment.getRequiredProperty("ignite.address");
                     String cacheName = environment.getProperty(
@@ -70,11 +71,6 @@ public class BenchmarkMain {
                 }
 
                 case OUR_DATASET -> {
-                    long preparationNanos = 0L;
-                    if (LOAD_DATABASE) {
-                        preparationNanos = new DatabaseLoader(vectorService).load(DATABASE_PATH);
-                    }
-
                     BenchmarkDatasetRunner runner =
                             new BenchmarkDatasetRunner(vectorService, INDEX_MODE);
                     boolean isPrintMismatch = Boolean.parseBoolean(
@@ -96,10 +92,6 @@ public class BenchmarkMain {
                 }
 
                 case HIGH_LOAD -> {
-                    if (LOAD_DATABASE) {
-                        new DatabaseLoader(vectorService).load(DATABASE_PATH);
-                    }
-
                     System.out.println("Target RPS: " + HIGHLOAD_TARGET_RPS);
                     System.out.println("Max in-flight: " + HIGHLOAD_MAX_IN_FLIGHT);
                     System.out.println("Warmup: " + HIGHLOAD_WARMUP_SECONDS + " s");
@@ -113,7 +105,8 @@ public class BenchmarkMain {
                             HIGHLOAD_WARMUP_SECONDS,
                             HIGHLOAD_TEST_SECONDS,
                             NEIGHBOR_COUNT,
-                            QUERIES_PATH
+                            QUERIES_PATH,
+                            preparationNanos
                     );
                 }
             }

@@ -43,7 +43,8 @@ public final class BenchmarkHighLoadRunner {
             int warmupSeconds,
             int testSeconds, //продолжительность основной измеряемой фазы
             int neighborCount, //Сколько соседей просим вернуть
-            String queriesPath
+            String queriesPath,
+            long preparationNanos
     ) {
         log.info("Starting highload benchmark: maxInFlight={}, targetRps={}, warmupSeconds={}, testSeconds={}, neighborCount={}, queriesPath={}",
                 maxInFlight, targetRps, warmupSeconds, testSeconds, neighborCount, queriesPath);

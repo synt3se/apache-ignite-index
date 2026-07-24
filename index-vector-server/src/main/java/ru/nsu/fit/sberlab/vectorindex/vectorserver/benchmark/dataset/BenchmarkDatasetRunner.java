@@ -453,7 +453,7 @@ public class BenchmarkDatasetRunner {
 
         System.out.printf(Locale.US, "Recall@%d: %.6f%%%n", neighborCount, recall * 100.0);
 
-        System.out.printf(Locale.US, "DistanceRecall@%d: %.6f%%%n", //todo
+        System.out.printf(Locale.US, "DistanceRecall@%d: %.6f%%%n",
                 neighborCount, distanceRecall * 100.0
         );
 
