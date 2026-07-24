@@ -258,9 +258,9 @@ public class JVectorPartitionIndex
                         snapshot.vectorValues()
                 );
 
-        int rerankK = Math.min(
-                snapshot.size(),
-                count * jVectorProperties.getEfSearch()
+        int rerankK = Math.max(
+                count,
+                Math.min(snapshot.size(), count * jVectorProperties.getEfSearch())
         );
 
         SearchResult searchResult;

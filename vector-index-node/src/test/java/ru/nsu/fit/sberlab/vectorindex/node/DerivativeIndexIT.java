@@ -27,8 +27,8 @@ import org.junit.jupiter.api.Test;
 import ru.nsu.fit.sberlab.vectorindex.common.ScoredVector;
 import ru.nsu.fit.sberlab.vectorindex.common.VectorObject;
 import ru.nsu.fit.sberlab.vectorindex.common.indextype.IndexType;
+import ru.nsu.fit.sberlab.vectorindex.node.index.JVectorProperties;
 import ru.nsu.fit.sberlab.vectorindex.node.index.PartitionIndexManager;
-
 /**
  * Проверяем «индекс — производная кэша», дёргая менеджер напрямую:
  * записываем ТОЛЬКО в кэш, а поиск идёт по локальным индексам узлов.
@@ -39,6 +39,21 @@ class DerivativeIndexIT {
     static {
         IP_FINDER.setShared(true);
         IP_FINDER.setAddresses(List.of("127.0.0.1:47500..47509"));
+    }
+
+    private static JVectorProperties testJvectorProps() {
+        JVectorProperties p = new JVectorProperties();
+        p.setM(16);
+        p.setEfConstruction(100);
+        p.setEfSearch(3);
+        p.setNeighborOverflow(1.2f);
+        p.setAlpha(1.2f);
+        p.setAddHierarchy(true);
+        p.setRefineFinalGraph(true);
+        p.setAddRebuildRatio(0.10);
+        p.setDeleteRebuildRatio(0.20);
+        p.setMinAdditionsBeforeRebuild(2);   // маленькое — чтобы инкрементальные пересборки срабатывали на малых тестовых данных
+        return p;
     }
 
     @AfterEach
@@ -115,7 +130,8 @@ class DerivativeIndexIT {
     }
 
     private static PartitionIndexManager started(Ignite ignite) {
-        PartitionIndexManager m = new PartitionIndexManager(ignite, "vectors", 512, IndexType.JVECTOR_INDEX, null);
+        PartitionIndexManager m = new PartitionIndexManager(
+                ignite, "vectors", 512, IndexType.JVECTOR_INDEX, testJvectorProps());
         m.start();
         return m;
     }

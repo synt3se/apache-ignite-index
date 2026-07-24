@@ -3,6 +3,7 @@ package ru.nsu.fit.sberlab.vectorindex.vectorserver.index;
 import org.apache.ignite.cache.query.QueryCursor;
 import org.apache.ignite.cache.query.ScanQuery;
 import org.apache.ignite.client.ClientCache;
+import org.apache.ignite.client.ClientException;
 import org.apache.ignite.client.IgniteClient;
 import org.apache.ignite.client.IgniteClientFuture;
 import org.springframework.beans.factory.annotation.Value;
@@ -99,7 +100,7 @@ public class DistributedVectorIndex implements Index {
     @Override
     public List<Neighbor> search(float[] queryVector, int count) {
         if ("service".equalsIgnoreCase(searchMode)) {
-            SearchResponse resp = aggregator().search(queryVector, count);
+            SearchResponse resp = callAggregator(queryVector, count);
             List<Neighbor> result = new ArrayList<>(resp.results.size());
             for (SearchHit h : resp.results) {
                 result.add(new Neighbor(h.id, h.distance, h.url, h.metadata));
@@ -393,9 +394,19 @@ public class DistributedVectorIndex implements Index {
         return aggregator;
     }
 
-    @Override
-    public SearchResponse searchFull(float[] queryVector, int count) {
-        return aggregator().search(queryVector, count);   // напрямую через сервис, mode не важен
+    private SearchResponse callAggregator(float[] queryVector, int count) {
+        try {
+            return aggregator().search(queryVector, count);
+        } catch (ClientException e) {
+            // node dead
+            System.err.println("[search] aggregator failed, retry on another node: " + e);
+            aggregator = null;
+            return aggregator().search(queryVector, count);
+        }
     }
 
+    @Override
+    public SearchResponse searchFull(float[] queryVector, int count) {
+        return callAggregator(queryVector, count);
+    }
 }
