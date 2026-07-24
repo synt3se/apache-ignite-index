@@ -26,7 +26,7 @@ public final class BenchmarkHighLoadRunner {
     private static final Logger log = LoggerFactory.getLogger(BenchmarkHighLoadRunner.class);
 
     //todo мб внедрить гистограму и вывод в реал тайм, таймаут
-
+    //todo почему не доходит до target возможно чуть чаще обновлять и округлять ниже
     private static final long WORKER_SHUTDOWN_TIMEOUT_SECONDS = 90;
 
     private final VectorService service;

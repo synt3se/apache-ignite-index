@@ -25,6 +25,9 @@ public class BenchmarkMain {
     //todo закрыть все туду
     //todo пути через env
 
+
+    //todo последние два запроса
+
     public static void main(String[] args) {
         try (ConfigurableApplicationContext context =
                      new SpringApplicationBuilder(VectorServerApplication.class)
