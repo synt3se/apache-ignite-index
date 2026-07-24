@@ -50,6 +50,11 @@ public class VectorService {
         return ResponseEntity.ok(response);
     }
 
+    public ResponseEntity<Void> delete(Long id) {
+        index.delete(id);
+        return ResponseEntity.noContent().build();
+    }
+
     public ResponseEntity<List<Neighbor>> search(SearchRequest request) {
         log.debug("Received SearchRequest");
         List<Neighbor> result = index.search(request.vector(), request.count());
