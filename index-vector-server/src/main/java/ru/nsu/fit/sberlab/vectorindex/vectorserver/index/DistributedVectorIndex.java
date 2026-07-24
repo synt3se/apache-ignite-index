@@ -251,7 +251,7 @@ public class DistributedVectorIndex implements Index {
                     + ", parse+read=" + (totalMs - putWaitMs) + " ms ===");
             return maxId;
         } catch (IOException e) {
-            throw new RuntimeException("CSV load error: " + path, e);
+            throw new RuntimeException("CSV load error in " + path + ": " + e);
         } finally {
             rebuildIndexes();   // ВСЕГДА: снимает bulk-паузу даже если заливка упала
         }

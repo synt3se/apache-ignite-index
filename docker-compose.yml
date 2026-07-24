@@ -59,12 +59,13 @@ services:
 
   clip:
     restart: unless-stopped
+    ports: ["8000:8000"]
     build: { context: ., target: clip }
-    # порт проверьте по clip_service.py (обычно 8000)
 
   gateway:
     restart: unless-stopped
     build: { context: ., target: gateway }
+    ports: ["8080:8080"]
     depends_on:
       vector-server: { condition: service_healthy }
       clip: { condition: service_started }
