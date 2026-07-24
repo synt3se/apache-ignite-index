@@ -22,6 +22,9 @@ public class BenchmarkMain {
     //todo рефакторинг всего бенчмарка и проверка правильности замеров метрик и имен
     //todo килл андер лоад
     //todo jmh
+    //todo закрыть все туду
+    //todo пути через env
+
     public static void main(String[] args) {
         try (ConfigurableApplicationContext context =
                      new SpringApplicationBuilder(VectorServerApplication.class)
@@ -39,7 +42,11 @@ public class BenchmarkMain {
                 }
 
                 case N_CLIENTS -> {
-                    if (LOAD_DATABASE) {new DatabaseLoader(vectorService).load(DATABASE_PATH);}
+                    //todo
+                    long preparationNanos = 0L;
+                    if (LOAD_DATABASE) {
+                        preparationNanos = new DatabaseLoader(vectorService).load(DATABASE_PATH);
+                    }
 
                     System.out.println("Clients: " + N_CLIENTS_COUNT);
                     System.out.println("Warmup: " + N_CLIENTS_WARMUP_SECONDS + " s");
@@ -67,15 +74,28 @@ public class BenchmarkMain {
                 }
 
                 case OUR_DATASET -> {
+                    long preparationNanos = 0L;
+                    if (LOAD_DATABASE) {
+                        preparationNanos = new DatabaseLoader(vectorService).load(DATABASE_PATH);
+                    }
+
                     BenchmarkDatasetRunner runner =
                             new BenchmarkDatasetRunner(vectorService, INDEX_MODE);
+                    boolean isPrintMismatch = Boolean.parseBoolean(
+                            env("PRINT_MISMATCH", "false")
+                    );
 
+                    String measurementsPath =
+                            INDEX_MODE == BenchmarkDatasetRunner.IndexType.JVECTOR ?
+                                    "/data/results/dataset-jvector.csv" :
+                                    "/data/results/dataset-brute-force.csv";
                     runner.run(
                             NEIGHBOR_COUNT,
-                            DATABASE_PATH,
                             QUERIES_PATH,
                             RESULTS_PATH,
-                            LOAD_DATABASE
+                            isPrintMismatch,
+                            preparationNanos,
+                            measurementsPath
                     );
                 }
 

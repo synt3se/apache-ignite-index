@@ -21,6 +21,10 @@ public class BenchmarkMetrics {
         return sum / valuesMs.size();
     }
 
+    public List<Double> values() {
+        return List.copyOf(valuesMs);
+    }
+
     public double percentile(double percentile) {
         List<Double> sorted = new ArrayList<>(valuesMs);
         sorted.sort(Comparator.naturalOrder());
