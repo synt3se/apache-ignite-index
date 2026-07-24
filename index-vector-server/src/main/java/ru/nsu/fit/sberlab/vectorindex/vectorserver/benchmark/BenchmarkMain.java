@@ -1,6 +1,5 @@
 package ru.nsu.fit.sberlab.vectorindex.vectorserver.benchmark;
 
-
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
@@ -11,54 +10,54 @@ import ru.nsu.fit.sberlab.vectorindex.vectorserver.VectorService;
 import ru.nsu.fit.sberlab.vectorindex.vectorserver.benchmark.clients.BenchmarkNClientsRunner;
 import ru.nsu.fit.sberlab.vectorindex.vectorserver.benchmark.dataset.BenchmarkDatasetRunner;
 import ru.nsu.fit.sberlab.vectorindex.vectorserver.benchmark.highload.BenchmarkHighLoadRunner;
-import ru.nsu.fit.sberlab.vectorindex.vectorserver.benchmark.recall.BenchmarkTestRunner;
+import ru.nsu.fit.sberlab.vectorindex.vectorserver.benchmark.recall.BenchmarkAnnRunner;
 
-import java.sql.SQLOutput;
 import java.util.Locale;
-
-/*
-======================== BEFORE RUNNING BENCHMARK =======================
-- restart database
-- set vector.dimension in application.properties to tasting db dimension
-- set path to tasting db file in the variable hdf5Path
-- set tasting db neighborCount in the variable neighborCount
- */
 
 @SpringBootApplication
 public class BenchmarkMain {
-    //todo убрать смайлики из ann
-    //todo надо переписать ann
-    //todo задержка переда даталоад
-    //todo dataset benchmark startув  не оч
-    //todo проверка игнайта
-    //todo rename to qps
-    //todo удобно в докере сделать параметры
-    public static void main(String[] args) {
-        printConfiguration();
+    //todo возможность вывода для построения графиков времен
+    //todo графики всякие, метрики, таблички, мб в файлы записывать
+    //todo для каждого метрики нужные внедрить
+    //todo рефакторинг всего бенчмарка и проверка правильности замеров метрик и имен
+    //todo килл андер лоад
+    //todo jmh
+    //todo закрыть все туду
+    //todo пути через env
 
+
+    //todo последние два запроса
+
+    public static void main(String[] args) {
         try (ConfigurableApplicationContext context =
                      new SpringApplicationBuilder(VectorServerApplication.class)
                              .web(WebApplicationType.NONE).run(args))
         {
+            printConfiguration();
+
             VectorService vectorService = context.getBean(VectorService.class);
-            if (LOAD_DATABASE && BENCHMARK_MODE != Mode.OUR_DATASET && BENCHMARK_MODE != Mode.ANN_BENCHMARK_TEST) {
-                //TODO dataset и так содержит loader так что надо фиксить пока так
-                //todo main должен писать сразу конфигурацию
-                new DatabaseLoader(vectorService).load(DATABASE_PATH);
+
+            long preparationNanos = 0L;
+
+            if (LOAD_DATABASE && BENCHMARK_MODE != Mode.ANN_BENCHMARK_TEST) {
+                preparationNanos = new DatabaseLoader(vectorService).load(DATABASE_PATH);
             }
+
             switch (BENCHMARK_MODE){
                 case ANN_BENCHMARK_TEST -> {
-                    String hdf5Path = "index-vector-server/src/main/resources/coco-i2i-512-angular.hdf5";
-
-                    BenchmarkTestRunner runner = new BenchmarkTestRunner(vectorService);
+                    String hdf5Path = "/data/coco-i2i-512-angular.hdf5";
+                    BenchmarkAnnRunner runner = new BenchmarkAnnRunner(vectorService);
                     runner.run(NEIGHBOR_COUNT, hdf5Path);
                 }
 
                 case N_CLIENTS -> {
                     Environment environment = context.getEnvironment();
                     String igniteAddress = environment.getRequiredProperty("ignite.address");
-                    String cacheName = environment.getProperty("ignite.cache.name", "vectors");
-                    int dimension = Integer.parseInt(environment.getRequiredProperty("vector.dimension"));
+                    String cacheName = environment.getProperty(
+                            "ignite.cache.name",
+                            "vectors");
+                    int dimension = Integer.parseInt(environment.
+                            getRequiredProperty("vector.dimension"));
                     BenchmarkNClientsRunner runner = new BenchmarkNClientsRunner();
 
                     runner.run(
@@ -69,26 +68,39 @@ public class BenchmarkMain {
                             QUERIES_PATH,
                             igniteAddress,
                             cacheName,
-                            dimension
+                            dimension,
+                            preparationNanos
                     );
                 }
 
                 case OUR_DATASET -> {
                     BenchmarkDatasetRunner runner =
                             new BenchmarkDatasetRunner(vectorService, INDEX_MODE);
+                    boolean isPrintMismatch = Boolean.parseBoolean(
+                            env("PRINT_MISMATCH", "false")
+                    );
 
+                    String measurementsPath =
+                            INDEX_MODE == BenchmarkDatasetRunner.IndexType.JVECTOR ?
+                                    "/data/results/dataset-jvector.csv" :
+                                    "/data/results/dataset-brute-force.csv";
                     runner.run(
                             NEIGHBOR_COUNT,
-                            DATABASE_PATH,
                             QUERIES_PATH,
                             RESULTS_PATH,
-                            LOAD_DATABASE
+                            isPrintMismatch,
+                            preparationNanos,
+                            measurementsPath
                     );
                 }
 
                 case HIGH_LOAD -> {
-                    BenchmarkHighLoadRunner runner = new BenchmarkHighLoadRunner(vectorService);
+                    System.out.println("Target RPS: " + HIGHLOAD_TARGET_RPS);
+                    System.out.println("Max in-flight: " + HIGHLOAD_MAX_IN_FLIGHT);
+                    System.out.println("Warmup: " + HIGHLOAD_WARMUP_SECONDS + " s");
+                    System.out.println("Test duration: " + HIGHLOAD_TEST_SECONDS + " s");
 
+                    BenchmarkHighLoadRunner runner = new BenchmarkHighLoadRunner(vectorService);
 
                     runner.run(
                             HIGHLOAD_MAX_IN_FLIGHT,
@@ -96,7 +108,8 @@ public class BenchmarkMain {
                             HIGHLOAD_WARMUP_SECONDS,
                             HIGHLOAD_TEST_SECONDS,
                             NEIGHBOR_COUNT,
-                            QUERIES_PATH
+                            QUERIES_PATH,
+                            preparationNanos
                     );
                 }
             }
@@ -120,20 +133,14 @@ public class BenchmarkMain {
         );
 
         return switch (value.trim().toUpperCase(Locale.ROOT)) {
-            case "JVECTOR_INDEX" ->
-                    BenchmarkDatasetRunner.IndexType.JVECTOR;
-
-            case "BRUTE_FORCE_INDEX" ->
-                    BenchmarkDatasetRunner.IndexType.BRUTE_FORCE;
-
-            default -> throw new IllegalArgumentException(
-                    "Unknown INDEX_TYPE: " + value
-            );
+            case "JVECTOR_INDEX" -> BenchmarkDatasetRunner.IndexType.JVECTOR;
+            case "BRUTE_FORCE_INDEX" -> BenchmarkDatasetRunner.IndexType.BRUTE_FORCE;
+            default -> throw new IllegalArgumentException("Unknown INDEX_TYPE: " + value);
         };
     }
     private static void printConfiguration(){
         System.out.println("\n\n================ BENCHMARK MAIN STARTED =================");
-        System.out.println("RUN MODE: " + BENCHMARK_MODE.toString());
+        System.out.println("RUN MODE: " + BENCHMARK_MODE);
         String index = System.getenv().getOrDefault(
                 "INDEX_TYPE",
                 "(Empty value) AUTO=JVECTOR_INDEX"

@@ -21,6 +21,10 @@ public class BenchmarkMetrics {
         return sum / valuesMs.size();
     }
 
+    public List<Double> values() {
+        return List.copyOf(valuesMs);
+    }
+
     public double percentile(double percentile) {
         List<Double> sorted = new ArrayList<>(valuesMs);
         sorted.sort(Comparator.naturalOrder());
@@ -29,6 +33,30 @@ public class BenchmarkMetrics {
         index = Math.max(0, Math.min(index, sorted.size() - 1));
 
         return sorted.get(index);
+    }
+
+    public double min() {
+        if (valuesMs.isEmpty()) return 0.0;
+
+        double min = Double.MAX_VALUE;
+
+        for (double value : valuesMs) {
+            min = Math.min(min, value);
+        }
+
+        return min;
+    }
+
+    public double max() {
+        if (valuesMs.isEmpty()) return 0.0;
+
+        double max = -Double.MAX_VALUE;
+
+        for (double value : valuesMs) {
+            max = Math.max(max, value);
+        }
+
+        return max;
     }
 
     public int count() {

@@ -33,11 +33,12 @@ public final class BenchmarkNClientsRunner {
             String queriesPath,
             String igniteAddress,
             String cacheName,
-            int dimension
+            int dimension,
+            long preparationNanos
     ) {
         validateArguments(
                 clientCount, warmupSeconds, testSeconds, neighborCount,
-                queriesPath, igniteAddress, cacheName, dimension
+                queriesPath, igniteAddress, cacheName, dimension, preparationNanos
         );
 
         List<QueryVector> queries = queryReader.read(queriesPath);
@@ -82,7 +83,7 @@ public final class BenchmarkNClientsRunner {
 
             measure = true;
             PhaseResult result = runPhase(clients, workers, queries, testSeconds, neighborCount, measure);
-            printResult(result, clientCount, neighborCount);
+            printResult(result, clientCount, neighborCount, preparationNanos);
         } finally {
             shutdownWorkers(workers);
             closeClients(clients);
@@ -186,7 +187,8 @@ public final class BenchmarkNClientsRunner {
             boolean measured
     ) {
         long startedNanos = System.nanoTime();
-        metrics.started++; //todo mesure == false but metircs record
+        boolean successful = false;
+        metrics.started++;
 
         try {
             List<Neighbor> neighbors = client.search(query.vector(), neighborCount);
@@ -194,7 +196,7 @@ public final class BenchmarkNClientsRunner {
             if (neighbors == null) {
                 metrics.errors++;
 
-                if (metrics.errorLogged.compareAndSet(false, true)) { //TODO
+                if (metrics.errorLogged.compareAndSet(false, true)) {
                     log.error("Client {} returned null response", client.id());
                 }
 
@@ -202,13 +204,12 @@ public final class BenchmarkNClientsRunner {
             }
 
             if (neighbors.size() != neighborCount) {
-                metrics.incompleteResponses++;
+                metrics.invalidResultCountResponses++;
                 return;
             }
 
-            metrics.bytesOut += (long) query.vector().length * Float.BYTES; //todo какая та неточность
-            metrics.bytesIn += estimateResponseBytes(neighbors); //todo тоже только при полном ответе
             metrics.successful++;
+            successful = true;
         } catch (RuntimeException e) {
             metrics.errors++;
 
@@ -218,7 +219,7 @@ public final class BenchmarkNClientsRunner {
         } finally {
             long finishedNanos = System.nanoTime();
 
-            if (measured) {
+            if (measured && successful) {
                 metrics.latenciesNanos.add(finishedNanos - startedNanos);
             }
 
@@ -257,36 +258,21 @@ public final class BenchmarkNClientsRunner {
         }
     }
 
-    private long estimateResponseBytes(List<Neighbor> neighbors) {
-        long total = 0L;
 
-        for (Neighbor neighbor : neighbors) {
-            total += Long.BYTES;
-            total += Double.BYTES;
-
-            if (neighbor.url() != null) {
-                total += (long) neighbor.url().length() * Character.BYTES;
-            }
-
-            if (neighbor.metadata() != null) {
-                total += (long) neighbor.metadata().length() * Character.BYTES;
-            }
-        }
-
-        return total;
-    }
-
-    private void printResult(PhaseResult result, int clientCount, int neighborCount) {
-        double measurementSeconds = result.durationSeconds();
+    private void printResult(
+            PhaseResult result,
+            int clientCount,
+            int neighborCount,
+            long preparationNanos
+    )
+    {
         double totalSeconds = (result.finishedNanos() - result.startedNanos()) / 1_000_000_000.0;
 
         long totalStarted = 0L;
         long totalCompleted = 0L;
         long totalSuccessful = 0L;
         long totalErrors = 0L;
-        long totalIncomplete = 0L;
-        long totalBytesOut = 0L;
-        long totalBytesIn = 0L;
+        long totalInvalidResultCount  = 0L;
 
         List<Long> allLatencies = new ArrayList<>();
 
@@ -297,7 +283,7 @@ public final class BenchmarkNClientsRunner {
         System.out.println("=== Per-client results ===");
 
         for (ClientMetrics metrics : result.clientMetrics()) {
-            double clientRps = measurementSeconds == 0.0 ? 0.0 : metrics.successful / measurementSeconds;
+            double clientRps = totalSeconds == 0.0 ? 0.0 : metrics.successful / totalSeconds;
 
             Percentiles latency = Percentiles.from(metrics.latenciesNanos);
 
@@ -309,20 +295,19 @@ public final class BenchmarkNClientsRunner {
             totalCompleted += metrics.completed;
             totalSuccessful += metrics.successful;
             totalErrors += metrics.errors;
-            totalIncomplete += metrics.incompleteResponses;
-            totalBytesOut += metrics.bytesOut;
-            totalBytesIn += metrics.bytesIn;
+            totalInvalidResultCount  += metrics.invalidResultCountResponses;
 
             allLatencies.addAll(metrics.latenciesNanos);
 
             System.out.printf(
                     Locale.US,
-                    "Client %d: RPS=%.2f, successful=%d, errors=%d, incomplete=%d, p50=%.3f ms, p95=%.3f ms, p99=%.3f ms%n",
+                    "Client %d: QPS=%.2f, successful=%d, errors=%d, " +
+                            "invalidResultCount=%d, p50=%.3f ms, p95=%.3f ms, p99=%.3f ms%n",
                     metrics.clientId,
                     clientRps,
                     metrics.successful,
                     metrics.errors,
-                    metrics.incompleteResponses,
+                    metrics.invalidResultCountResponses,
                     latency.p50Millis(),
                     latency.p95Millis(),
                     latency.p99Millis()
@@ -333,9 +318,23 @@ public final class BenchmarkNClientsRunner {
             minimumClientRps = 0.0;
         }
 
-        double aggregateRps = measurementSeconds == 0.0 ? 0.0 : totalSuccessful / measurementSeconds;
+        double aggregateRps = totalSeconds == 0.0 ? 0.0 : totalSuccessful / totalSeconds;
 
         double averageClientRps = clientCount == 0 ? 0.0 : aggregateRps / clientCount;
+        double successRate =
+                totalCompleted == 0L
+                        ? 0.0
+                        : (double) totalSuccessful / totalCompleted;
+
+        double errorRate =
+                totalCompleted == 0L
+                        ? 0.0
+                        : (double) totalErrors / totalCompleted;
+
+        double invalidResultCountRate =
+                totalCompleted == 0L
+                        ? 0.0
+                        : (double) totalInvalidResultCount / totalCompleted;
 
         Percentiles aggregateLatency = Percentiles.from(allLatencies);
 
@@ -343,33 +342,79 @@ public final class BenchmarkNClientsRunner {
         System.out.println("=== N clients summary ===");
         System.out.println("Clients: " + clientCount);
         System.out.println("Neighbor count: " + neighborCount);
+        if (preparationNanos > 0L) {
+            System.out.printf(
+                    Locale.US,
+                    "Data load and index preparation: %.3f s%n",
+                    preparationNanos / 1_000_000_000.0
+            );
+        }
+        System.out.printf(Locale.US, "Total test duration: %.3f s%n", totalSeconds);
         System.out.printf(
                 Locale.US,
-                "Measurement duration: %.3f s%n",
-                measurementSeconds
+                "Aggregate successful search QPS: %.2f%n",
+                aggregateRps
         );
-        System.out.printf(Locale.US,
-                "Total duration with final requests: %.3f s%n",
-                totalSeconds
+
+        System.out.printf(
+                Locale.US,
+                "Minimum successful QPS per client: %.2f%n",
+                minimumClientRps
         );
-        System.out.printf(Locale.US, "Aggregate successful RPS: %.2f%n", aggregateRps);
-        System.out.printf(Locale.US, "Average RPS per client: %.2f%n", averageClientRps);
-        System.out.printf(Locale.US, "Minimum client RPS: %.2f%n", minimumClientRps);
-        System.out.printf(Locale.US, "Maximum client RPS: %.2f%n", maximumClientRps);
+
+        System.out.printf(
+                Locale.US,
+                "Average successful QPS per client: %.2f%n",
+                averageClientRps
+        );
+
+        System.out.printf(
+                Locale.US,
+                "Maximum successful QPS per client: %.2f%n",
+                maximumClientRps
+        );
 
         System.out.println();
         System.out.println("Started requests: " + totalStarted);
         System.out.println("Completed requests: " + totalCompleted);
-        System.out.println("Successful requests: " + totalSuccessful);
-        System.out.println("Errors: " + totalErrors);
-        System.out.println("Incomplete responses: " + totalIncomplete);
-        System.out.println("Bytes out: " + totalBytesOut);
-        System.out.println("Bytes in: " + totalBytesIn);
+        System.out.printf(
+                Locale.US,
+                "Successful requests: %d/%d (%.2f%%)%n",
+                totalSuccessful,
+                totalCompleted,
+                successRate * 100.0
+        );
 
-        printPercentiles("Aggregate latency", aggregateLatency);
+        System.out.printf(
+                Locale.US,
+                "Errors: %d/%d (%.2f%%)%n",
+                totalErrors,
+                totalCompleted,
+                errorRate * 100.0
+        );
+
+        System.out.printf(
+                Locale.US,
+                "Invalid result-count responses: %d/%d (%.2f%%)%n",
+                totalInvalidResultCount,
+                totalCompleted,
+                invalidResultCountRate * 100.0
+        );
+        System.out.println(
+                "Successful latency samples: "
+                        + allLatencies.size()
+                        + "/"
+                        + totalSuccessful
+        );
+
+
+        printPercentiles(
+                "Aggregate successful search latency",
+                aggregateLatency
+        );
 
         log.info(
-                "N clients result: clients={}, aggregateRps={}, averageClientRps={}, minClientRps={}, maxClientRps={}, started={}, completed={}, successful={}, errors={}, incomplete={}",
+                "N clients result: clients={}, aggregateQps={}, averageClientQps={}, minClientQps={}, maxClientQps={}, started={}, completed={}, successful={}, errors={}, invalidResultCount=={}",
                 clientCount,
                 formatNumber(aggregateRps),
                 formatNumber(averageClientRps),
@@ -379,7 +424,7 @@ public final class BenchmarkNClientsRunner {
                 totalCompleted,
                 totalSuccessful,
                 totalErrors,
-                totalIncomplete
+                totalInvalidResultCount
         );
     }
 
@@ -432,7 +477,7 @@ public final class BenchmarkNClientsRunner {
 
     private void validateArguments(int clientCount, int warmupSeconds, int testSeconds,
             int neighborCount, String queriesPath, String igniteAddress, String cacheName,
-            int dimension
+            int dimension, long preparationNanos
     ) {
         if (clientCount <= 0) throw new IllegalArgumentException("Client count must be positive");
         if (warmupSeconds < 0) throw new IllegalArgumentException("Warmup seconds must not be negative");
@@ -442,6 +487,11 @@ public final class BenchmarkNClientsRunner {
         if (igniteAddress == null || igniteAddress.isBlank()) throw new IllegalArgumentException("Ignite address is required");
         if (cacheName == null || cacheName.isBlank()) throw new IllegalArgumentException("Cache name is required");
         if (dimension <= 0) throw new IllegalArgumentException("Dimension must be positive");
+        if (preparationNanos < 0L) {
+            throw new IllegalArgumentException(
+                    "preparationNanos must not be negative"
+            );
+        }
     }
 
     private static final class ClientMetrics {
@@ -450,9 +500,7 @@ public final class BenchmarkNClientsRunner {
         private long completed;
         private long successful;
         private long errors;
-        private long incompleteResponses;
-        private long bytesOut;
-        private long bytesIn;
+        private long invalidResultCountResponses;
 
         private final List<Long> latenciesNanos = new ArrayList<>();
 

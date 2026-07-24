@@ -22,7 +22,7 @@ public final class DatabaseLoader {
         this.service = service;
     }
 
-    public void load(String databasePath) {
+    public long load(String databasePath) {
         File databaseFile = validateDatabaseFile(databasePath);
         long expectedVectorCount = countDatabaseRows(databaseFile);
 
@@ -32,6 +32,7 @@ public final class DatabaseLoader {
 
         service.clear();
 
+        long preparationStart = System.nanoTime();
         ResponseEntity<String> response = service.load(
                 new LoadRequest(databaseFile.getAbsolutePath())
         );
@@ -44,7 +45,10 @@ public final class DatabaseLoader {
 
         waitUntilIndexReady(expectedVectorCount);
 
+        long preparationNanos = System.nanoTime() - preparationStart;
+
         System.out.println("=== Database loading FINISHED ===");
+        return preparationNanos;
     }
 
     private File validateDatabaseFile(String databasePath) {
@@ -87,7 +91,7 @@ public final class DatabaseLoader {
         return count;
     }
 
-    private void waitUntilIndexReady(long expectedVectorCount) {
+    public void waitUntilIndexReady(long expectedVectorCount) {
         long deadline = System.currentTimeMillis() + INDEX_READY_TIMEOUT_MS;
         int stablePolls = 0;
 
