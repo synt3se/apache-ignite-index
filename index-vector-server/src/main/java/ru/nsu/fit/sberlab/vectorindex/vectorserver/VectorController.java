@@ -32,7 +32,11 @@ public class VectorController {
         return vectorService.get(id);
     }
 
-    //TODO: добавить delete
+    @DeleteMapping("/{id}")
+    public ResponseEntity<?> deleteVector(
+            @Positive(message = "id must be greater than zero") @PathVariable Long id) {
+        return vectorService.delete(id);
+    }
 
     @PostMapping("/search")
     public ResponseEntity<?> search(@Valid @RequestBody SearchRequest request){
