@@ -42,7 +42,6 @@ public class BenchmarkMain {
                 }
 
                 case N_CLIENTS -> {
-                    //todo
                     long preparationNanos = 0L;
                     if (LOAD_DATABASE) {
                         preparationNanos = new DatabaseLoader(vectorService).load(DATABASE_PATH);

@@ -69,7 +69,7 @@ public class BenchmarkDatasetRunner {
 
         printConfiguration(queriesFile, groundTruthPath, queries.size(), neighborCount);
 
-        runWarmup(queries, neighborCount); //todo вывод времени построение должен остаться и метрики выше
+        runWarmup(queries, neighborCount);
 
         if (indexType == IndexType.BRUTE_FORCE) {
             runBruteForce(queries, neighborCount, groundTruthPath, measurementsPath);
