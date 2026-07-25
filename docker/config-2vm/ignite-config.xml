@@ -108,7 +108,7 @@
                     <bean class="org.apache.ignite.configuration.DataRegionConfiguration">
                         <property name="name" value="Default_Region"/>
                         <property name="initialSize" value="268435456"/>   <!-- 256 МБ -->
-                        <property name="maxSize"     value="2147483648"/>  <!-- 2 ГБ; если «Out of memory in data region» — 3221225472 (3 ГБ) -->
+                        <property name="maxSize" value="1395864371"/>
                     </bean>
                 </property>
             </bean>
