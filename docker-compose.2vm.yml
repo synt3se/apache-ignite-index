@@ -65,6 +65,7 @@ services:
     environment:
       IGNITE_ADDRESS: ${VM1_IP}:10800,${VM1_IP}:10801,${VM2_IP}:10800,${VM2_IP}:10801
       JAVA_TOOL_OPTIONS: *java-opts
+      JDK_JAVA_OPTIONS: "-Xmx512m"
     volumes: [ "${DATA_DIR:-./data}:/data" ]
     ports: ["8081:8081"]
 
