@@ -1,3 +1,19 @@
+x-java-opts: &java-opts >-
+  --add-opens=java.base/jdk.internal.misc=ALL-UNNAMED
+  --add-opens=java.base/sun.nio.ch=ALL-UNNAMED
+  --add-opens=java.base/java.io=ALL-UNNAMED
+  --add-opens=java.base/java.nio=ALL-UNNAMED
+  --add-opens=java.base/java.util=ALL-UNNAMED
+  --add-opens=java.base/java.util.concurrent=ALL-UNNAMED
+  --add-opens=java.base/java.lang=ALL-UNNAMED
+  --add-opens=java.management/sun.management=ALL-UNNAMED
+  --add-opens=jdk.management/com.sun.management.internal=ALL-UNNAMED
+  --add-exports=java.base/jdk.internal.misc=ALL-UNNAMED
+  --add-exports=java.base/sun.nio.ch=ALL-UNNAMED
+  --add-exports=java.management/com.sun.jmx.mbeanserver=ALL-UNNAMED
+  --add-exports=jdk.internal.jvmstat/sun.jvmstat.monitor=ALL-UNNAMED
+  --add-exports=java.base/sun.reflect.generics.reflectiveObjects=ALL-UNNAMED
+
 x-node-common: &node-common
   restart: unless-stopped
   build: { context: ., target: "${NODE_TARGET:-ignite-node}" }
@@ -47,6 +63,6 @@ services:
     build: { context: ., target: vector-server }
     environment:
       IGNITE_ADDRESS: ${VM1_IP}:10800,${VM1_IP}:10801,${VM2_IP}:10800,${VM2_IP}:10801
-      JAVA_TOOL_OPTIONS: *java-opts        # якорь из твоего текущего файла
+      JAVA_TOOL_OPTIONS: *java-opts
     volumes: [ "${DATA_DIR:-./data}:/data" ]
     ports: ["8081:8081"]
