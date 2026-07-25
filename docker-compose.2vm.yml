@@ -1,63 +1,52 @@
-# 2 ВМ, ОДИН узел на ВМ. Узлы - host-сеть (cross-host discovery),
-# сервер/бенч - bridge. Общий файл; per-VM отличия - в .env.2vm.
-x-java-opts: &java-opts >-
-  --add-opens=java.base/jdk.internal.misc=ALL-UNNAMED
-  --add-opens=java.base/sun.nio.ch=ALL-UNNAMED
-  --add-opens=java.base/java.io=ALL-UNNAMED
-  --add-opens=java.base/java.nio=ALL-UNNAMED
-  --add-opens=java.base/java.util=ALL-UNNAMED
-  --add-opens=java.base/java.util.concurrent=ALL-UNNAMED
-  --add-opens=java.base/java.lang=ALL-UNNAMED
-  --add-opens=java.management/sun.management=ALL-UNNAMED
-  --add-opens=jdk.management/com.sun.management.internal=ALL-UNNAMED
-  --add-exports=java.base/jdk.internal.misc=ALL-UNNAMED
-  --add-exports=java.base/sun.nio.ch=ALL-UNNAMED
+x-node-common: &node-common
+  restart: unless-stopped
+  build: { context: ., target: "${NODE_TARGET:-ignite-node}" }
+  image: vindex-node:local
+  network_mode: host
+  volumes:
+    - ./docker/config-2vm/ignite-config.xml:/config/ignite-config.xml:ro
+    - ./jfr:/jfr
+  healthcheck:
+    test: ["CMD-SHELL", "nc -z 127.0.0.1 $$IGNITE_THIN_PORT || exit 1"]
+    interval: 5s
+    timeout: 3s
+    retries: 30
+
+x-node-env: &node-env
+  JVM_OPTS: ${NODE_JVM_OPTS}
+  INDEX_TYPE: ${INDEX_TYPE:-JVECTOR_INDEX}
+  IGNITE_LOCAL_HOST: ${IGNITE_LOCAL_HOST}
+  VM1_IP: ${VM1_IP}
+  VM2_IP: ${VM2_IP}
 
 services:
-  ignite-node:
-    restart: unless-stopped
-    build: { context: ., target: "${NODE_TARGET:-ignite-node}" }
-    image: vindex-node:local
-    network_mode: host                 # ключ к межмашинному discovery
+  node-a:
+    <<: *node-common
+    container_name: ${NODE_PREFIX}-a
     environment:
-      JVM_OPTS: ${NODE_JVM_OPTS}
-      INDEX_TYPE: ${INDEX_TYPE:-JVECTOR_INDEX}
-      IGNITE_LOCAL_HOST: ${IGNITE_LOCAL_HOST}   # свой IP (различается по ВМ)
-      IGNITE_NODE1_HOST: ${VM1_IP}
-      IGNITE_NODE2_HOST: ${VM2_IP}
-    volumes:
-      - ./docker/config-2vm/ignite-config.xml:/config/ignite-config.xml:ro
-      - ./jfr:/jfr
-    healthcheck:
-      test: ["CMD-SHELL", "nc -z 127.0.0.1 10800 || exit 1"]
-      interval: 5s
-      timeout: 3s
-      retries: 30
+      <<: *node-env
+      IGNITE_CONSISTENT_ID: ${NODE_PREFIX}-a
+      IGNITE_DISCO_PORT: "47500"
+      IGNITE_COMM_PORT:  "47100"
+      IGNITE_THIN_PORT:  "10800"
 
-  vector-server:                       # только на ВМ-1
+  node-b:
+    <<: *node-common
+    container_name: ${NODE_PREFIX}-b
+    environment:
+      <<: *node-env
+      IGNITE_CONSISTENT_ID: ${NODE_PREFIX}-b
+      IGNITE_DISCO_PORT: "47501"
+      IGNITE_COMM_PORT:  "47101"
+      IGNITE_THIN_PORT:  "10801"
+    depends_on: [node-a]
+
+  vector-server:
     profiles: ["server"]
     restart: unless-stopped
     build: { context: ., target: vector-server }
     environment:
-      IGNITE_ADDRESS: ${VM1_IP}:10800,${VM2_IP}:10800   # failover на обе ВМ
-      JAVA_TOOL_OPTIONS: *java-opts
-    volumes:
-      - ${DATA_DIR:-./data}:/data
+      IGNITE_ADDRESS: ${VM1_IP}:10800,${VM1_IP}:10801,${VM2_IP}:10800,${VM2_IP}:10801
+      JAVA_TOOL_OPTIONS: *java-opts        # якорь из твоего текущего файла
+    volumes: [ "${DATA_DIR:-./data}:/data" ]
     ports: ["8081:8081"]
-
-  bench:                               # только на ВМ-1, по требованию
-    profiles: ["bench"]
-    build: { context: ., target: vector-server }
-    entrypoint: ["java","-Dloader.main=ru.nsu.fit.sberlab.vectorindex.vectorserver.benchmark.BenchmarkMain","-jar","/app/app.jar"]
-    environment:
-      IGNITE_ADDRESS: ${VM1_IP}:10800,${VM2_IP}:10800
-      INDEX_TYPE: ${INDEX_TYPE:-JVECTOR_INDEX}
-      DATABASE_PATH: /data/dataset.csv
-      QUERIES_PATH: /data/quieries.csv
-      RESULTS_PATH: /data/results.csv
-      BENCHMARK_MODE: OUR_DATASET
-      LOAD_DATABASE: "true"
-      VINDEX_METRICS_ENABLED: "false"
-      JAVA_TOOL_OPTIONS: *java-opts
-    volumes:
-      - ${DATA_DIR:-./data}:/data

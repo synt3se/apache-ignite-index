@@ -16,7 +16,15 @@
 
     <bean class="org.apache.ignite.configuration.IgniteConfiguration">
         <!-- узел анонсирует РЕАЛЬНЫЙ IP своей ВМ, а не адрес контейнера -->
-        <property name="localHost" value="${IGNITE_LOCAL_HOST}"/>
+        <property name="localHost"    value="${IGNITE_LOCAL_HOST}"/>
+        <property name="consistentId" value="${IGNITE_CONSISTENT_ID}"/>
+
+        <property name="communicationSpi">
+            <bean class="org.apache.ignite.spi.communication.tcp.TcpCommunicationSpi">
+                <property name="localPort"      value="${IGNITE_COMM_PORT}"/>
+                <property name="localPortRange" value="0"/>
+            </bean>
+        </property>
 
         <!-- События -->
         <property name="includeEventTypes">
@@ -41,7 +49,7 @@
 
                     <property name="affinity">
                         <bean class="org.apache.ignite.cache.affinity.rendezvous.RendezvousAffinityFunction">
-                            <constructor-arg value="false"/>
+                            <constructor-arg value="true"/>
                             <constructor-arg value="32"/>
                         </bean>
                     </property>
@@ -108,12 +116,14 @@
 
         <property name="discoverySpi">
             <bean class="org.apache.ignite.spi.discovery.tcp.TcpDiscoverySpi">
+                <property name="localPort"      value="${IGNITE_DISCO_PORT}"/>
+                <property name="localPortRange" value="0"/>
                 <property name="ipFinder">
                     <bean class="org.apache.ignite.spi.discovery.tcp.ipfinder.vm.TcpDiscoveryVmIpFinder">
                         <property name="addresses">
                             <list>
-                                <value>${IGNITE_NODE1_HOST}:47500..47509</value>
-                                <value>${IGNITE_NODE2_HOST}:47500..47509</value>
+                                <value>${VM1_IP}:47500..47501</value>
+                                <value>${VM2_IP}:47500..47501</value>
                             </list>
                         </property>
                     </bean>
@@ -123,8 +133,8 @@
 
         <property name="clientConnectorConfiguration">
             <bean class="org.apache.ignite.configuration.ClientConnectorConfiguration">
-                <property name="port" value="10800"/>
-
+                <property name="port"      value="${IGNITE_THIN_PORT}"/>
+                <property name="portRange" value="0"/>
                 <property name="thinClientConfiguration">
                     <bean class="org.apache.ignite.configuration.ThinClientConfiguration">
                         <property name="maxActiveComputeTasksPerConnection" value="100"/>
