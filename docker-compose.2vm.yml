@@ -67,3 +67,31 @@ services:
       JAVA_TOOL_OPTIONS: *java-opts
     volumes: [ "${DATA_DIR:-./data}:/data" ]
     ports: ["8081:8081"]
+
+  bench:
+    profiles: [ "bench" ]
+    build: { context: ., target: vector-server }
+    entrypoint: [ "java","-Xmx1g",
+                  "-Dloader.main=ru.nsu.fit.sberlab.vectorindex.vectorserver.benchmark.BenchmarkMain",
+                  "-jar","/app/app.jar" ]
+    environment:
+      IGNITE_ADDRESS: ${VM1_IP}:10800,${VM1_IP}:10801,${VM2_IP}:10800,${VM2_IP}:10801
+      INDEX_TYPE: ${INDEX_TYPE:-JVECTOR_INDEX}
+
+      DATABASE_PATH: /data/dataset.csv
+      QUERIES_PATH: /data/quieries.csv
+      RESULTS_PATH: /data/results.csv
+
+      BENCHMARK_MODE: OUR_DATASET
+      LOAD_DATABASE: "true"
+      VINDEX_METRICS_ENABLED: "false"
+
+      HIGHLOAD_TARGET_RPS: "100"
+      HIGHLOAD_TEST_SECONDS: "60"
+      N_CLIENTS_COUNT: "8"
+      N_CLIENTS_WARMUP_SECONDS: "10"
+      N_CLIENTS_TEST_SECONDS: "60"
+
+      JAVA_TOOL_OPTIONS: *java-opts
+    volumes:
+      - ${DATA_DIR:-./data}:/data
