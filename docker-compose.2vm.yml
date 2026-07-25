@@ -23,10 +23,11 @@ x-node-common: &node-common
     - ./docker/config-2vm/ignite-config.xml:/config/ignite-config.xml:ro
     - ./jfr:/jfr
   healthcheck:
-    test: ["CMD-SHELL", "nc -z 127.0.0.1 $$IGNITE_THIN_PORT || exit 1"]
+    test: ["CMD-SHELL", "nc -z $$IGNITE_LOCAL_HOST $$IGNITE_THIN_PORT || exit 1"]
     interval: 5s
     timeout: 3s
     retries: 30
+
 
 x-node-env: &node-env
   JVM_OPTS: ${NODE_JVM_OPTS}
