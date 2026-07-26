@@ -18,6 +18,7 @@
         <!-- узел анонсирует РЕАЛЬНЫЙ IP своей ВМ, а не адрес контейнера -->
         <property name="localHost"    value="${IGNITE_LOCAL_HOST}"/>
         <property name="consistentId" value="${IGNITE_CONSISTENT_ID}"/>
+        <property name="failureDetectionTimeout" value="120000"/>
 
         <property name="communicationSpi">
             <bean class="org.apache.ignite.spi.communication.tcp.TcpCommunicationSpi">
@@ -108,7 +109,7 @@
                     <bean class="org.apache.ignite.configuration.DataRegionConfiguration">
                         <property name="name" value="Default_Region"/>
                         <property name="initialSize" value="268435456"/>   <!-- 256 МБ -->
-                        <property name="maxSize" value="1395864371"/>
+                        <property name="maxSize" value="1610612736"/>
                     </bean>
                 </property>
             </bean>
