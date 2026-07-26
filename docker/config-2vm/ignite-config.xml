@@ -46,7 +46,7 @@
                     <property name="name" value="vectors"/>
                     <property name="cacheMode" value="PARTITIONED"/>
                     <property name="atomicityMode" value="ATOMIC"/>
-                    <property name="backups" value="0"/> <!-- ПОМЕНЯТЬ НА ДЕМО -->
+                    <property name="backups" value="1"/> <!-- ПОМЕНЯТЬ НА ДЕМО -->
 
                     <property name="affinity">
                         <bean class="org.apache.ignite.cache.affinity.rendezvous.RendezvousAffinityFunction">
