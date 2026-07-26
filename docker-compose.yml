@@ -35,10 +35,16 @@ services:
   ignite-node-1:
     <<: *node-common
     container_name: ignite-node-1
+    volumes:
+      - ./docker/config/ignite-config.xml:/config/ignite-config.xml:ro
+      - ${DATA_DIR:-./data}/node1:/data
   ignite-node-2:
     <<: *node-common
     container_name: ignite-node-2
     depends_on: [ignite-node-1]
+    volumes:
+      - ./docker/config/ignite-config.xml:/config/ignite-config.xml:ro
+      - ${DATA_DIR:-./data}/node2:/data
 
   vector-server:
     restart: unless-stopped

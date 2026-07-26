@@ -19,16 +19,6 @@ import java.util.Locale;
 
 @SpringBootApplication
 public class BenchmarkMain {
-    //todo возможность вывода для построения графиков времен
-    //todo графики всякие, метрики, таблички, мб в файлы записывать
-    //todo для каждого метрики нужные внедрить
-    //todo рефакторинг всего бенчмарка и проверка правильности замеров метрик и имен
-    //todo килл андер лоад
-    //todo почему не доходит до target возможно чуть чаще обновлять и округлять ниже
-    //todo подобрать параметр для работников
-    //todo maxINglight в env
-
-
     public static void main(String[] args) {
         try (ConfigurableApplicationContext context =
                      new SpringApplicationBuilder(VectorServerApplication.class)
@@ -127,7 +117,6 @@ public class BenchmarkMain {
                     int pointNumber = 1;
                     QueryReader queryReader = new QueryReader();
                     List<QueryReader.QueryVector> queries = queryReader.read(QUERIES_PATH);
-
                     PrintStream originalOut = System.out;
                     System.setOut(new PrintStream(new OutputStream() {
                         @Override

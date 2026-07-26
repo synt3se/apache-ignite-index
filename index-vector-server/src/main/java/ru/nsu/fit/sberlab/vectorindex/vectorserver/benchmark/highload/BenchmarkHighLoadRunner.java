@@ -147,7 +147,7 @@ public final class BenchmarkHighLoadRunner {
         long intervalNanos = Math.max(1L, 1_000_000_000L / targetRps);
         long phaseStartNanos = System.nanoTime();
 
-        ScheduledFuture<?> producer = scheduler.scheduleAtFixedRate(() -> {
+        ScheduledFuture<?> producer = scheduler.scheduleWithFixedDelay(() -> {
             long now = System.nanoTime();
             long previous = metrics.previousScheduledNanos.getAndSet(now);
 
