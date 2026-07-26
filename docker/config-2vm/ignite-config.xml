@@ -46,7 +46,7 @@
                     <property name="name" value="vectors"/>
                     <property name="cacheMode" value="PARTITIONED"/>
                     <property name="atomicityMode" value="ATOMIC"/>
-                    <property name="backups" value="0"/>
+                    <property name="backups" value="0"/> <!-- ПОМЕНЯТЬ НА ДЕМО -->
 
                     <property name="affinity">
                         <bean class="org.apache.ignite.cache.affinity.rendezvous.RendezvousAffinityFunction">
@@ -75,7 +75,7 @@
 
                             <property name="jvectorProperties">
                                 <bean class="ru.nsu.fit.sberlab.vectorindex.node.index.JVectorProperties">
-                                    <property name="m" value="12"/>
+                                    <property name="m" value="16"/>
                                     <property name="efConstruction" value="100"/>
                                     <property name="efSearch" value="1"/>
                                     <property name="neighborOverflow" value="2.0"/>
