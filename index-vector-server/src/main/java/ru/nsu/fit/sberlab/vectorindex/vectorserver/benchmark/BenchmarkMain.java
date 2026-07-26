@@ -12,22 +12,13 @@ import ru.nsu.fit.sberlab.vectorindex.vectorserver.benchmark.dataset.BenchmarkDa
 import ru.nsu.fit.sberlab.vectorindex.vectorserver.benchmark.highload.BenchmarkHighLoadRunner;
 import ru.nsu.fit.sberlab.vectorindex.vectorserver.benchmark.recall.BenchmarkAnnRunner;
 
+import java.io.OutputStream;
+import java.io.PrintStream;
+import java.util.List;
 import java.util.Locale;
 
 @SpringBootApplication
 public class BenchmarkMain {
-    //todo возможность вывода для построения графиков времен
-    //todo графики всякие, метрики, таблички, мб в файлы записывать
-    //todo для каждого метрики нужные внедрить
-    //todo рефакторинг всего бенчмарка и проверка правильности замеров метрик и имен
-    //todo килл андер лоад
-    //todo jmh
-    //todo закрыть все туду
-    //todo пути через env
-
-
-    //todo последние два запроса
-
     public static void main(String[] args) {
         try (ConfigurableApplicationContext context =
                      new SpringApplicationBuilder(VectorServerApplication.class)
@@ -45,9 +36,9 @@ public class BenchmarkMain {
 
             switch (BENCHMARK_MODE){
                 case ANN_BENCHMARK_TEST -> {
-                    String hdf5Path = "/data/coco-i2i-512-angular.hdf5";
+                    String HDF5_PATH = env("HDF5_PATH", "/data/coco-i2i-512-angular.hdf5");
                     BenchmarkAnnRunner runner = new BenchmarkAnnRunner(vectorService);
-                    runner.run(NEIGHBOR_COUNT, hdf5Path);
+                    runner.run(NEIGHBOR_COUNT, HDF5_PATH);
                 }
 
                 case N_CLIENTS -> {
@@ -95,13 +86,10 @@ public class BenchmarkMain {
                 }
 
                 case HIGH_LOAD -> {
-                    System.out.println("Target RPS: " + HIGHLOAD_TARGET_RPS);
-                    System.out.println("Max in-flight: " + HIGHLOAD_MAX_IN_FLIGHT);
-                    System.out.println("Warmup: " + HIGHLOAD_WARMUP_SECONDS + " s");
-                    System.out.println("Test duration: " + HIGHLOAD_TEST_SECONDS + " s");
-
                     BenchmarkHighLoadRunner runner = new BenchmarkHighLoadRunner(vectorService);
 
+                    QueryReader queryReader = new QueryReader();
+                    List<QueryReader.QueryVector> queries = queryReader.read(QUERIES_PATH);
                     runner.run(
                             HIGHLOAD_MAX_IN_FLIGHT,
                             HIGHLOAD_TARGET_RPS,
@@ -109,8 +97,86 @@ public class BenchmarkMain {
                             HIGHLOAD_TEST_SECONDS,
                             NEIGHBOR_COUNT,
                             QUERIES_PATH,
-                            preparationNanos
+                            preparationNanos,
+                            queries
                     );
+                }
+                case HIGH_LOAD_SWEEP -> {
+                    validateHighLoadSweepArguments();
+
+                    System.out.println("Sweep start RPS: " + HIGHLOAD_SWEEP_START_RPS);
+                    System.out.println("Sweep max RPS: " + HIGHLOAD_SWEEP_MAX_RPS);
+                    System.out.println("Sweep RPS step: " + HIGHLOAD_SWEEP_RPS_STEP);
+                    System.out.println("Warmup per point: " + HIGHLOAD_WARMUP_SECONDS + " s");
+                    System.out.println("Test duration per point: " + HIGHLOAD_TEST_SECONDS + " s");
+                    System.out.println("Pause between points: " + HIGHLOAD_SWEEP_PAUSE_SECONDS + " s");
+
+                    BenchmarkHighLoadRunner runner =
+                            new BenchmarkHighLoadRunner(vectorService);
+
+                    int pointNumber = 1;
+                    QueryReader queryReader = new QueryReader();
+                    List<QueryReader.QueryVector> queries = queryReader.read(QUERIES_PATH);
+                    PrintStream originalOut = System.out;
+                    System.setOut(new PrintStream(new OutputStream() {
+                        @Override
+                        public void write(int b) {
+                            // Ничего не делаем, текст уходит в никуда
+                        }
+                    }));
+                    runner.run(
+                            HIGHLOAD_MAX_IN_FLIGHT,
+                            300,
+                            10,
+                            30,
+                            NEIGHBOR_COUNT,
+                            QUERIES_PATH,
+                            preparationNanos,
+                            queries
+                    );
+
+                    System.setOut(originalOut);
+
+                    System.out.println("Stabilization before sweep: 15 s");
+                    Thread.sleep(15_000L);
+
+                    for (int targetRps = HIGHLOAD_SWEEP_START_RPS;
+                         targetRps <= HIGHLOAD_SWEEP_MAX_RPS;
+                         targetRps += HIGHLOAD_SWEEP_RPS_STEP) {
+
+                        System.out.println();
+                        System.out.println("####################################################");
+                        System.out.println("HIGHLOAD SWEEP POINT " + pointNumber);
+                        System.out.println("Target RPS: " + targetRps);
+                        System.out.println("####################################################");
+
+
+                        runner.run(
+                                HIGHLOAD_MAX_IN_FLIGHT,
+                                targetRps,
+                                HIGHLOAD_WARMUP_SECONDS,
+                                HIGHLOAD_TEST_SECONDS,
+                                NEIGHBOR_COUNT,
+                                QUERIES_PATH,
+                                preparationNanos,
+                                queries
+                        );
+
+                        pointNumber++;
+
+                        if (targetRps < HIGHLOAD_SWEEP_MAX_RPS
+                                && HIGHLOAD_SWEEP_PAUSE_SECONDS > 0) {
+                            System.out.println(
+                                    "Pause before next point: "
+                                            + HIGHLOAD_SWEEP_PAUSE_SECONDS
+                                            + " s"
+                            );
+
+                            Thread.sleep(
+                                    HIGHLOAD_SWEEP_PAUSE_SECONDS * 1_000L
+                            );
+                        }
+                    }
                 }
             }
         } catch (IllegalArgumentException e) {
@@ -118,6 +184,33 @@ public class BenchmarkMain {
         }catch (Exception e){
             System.err.println("[UNKNOWN EXCEPTION IN BENCHMARK_MAIN]: " + e.getMessage());
             e.printStackTrace();
+        }
+    }
+
+    private static void validateHighLoadSweepArguments() {
+        if (HIGHLOAD_SWEEP_START_RPS <= 0) {
+            throw new IllegalArgumentException(
+                    "HIGHLOAD_SWEEP_START_RPS must be positive"
+            );
+        }
+
+        if (HIGHLOAD_SWEEP_MAX_RPS < HIGHLOAD_SWEEP_START_RPS) {
+            throw new IllegalArgumentException(
+                    "HIGHLOAD_SWEEP_MAX_RPS must be greater than or equal to "
+                            + "HIGHLOAD_SWEEP_START_RPS"
+            );
+        }
+
+        if (HIGHLOAD_SWEEP_RPS_STEP <= 0) {
+            throw new IllegalArgumentException(
+                    "HIGHLOAD_SWEEP_RPS_STEP must be positive"
+            );
+        }
+
+        if (HIGHLOAD_SWEEP_PAUSE_SECONDS < 0) {
+            throw new IllegalArgumentException(
+                    "HIGHLOAD_SWEEP_PAUSE_SECONDS must not be negative"
+            );
         }
     }
 
@@ -167,8 +260,25 @@ public class BenchmarkMain {
     private static final int N_CLIENTS_COUNT = Integer.parseInt(env("N_CLIENTS_COUNT", "8"));
     private static final int N_CLIENTS_WARMUP_SECONDS = Integer.parseInt(env("N_CLIENTS_WARMUP_SECONDS", "10"));
     private static final int N_CLIENTS_TEST_SECONDS = Integer.parseInt(env("N_CLIENTS_TEST_SECONDS", "60"));
+    private static final int HIGHLOAD_SWEEP_START_RPS =
+            Integer.parseInt(env("HIGHLOAD_SWEEP_START_RPS", "100"));
 
-    private enum Mode {ANN_BENCHMARK_TEST, OUR_DATASET, HIGH_LOAD, N_CLIENTS}
+    private static final int HIGHLOAD_SWEEP_MAX_RPS =
+            Integer.parseInt(env("HIGHLOAD_SWEEP_MAX_RPS", "1000"));
+
+    private static final int HIGHLOAD_SWEEP_RPS_STEP =
+            Integer.parseInt(env("HIGHLOAD_SWEEP_RPS_STEP", "100"));
+
+    private static final int HIGHLOAD_SWEEP_PAUSE_SECONDS =
+            Integer.parseInt(env("HIGHLOAD_SWEEP_PAUSE_SECONDS", "0"));
+
+    private enum Mode {
+        ANN_BENCHMARK_TEST,
+        OUR_DATASET,
+        HIGH_LOAD,
+        HIGH_LOAD_SWEEP,
+        N_CLIENTS
+    }
 
     private static final Mode BENCHMARK_MODE = Mode.valueOf(
             env("BENCHMARK_MODE", "OUR_DATASET").trim().toUpperCase(Locale.ROOT)

@@ -24,13 +24,10 @@ import java.util.concurrent.atomic.AtomicLong;
 
 public final class BenchmarkHighLoadRunner {
     private static final Logger log = LoggerFactory.getLogger(BenchmarkHighLoadRunner.class);
-
-    //todo мб внедрить гистограму и вывод в реал тайм, таймаут
-    //todo почему не доходит до target возможно чуть чаще обновлять и округлять ниже
     private static final long WORKER_SHUTDOWN_TIMEOUT_SECONDS = 90;
 
     private final VectorService service;
-    private final QueryReader queryReader = new QueryReader();
+
 
     public BenchmarkHighLoadRunner(VectorService service) {
         if (service == null) throw new IllegalArgumentException("service is required");
@@ -44,14 +41,13 @@ public final class BenchmarkHighLoadRunner {
             int testSeconds, //продолжительность основной измеряемой фазы
             int neighborCount, //Сколько соседей просим вернуть
             String queriesPath,
-            long preparationNanos
+            long preparationNanos,
+            List<QueryVector> queries
     ) {
         log.info("Starting highload benchmark: maxInFlight={}, targetRps={}, warmupSeconds={}, testSeconds={}, neighborCount={}, queriesPath={}",
                 maxInFlight, targetRps, warmupSeconds, testSeconds, neighborCount, queriesPath);
 
         validateArguments(maxInFlight, targetRps, warmupSeconds, testSeconds, neighborCount);
-
-        List<QueryVector> queries = queryReader.read(queriesPath);
 
         log.info("Loaded {} queries with vector dimension {}", queries.size(), queries.get(0).vector().length);
 
@@ -105,7 +101,7 @@ public final class BenchmarkHighLoadRunner {
                     measured
             );
 
-            printResult(result, targetRps, maxInFlight, neighborCount);
+            printResult(result, targetRps, maxInFlight, neighborCount, preparationNanos);
         } finally {
             log.info("Stopping benchmark executors");
 
@@ -147,10 +143,18 @@ public final class BenchmarkHighLoadRunner {
         Semaphore permits = new Semaphore(maxInFlight);
         AtomicInteger querySequence = new AtomicInteger();
 
+
         long intervalNanos = Math.max(1L, 1_000_000_000L / targetRps);
         long phaseStartNanos = System.nanoTime();
 
-        ScheduledFuture<?> producer = scheduler.scheduleAtFixedRate(() -> {
+        ScheduledFuture<?> producer = scheduler.scheduleWithFixedDelay(() -> {
+            long now = System.nanoTime();
+            long previous = metrics.previousScheduledNanos.getAndSet(now);
+
+            if (measured && previous != 0L) {
+                metrics.producerIntervalsNanos.add(now - previous);
+            }
+
             metrics.scheduled.incrementAndGet();
 
             if (!permits.tryAcquire()) {
@@ -176,7 +180,7 @@ public final class BenchmarkHighLoadRunner {
                 ));
             } catch (RuntimeException e) {
                 metrics.inFlight.decrementAndGet();
-                metrics.errors.incrementAndGet();
+                metrics.submissionErrors.incrementAndGet();
                 permits.release();
                 log.error("Failed to submit search request to worker pool", e);
             }
@@ -216,8 +220,8 @@ public final class BenchmarkHighLoadRunner {
             PhaseMetrics metrics
     ) {
         long startedNanos = System.nanoTime();
+        boolean successfulResponse = false;
         metrics.started.incrementAndGet();
-
         try {
             ResponseEntity<List<Neighbor>> response = service.search(
                     new SearchRequest(query.vector(), neighborCount)
@@ -236,18 +240,26 @@ public final class BenchmarkHighLoadRunner {
                 metrics.incompleteResponses.incrementAndGet();
                 return;
             }
-            metrics.bytesOut.addAndGet((long) query.vector().length * Float.BYTES);
-            metrics.bytesIn.addAndGet(estimateResponseBytes(neighbors));
             metrics.successful.incrementAndGet();
+            successfulResponse = true;
         } catch (RuntimeException e) {
             metrics.errors.incrementAndGet();
             log.error("Search request failed", e);
         } finally {
             long finishedNanos = System.nanoTime();
 
-            if (measured) {
-                metrics.latenciesNanos.add(finishedNanos - startedNanos);
-                metrics.queueWaitNanos.add(startedNanos - enqueueNanos);
+            if (measured && successfulResponse) {
+                metrics.serviceLatenciesNanos.add(
+                        finishedNanos - startedNanos
+                );
+
+                metrics.queueWaitNanos.add(
+                        startedNanos - enqueueNanos
+                );
+
+                metrics.endToEndLatenciesNanos.add(
+                        finishedNanos - enqueueNanos
+                );
             }
 
             metrics.completed.incrementAndGet();
@@ -271,33 +283,15 @@ public final class BenchmarkHighLoadRunner {
         }
     }
 
-    private long estimateResponseBytes(List<Neighbor> neighbors) {
-        long total = 0L;
-
-        for (Neighbor neighbor : neighbors) {
-            total += Long.BYTES;
-            total += Double.BYTES;
-
-            if (neighbor.url() != null) {
-                total += (long) neighbor.url().length() * Character.BYTES;
-            }
-
-            if (neighbor.metadata() != null) {
-                total += (long) neighbor.metadata().length() * Character.BYTES;
-            }
-        }
-
-        return total;
-    }
 
     private void printResult(
             PhaseResult result,
             int targetRps,
             int maxInFlight,
-            int neighborCount
+            int neighborCount,
+            long preparationNanos
     ) {
         PhaseMetrics metrics = result.metrics();
-
         double generationSeconds =
                 (result.producerStoppedNanos() - result.startedNanos())
                         / 1_000_000_000.0;
@@ -306,66 +300,121 @@ public final class BenchmarkHighLoadRunner {
                 (result.finishedNanos() - result.startedNanos())
                         / 1_000_000_000.0;
 
-        double startedRps = generationSeconds == 0.0
+        double drainSeconds =
+                Math.max(0.0, totalSeconds - generationSeconds);
+
+        double actualGeneratedRps = generationSeconds == 0.0
+                ? 0.0
+                : metrics.scheduled.get() / generationSeconds;
+
+        double startedSearchRps = generationSeconds == 0.0
                 ? 0.0
                 : metrics.started.get() / generationSeconds;
 
-        double successfulRps = generationSeconds == 0.0
+        double actualSuccessfulRPS = totalSeconds == 0.0
                 ? 0.0
-                : metrics.successful.get() / generationSeconds;
+                : metrics.successful.get() / totalSeconds;
 
-        Percentiles latency = Percentiles.from(metrics.latenciesNanos);
+        long generated = metrics.scheduled.get();
+        long rejected = metrics.rejected.get();
+        long accepted = generated - rejected;
+
+        long started = metrics.started.get();
+        long completed = metrics.completed.get();
+        long successful = metrics.successful.get();
+        long errors = metrics.errors.get();
+        long invalidResultCount = metrics.incompleteResponses.get();
+        long submissionErrors = metrics.submissionErrors.get();
+
+        double acceptedPercent = generated == 0L
+                ? 0.0
+                : accepted * 100.0 / generated;
+
+        double rejectedPercent = generated == 0L
+                ? 0.0
+                : rejected * 100.0 / generated;
+
+        double successfulPercent = completed == 0L
+                ? 0.0
+                : successful * 100.0 / completed;
+
+        double errorPercent = completed == 0L
+                ? 0.0
+                : errors * 100.0 / completed;
+
+        double invalidResultCountPercent = completed == 0L
+                ? 0.0
+                : invalidResultCount * 100.0 / completed;
+
+        double submissionErrorPercent = accepted == 0L
+                ? 0.0
+                : submissionErrors * 100.0 / accepted;
+
+        Percentiles endToEndLatency = Percentiles.from(metrics.endToEndLatenciesNanos);
+
+        Percentiles serviceLatency = Percentiles.from(metrics.serviceLatenciesNanos);
+
         Percentiles queueWait = Percentiles.from(metrics.queueWaitNanos);
 
         System.out.println();
         System.out.println("=== Highload summary ===");
+        Percentiles producerInterval =
+                Percentiles.from(metrics.producerIntervalsNanos);
+
+        printPercentiles("Producer inter-arrival interval", producerInterval);
+
+        System.out.printf(
+                Locale.US,
+                "Data load and index preparation: %.3f s%n",
+                preparationNanos / 1_000_000_000.0
+        );
         System.out.println("Target RPS: " + targetRps);
-        System.out.printf(Locale.US, "Started RPS: %.2f%n", startedRps);
-        System.out.printf(Locale.US, "Successful RPS: %.2f%n", successfulRps);
+        System.out.printf(Locale.US, "Actual generated RPS: %.2f%n", actualGeneratedRps);
+        System.out.printf(Locale.US, "Started search RPS: %.2f%n", startedSearchRps);
+        System.out.printf(Locale.US, "Actual successful RPS: %.2f%n", actualSuccessfulRPS);
         System.out.printf(Locale.US, "Generation duration: %.3f s%n", generationSeconds);
-        System.out.printf(Locale.US, "Total duration with drain: %.3f s%n", totalSeconds);
+        System.out.printf(Locale.US, "Drain duration: %.3f s%n", drainSeconds);
+        System.out.printf(Locale.US, "Total phase duration: %.3f s%n", totalSeconds);
         System.out.println();
 
-        System.out.println("Scheduled requests: " + metrics.scheduled.get());
-        System.out.println("Started requests: " + metrics.started.get());
-        System.out.println("Completed requests: " + metrics.completed.get());
-        System.out.println("Successful requests: " + metrics.successful.get());
-        System.out.println("Errors: " + metrics.errors.get());
-        System.out.println("Incomplete responses: " + metrics.incompleteResponses.get());
-        System.out.println("Rejected by in-flight limit: " + metrics.rejected.get());
+        System.out.println("Generated requests: " + generated);
+
+        System.out.printf(Locale.US, "Accepted requests: %d/%d (%.2f%%)%n", accepted,
+                generated, acceptedPercent);
+
+        System.out.printf(Locale.US, "Rejected by in-flight limit: %d/%d (%.2f%%)%n",
+                rejected, generated, rejectedPercent
+        );
+
+        System.out.printf(
+                Locale.US,
+                "Worker submission errors: %d/%d (%.2f%%)%n",
+                submissionErrors,
+                accepted,
+                submissionErrorPercent
+        );
+
+        System.out.println("Started requests: " + started);
+        System.out.println("Completed requests: " + completed);
+
+        System.out.printf(Locale.US, "Successful requests: %d/%d (%.2f%%)%n",
+                successful, completed, successfulPercent
+        );
+
+        System.out.printf(Locale.US, "Errors: %d/%d (%.2f%%)%n", errors, completed, errorPercent);
+
+        System.out.printf(Locale.US, "Invalid result-count responses: %d/%d (%.2f%%)%n",
+                invalidResultCount, completed, invalidResultCountPercent
+        );
         System.out.println();
 
         System.out.println("Configured max in-flight: " + maxInFlight);
         System.out.println("Observed max in-flight: " + metrics.maxInFlight.get());
         System.out.println("Neighbor count: " + neighborCount);
-        System.out.println("Bytes out: " + metrics.bytesOut.get());
-        System.out.println("Bytes in: " + metrics.bytesIn.get());
 
-        printPercentiles("Latency", latency);
-        printPercentiles("Queue wait", queueWait);
-
-        log.info("Benchmark result: targetRps={}, startedRps={}, successfulRps={}, scheduled={}, started={}, completed={}, successful={}, errors={}, incomplete={}, rejected={}, maxInFlight={}",
-                targetRps, String.format(Locale.US, "%.2f", startedRps),
-                String.format(Locale.US, "%.2f", successfulRps), metrics.scheduled.get(),
-                metrics.started.get(), metrics.completed.get(), metrics.successful.get(),
-                metrics.errors.get(), metrics.incompleteResponses.get(), metrics.rejected.get(),
-                metrics.maxInFlight.get());
-
-        log.info("Latency: min={} ms, avg={} ms, p50={} ms, p95={} ms, p99={} ms, p99.9={} ms, max={} ms",
-                formatMillis(latency.minMillis()), formatMillis(latency.averageMillis()),
-                formatMillis(latency.p50Millis()), formatMillis(latency.p95Millis()),
-                formatMillis(latency.p99Millis()), formatMillis(latency.p999Millis()),
-                formatMillis(latency.maxMillis()));
-
-        log.info("Queue wait: min={} ms, avg={} ms, p50={} ms, p95={} ms, p99={} ms, p99.9={} ms, max={} ms",
-                formatMillis(queueWait.minMillis()), formatMillis(queueWait.averageMillis()),
-                formatMillis(queueWait.p50Millis()), formatMillis(queueWait.p95Millis()),
-                formatMillis(queueWait.p99Millis()), formatMillis(queueWait.p999Millis()),
-                formatMillis(queueWait.maxMillis()));
-    }
-
-    private String formatMillis(double value) {
-        return String.format(Locale.US, "%.3f", value);
+        printPercentiles("Successful end-to-end latency", endToEndLatency);
+        printPercentiles("Successful service latency", serviceLatency);
+        printPercentiles("Worker queue wait", queueWait);
     }
 
     private void printPercentiles(String title, Percentiles values) {
@@ -416,18 +465,22 @@ public final class BenchmarkHighLoadRunner {
         private final AtomicLong errors = new AtomicLong();
         private final AtomicLong incompleteResponses = new AtomicLong();
         private final AtomicLong rejected = new AtomicLong();
-        private final AtomicLong bytesOut = new AtomicLong();
-        private final AtomicLong bytesIn = new AtomicLong();
-
+        private final AtomicLong submissionErrors = new AtomicLong();
         private final AtomicInteger inFlight = new AtomicInteger();
         private final AtomicInteger maxInFlight = new AtomicInteger();
 
-        private final ConcurrentLinkedQueue<Long> latenciesNanos =
+        private final AtomicLong previousScheduledNanos = new AtomicLong();
+        private final ConcurrentLinkedQueue<Long> producerIntervalsNanos =
+                new ConcurrentLinkedQueue<>();
+
+        private final ConcurrentLinkedQueue<Long> endToEndLatenciesNanos =
+                new ConcurrentLinkedQueue<>();
+
+        private final ConcurrentLinkedQueue<Long> serviceLatenciesNanos =
                 new ConcurrentLinkedQueue<>();
 
         private final ConcurrentLinkedQueue<Long> queueWaitNanos =
                 new ConcurrentLinkedQueue<>();
-
         private void updateMaxInFlight(int value) {
             maxInFlight.accumulateAndGet(value, Math::max);
         }
