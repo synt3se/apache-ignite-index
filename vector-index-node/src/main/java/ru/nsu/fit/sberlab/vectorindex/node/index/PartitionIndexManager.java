@@ -268,12 +268,11 @@ public final class PartitionIndexManager {
 
         PartitionVectorIndex idx;
 
-
-        int dimension = 512;
-        if (indexType == IndexType.JVECTOR_INDEX){
-            log.info("JVECTOR_INDEX start with param " + jVectorProperties.toString() + " ");
+        if (indexType == IndexType.JVECTOR_INDEX) {
+            log.info("JVECTOR_INDEX start, dimension=" + dimension
+                    + ", param " + jVectorProperties.toString() + " ");
             idx = new JVectorPartitionIndex(dimension, jVectorProperties);
-        }else{
+        } else {
             log.info("BTUR_FORCE_INDEX start");
             idx = new BruteForcePartitionIndex();
         }
@@ -281,7 +280,6 @@ public final class PartitionIndexManager {
 
         log.info("[vindex] seed START partition=" + partition);
         idx.seedAndBuildAsync(vectors);
-        // idx.build(vectors);
         log.info("[vindex] seed FINISHED partition=" + partition + " (graph builds in background)");
 
         return idx;
