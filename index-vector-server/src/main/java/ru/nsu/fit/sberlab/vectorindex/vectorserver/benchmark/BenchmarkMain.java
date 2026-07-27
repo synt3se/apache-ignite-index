@@ -14,6 +14,8 @@ import ru.nsu.fit.sberlab.vectorindex.vectorserver.benchmark.recall.BenchmarkAnn
 
 import java.io.OutputStream;
 import java.io.PrintStream;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 
@@ -100,7 +102,8 @@ public class BenchmarkMain {
                             NEIGHBOR_COUNT,
                             QUERIES_PATH,
                             preparationNanos,
-                            queries
+                            queries,
+                            RESULTS_DIR
                     );
                 }
                 case HIGH_LOAD_SWEEP -> {
@@ -112,46 +115,46 @@ public class BenchmarkMain {
                     System.out.println("Warmup per point: " + HIGHLOAD_WARMUP_SECONDS + " s");
                     System.out.println("Test duration per point: " + HIGHLOAD_TEST_SECONDS + " s");
                     System.out.println("Pause between points: " + HIGHLOAD_SWEEP_PAUSE_SECONDS + " s");
+                    System.out.println("Sweep order: " + (HIGHLOAD_SWEEP_DESCENDING ? "DESCENDING" : "ASCENDING"));
 
-                    BenchmarkHighLoadRunner runner =
-                            new BenchmarkHighLoadRunner(vectorService);
+                    BenchmarkHighLoadRunner runner = new BenchmarkHighLoadRunner(vectorService);
 
-                    int pointNumber = 1;
                     QueryReader queryReader = new QueryReader();
                     List<QueryReader.QueryVector> queries = queryReader.read(QUERIES_PATH);
+
                     PrintStream originalOut = System.out;
                     System.setOut(new PrintStream(new OutputStream() {
                         @Override
                         public void write(int b) {
-                            // Ничего не делаем, текст уходит в никуда
+                            // прогрев: вывод не нужен
                         }
                     }));
                     runner.run(
-                            HIGHLOAD_MAX_IN_FLIGHT,
-                            300,
-                            10,
-                            30,
-                            NEIGHBOR_COUNT,
-                            QUERIES_PATH,
-                            preparationNanos,
-                            queries
+                            HIGHLOAD_MAX_IN_FLIGHT, 300, 10, 30,
+                            NEIGHBOR_COUNT, QUERIES_PATH, preparationNanos, queries, null
                     );
-
                     System.setOut(originalOut);
 
                     System.out.println("Stabilization before sweep: 15 s");
                     Thread.sleep(15_000L);
 
-                    for (int targetRps = HIGHLOAD_SWEEP_START_RPS;
-                         targetRps <= HIGHLOAD_SWEEP_MAX_RPS;
-                         targetRps += HIGHLOAD_SWEEP_RPS_STEP) {
+                    List<Integer> points = new ArrayList<>();
+                    for (int rps = HIGHLOAD_SWEEP_START_RPS;
+                         rps <= HIGHLOAD_SWEEP_MAX_RPS;
+                         rps += HIGHLOAD_SWEEP_RPS_STEP) {
+                        points.add(rps);
+                    }
+                    if (HIGHLOAD_SWEEP_DESCENDING) {
+                        Collections.reverse(points);
+                    }
 
+                    int pointNumber = 1;
+                    for (int targetRps : points) {
                         System.out.println();
                         System.out.println("####################################################");
-                        System.out.println("HIGHLOAD SWEEP POINT " + pointNumber);
+                        System.out.println("HIGHLOAD SWEEP POINT " + pointNumber + " of " + points.size());
                         System.out.println("Target RPS: " + targetRps);
                         System.out.println("####################################################");
-
 
                         runner.run(
                                 HIGHLOAD_MAX_IN_FLIGHT,
@@ -161,29 +164,23 @@ public class BenchmarkMain {
                                 NEIGHBOR_COUNT,
                                 QUERIES_PATH,
                                 preparationNanos,
-                                queries
+                                queries,
+                                RESULTS_DIR
                         );
 
                         pointNumber++;
 
-                        if (targetRps < HIGHLOAD_SWEEP_MAX_RPS
-                                && HIGHLOAD_SWEEP_PAUSE_SECONDS > 0) {
-                            System.out.println(
-                                    "Pause before next point: "
-                                            + HIGHLOAD_SWEEP_PAUSE_SECONDS
-                                            + " s"
-                            );
-
-                            Thread.sleep(
-                                    HIGHLOAD_SWEEP_PAUSE_SECONDS * 1_000L
-                            );
+                        if (pointNumber <= points.size() && HIGHLOAD_SWEEP_PAUSE_SECONDS > 0) {
+                            System.out.println("Pause before next point: "
+                                    + HIGHLOAD_SWEEP_PAUSE_SECONDS + " s");
+                            Thread.sleep(HIGHLOAD_SWEEP_PAUSE_SECONDS * 1_000L);
                         }
                     }
                 }
             }
         } catch (IllegalArgumentException e) {
             System.err.println("[ERROR ILLEGAL ARGUMENT]: " + e.getMessage());
-        }catch (Exception e){
+        } catch (Exception e) {
             System.err.println("[UNKNOWN EXCEPTION IN BENCHMARK_MAIN]: " + e.getMessage());
             e.printStackTrace();
         }
@@ -273,6 +270,11 @@ public class BenchmarkMain {
 
     private static final int HIGHLOAD_SWEEP_PAUSE_SECONDS =
             Integer.parseInt(env("HIGHLOAD_SWEEP_PAUSE_SECONDS", "0"));
+
+    private static final String RESULTS_DIR = env("RESULTS_DIR", "/data/results");
+
+    private static final boolean HIGHLOAD_SWEEP_DESCENDING =
+            Boolean.parseBoolean(env("HIGHLOAD_SWEEP_DESCENDING", "false"));
 
     private enum Mode {
         ANN_BENCHMARK_TEST,
