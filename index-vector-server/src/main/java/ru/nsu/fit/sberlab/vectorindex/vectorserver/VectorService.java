@@ -9,6 +9,8 @@ import io.micrometer.core.instrument.Counter;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.*;
 import ru.nsu.fit.sberlab.vectorindex.vectorserver.exception.ResourceNotFoundException;
 import ru.nsu.fit.sberlab.vectorindex.vectorserver.index.Index;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Counter;
 
 import ru.nsu.fit.sberlab.vectorindex.common.VectorObject;
 
@@ -21,12 +23,10 @@ public class VectorService {
     static final Logger log = LoggerFactory.getLogger(VectorService.class);
     private final Index index;
     private final IdGenerator idGenerator;
-    private final Counter searchPartial;
 
-    public VectorService(Index index, IdGenerator idGenerator, MeterRegistry registry) {
+    public VectorService(Index index, IdGenerator idGenerator) {
         this.index = index;
         this.idGenerator = idGenerator;
-        this.searchPartial = registry.counter("vindex.search.partial");
     }
 
     public ResponseEntity<VectorResponse> add(AddRequest request) {
@@ -98,8 +98,6 @@ public class VectorService {
     }
 
     public ResponseEntity<SearchResponse> searchFull(SearchRequest request) {
-        SearchResponse resp = index.searchFull(request.vector(), request.count());
-        if (resp.partial) searchPartial.increment();
-        return ResponseEntity.ok(resp);
+        return ResponseEntity.ok(index.searchFull(request.vector(), request.count()));
     }
 }
