@@ -77,21 +77,35 @@ services:
                   "-jar","/app/app.jar" ]
     environment:
       IGNITE_ADDRESS: ${VM1_IP}:10800,${VM1_IP}:10801,${VM2_IP}:10800,${VM2_IP}:10801
-      INDEX_TYPE: ${INDEX_TYPE:-JVECTOR_INDEX}
+
+      INDEX_TYPE: ${INDEX_TYPE:-JVECTOR_INDEX} #Edit in .env
 
       DATABASE_PATH: /data/dataset.csv
       QUERIES_PATH: /data/quieries.csv
       RESULTS_PATH: /data/results.csv
+      HDF5_PATH: /data/coco-i2i-512-angular.hdf5
 
-      BENCHMARK_MODE: OUR_DATASET
+      NEIGHBOR_COUNT: "10"
+      PRINT_MISMATCH: "false"
+
+      BENCHMARK_MODE: ${BENCHMARK_MODE:-OUR_DATASET}  #Edit in .env
       LOAD_DATABASE: "true"
-      VINDEX_METRICS_ENABLED: "false"
 
+      HIGHLOAD_MAX_IN_FLIGHT: "64"
       HIGHLOAD_TARGET_RPS: "100"
+      HIGHLOAD_WARMUP_SECONDS: "10"
       HIGHLOAD_TEST_SECONDS: "60"
+
+      HIGHLOAD_SWEEP_START_RPS: "100"
+      HIGHLOAD_SWEEP_MAX_RPS: "600"
+      HIGHLOAD_SWEEP_RPS_STEP: "100"
+      HIGHLOAD_SWEEP_PAUSE_SECONDS: "5"
+
       N_CLIENTS_COUNT: "8"
       N_CLIENTS_WARMUP_SECONDS: "10"
       N_CLIENTS_TEST_SECONDS: "60"
+
+      VINDEX_METRICS_ENABLED: "false"
 
       JAVA_TOOL_OPTIONS: *java-opts
     volumes:
