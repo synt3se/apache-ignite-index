@@ -34,11 +34,12 @@ public final class BenchmarkNClientsRunner {
             String igniteAddress,
             String cacheName,
             int dimension,
+            String searchMode,
             long preparationNanos
     ) {
         validateArguments(
                 clientCount, warmupSeconds, testSeconds, neighborCount,
-                queriesPath, igniteAddress, cacheName, dimension, preparationNanos
+                queriesPath, igniteAddress, cacheName, dimension, searchMode, preparationNanos
         );
 
         List<QueryVector> queries = queryReader.read(queriesPath);
@@ -55,6 +56,7 @@ public final class BenchmarkNClientsRunner {
 
         System.out.println("=== N clients benchmark STARTED ===");
         System.out.println("Clients: " + clientCount);
+        System.out.println("Search mode: " + searchMode);
         System.out.println("Queries: " + queries.size());
         System.out.println("Vector dimension: " + queries.get(0).vector().length);
         System.out.println("Neighbor count: " + neighborCount);
@@ -63,7 +65,7 @@ public final class BenchmarkNClientsRunner {
         System.out.println("===================================");
 
         try {
-            createClients(clients, clientCount, igniteAddress, cacheName, dimension);
+            createClients(clients, clientCount, igniteAddress, cacheName, dimension, searchMode);
             boolean measure = false;
 
             if (warmupSeconds > 0) {
@@ -98,7 +100,8 @@ public final class BenchmarkNClientsRunner {
             int clientCount,
             String igniteAddress,
             String cacheName,
-            int dimension
+            int dimension,
+            String searchMode
     ) {
         System.out.println("Creating " + clientCount + " Ignite clients...");
 
@@ -107,7 +110,8 @@ public final class BenchmarkNClientsRunner {
                     clientId,
                     igniteAddress,
                     cacheName,
-                    dimension
+                    dimension,
+                    searchMode
             );
 
             clients.add(client);
@@ -476,9 +480,11 @@ public final class BenchmarkNClientsRunner {
     private String formatNumber(double value) {return String.format(Locale.US, "%.2f", value);}
 
     private void validateArguments(int clientCount, int warmupSeconds, int testSeconds,
-            int neighborCount, String queriesPath, String igniteAddress, String cacheName,
-            int dimension, long preparationNanos
+                                   int neighborCount, String queriesPath, String igniteAddress, String cacheName,
+                                   int dimension, String searchMode, long preparationNanos
     ) {
+        if (searchMode == null || searchMode.isBlank())
+            throw new IllegalArgumentException("Search mode is required");
         if (clientCount <= 0) throw new IllegalArgumentException("Client count must be positive");
         if (warmupSeconds < 0) throw new IllegalArgumentException("Warmup seconds must not be negative");
         if (testSeconds <= 0) throw new IllegalArgumentException("Test seconds must be positive");

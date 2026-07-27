@@ -19,6 +19,8 @@ import ru.nsu.fit.sberlab.vectorindex.node.service.SearchAggregationService;
 import java.util.HashMap;
 import java.util.Map;
 import ru.nsu.fit.sberlab.vectorindex.node.compute.RebuildIndexesTask;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 
 import javax.cache.Cache;
 import java.io.*;
@@ -36,18 +38,23 @@ public class DistributedVectorIndex implements Index {
     private static final int PARSE_CHUNK = 20_000;
     private static final int MAX_IN_FLIGHT_BATCHES = 3;
 
-    @Value("${search.mode:task}")
-    private String searchMode;
+    private final String searchMode;
+    private final Counter searchTotal;
+    private final Counter searchPartial;
     private SearchAggregationService aggregator;
-
     public DistributedVectorIndex(
             IgniteClient igniteClient,
             @Value("${ignite.cache.name:vectors}") String cacheName,
-            @Value("${vector.dimension}") int dimension
+            @Value("${vector.dimension}") int dimension,
+            @Value("${search.mode:task}") String searchMode,
+            MeterRegistry registry
     ) {
         this.igniteClient = igniteClient;
         this.cache = igniteClient.getOrCreateCache(cacheName);
         this.dimension = dimension;
+        this.searchMode = searchMode == null ? "task" : searchMode;
+        this.searchTotal = registry.counter("vindex.search.total");
+        this.searchPartial = registry.counter("vindex.search.partial");
     }
 
     private void validateVector(float[] vector) {
@@ -395,14 +402,24 @@ public class DistributedVectorIndex implements Index {
     }
 
     private SearchResponse callAggregator(float[] queryVector, int count) {
+        SearchResponse response;
         try {
-            return aggregator().search(queryVector, count);
+            response = aggregator().search(queryVector, count);
         } catch (ClientException e) {
             // node dead
             System.err.println("[search] aggregator failed, retry on another node: " + e);
             aggregator = null;
-            return aggregator().search(queryVector, count);
+            response = aggregator().search(queryVector, count);
         }
+        searchTotal.increment();
+        if (response != null && response.partial) {
+            searchPartial.increment();
+        }
+        return response;
+    }
+
+    public String searchMode() {
+        return searchMode;
     }
 
     @Override

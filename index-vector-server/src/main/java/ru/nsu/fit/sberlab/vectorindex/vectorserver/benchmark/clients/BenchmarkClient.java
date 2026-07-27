@@ -3,6 +3,7 @@ package ru.nsu.fit.sberlab.vectorindex.vectorserver.benchmark.clients;
 import org.apache.ignite.Ignition;
 import org.apache.ignite.client.IgniteClient;
 import org.apache.ignite.configuration.ClientConfiguration;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.Neighbor;
 import ru.nsu.fit.sberlab.vectorindex.vectorserver.index.DistributedVectorIndex;
 
@@ -13,7 +14,8 @@ final class BenchmarkClient implements AutoCloseable {
     private final IgniteClient igniteClient;
     private final DistributedVectorIndex index;
 
-    public BenchmarkClient(int id, String igniteAddress, String cacheName, int dimension) {
+    public BenchmarkClient(int id, String igniteAddress, String cacheName,
+                           int dimension, String searchMode) {
         if (id < 0)
             throw new IllegalArgumentException("Client id must not be negative");
 
@@ -40,7 +42,9 @@ final class BenchmarkClient implements AutoCloseable {
         this.index = new DistributedVectorIndex(
                 igniteClient,
                 cacheName,
-                dimension
+                dimension,
+                searchMode,
+                new SimpleMeterRegistry()
         );
     }
 
