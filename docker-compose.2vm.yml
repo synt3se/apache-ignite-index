@@ -110,3 +110,35 @@ services:
       JAVA_TOOL_OPTIONS: *java-opts
     volumes:
       - ${DATA_DIR:-./data}:/data
+
+  prometheus:
+    profiles: [ "metrics" ]
+    image: prom/prometheus:v2.53.1
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    restart: unless-stopped
+
+  grafana:
+    profiles: [ "metrics" ]
+    image: grafana/grafana:11.1.4
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_SERVER_ROOT_URL: https://sberschool2026-vm11.sberlab.nsu.ru/grafana/
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/vindex.json
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on: [ "prometheus" ]
+    restart: unless-stopped
+
+  edge:
+    profiles: [ "metrics" ]
+    image: nginx:alpine
+    restart: unless-stopped
+    ports: [ "80:80" ]
+    volumes:
+      - ./docker/nginx/2vm.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on: [ grafana, vector-server ]

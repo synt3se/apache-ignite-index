@@ -1,0 +1,85 @@
+{
+  "uid": "vindex-live",
+  "title": "Vector Index — Live",
+  "schemaVersion": 39,
+  "editable": true,
+  "graphTooltip": 1,
+  "refresh": "2s",
+  "time": { "from": "now-15m", "to": "now" },
+  "templating": { "list": [] },
+  "annotations": { "list": [] },
+  "panels": [
+    {
+      "type": "stat", "title": "Server nodes", "gridPos": {"h":4,"w":6,"x":0,"y":0},
+      "datasource": {"type":"prometheus","uid":"prometheus"},
+      "fieldConfig": {"defaults":{"thresholds":{"steps":[{"color":"red","value":null},{"color":"green","value":2}]}}},
+      "targets": [{"refId":"A","expr":"vindex_cluster_server_nodes"}]
+    },
+    {
+      "type": "gauge", "title": "Coverage", "gridPos": {"h":4,"w":6,"x":6,"y":0},
+      "datasource": {"type":"prometheus","uid":"prometheus"},
+      "fieldConfig": {"defaults":{"unit":"percentunit","min":0,"max":1,
+        "thresholds":{"steps":[{"color":"red","value":null},{"color":"orange","value":0.8},{"color":"green","value":0.99}]}}},
+      "targets": [{"refId":"A","expr":"vindex_cluster_coverage_ratio"}]
+    },
+    {
+      "type": "stat", "title": "Live vectors", "gridPos": {"h":4,"w":6,"x":12,"y":0},
+      "datasource": {"type":"prometheus","uid":"prometheus"},
+      "targets": [{"refId":"A","expr":"vindex_cluster_live_vectors"}]
+    },
+    {
+      "type": "stat", "title": "Cluster reachable", "gridPos": {"h":4,"w":6,"x":18,"y":0},
+      "datasource": {"type":"prometheus","uid":"prometheus"},
+      "fieldConfig": {"defaults":{"thresholds":{"steps":[{"color":"red","value":null},{"color":"green","value":1}]}}},
+      "targets": [{"refId":"A","expr":"vindex_cluster_reachable"}]
+    },
+    {
+      "type": "timeseries", "title": "Coverage over time", "gridPos": {"h":8,"w":12,"x":0,"y":4},
+      "datasource": {"type":"prometheus","uid":"prometheus"},
+      "fieldConfig": {"defaults":{"unit":"percentunit","min":0,"max":1}},
+      "targets": [{"refId":"A","expr":"vindex_cluster_coverage_ratio","legendFormat":"coverage"}]
+    },
+    {
+      "type": "timeseries", "title": "Search QPS", "gridPos": {"h":8,"w":12,"x":12,"y":4},
+      "datasource": {"type":"prometheus","uid":"prometheus"},
+      "fieldConfig": {"defaults":{"unit":"reqps"}},
+      "targets": [{"refId":"A","expr":"sum(rate(http_server_requests_seconds_count{uri=\"/vectors/search/full\"}[1m]))","legendFormat":"qps"}]
+    },
+    {
+      "type": "timeseries", "title": "Search latency", "gridPos": {"h":8,"w":12,"x":0,"y":12},
+      "datasource": {"type":"prometheus","uid":"prometheus"},
+      "fieldConfig": {"defaults":{"unit":"s"}},
+      "targets": [
+        {"refId":"A","expr":"histogram_quantile(0.50, sum(rate(http_server_requests_seconds_bucket{uri=\"/vectors/search/full\"}[1m])) by (le))","legendFormat":"p50"},
+        {"refId":"B","expr":"histogram_quantile(0.95, sum(rate(http_server_requests_seconds_bucket{uri=\"/vectors/search/full\"}[1m])) by (le))","legendFormat":"p95"},
+        {"refId":"C","expr":"histogram_quantile(0.99, sum(rate(http_server_requests_seconds_bucket{uri=\"/vectors/search/full\"}[1m])) by (le))","legendFormat":"p99"}
+      ]
+    },
+    {
+      "type": "timeseries", "title": "Active partitions per node", "gridPos": {"h":8,"w":12,"x":12,"y":12},
+      "datasource": {"type":"prometheus","uid":"prometheus"},
+      "fieldConfig": {"defaults":{"min":0}},
+      "targets": [
+        {"refId":"A","expr":"vindex_node_active_partitions","legendFormat":"active {{node}}"},
+        {"refId":"B","expr":"vindex_node_owned_partitions","legendFormat":"owned {{node}}"}
+      ]
+    },
+    {
+      "type": "timeseries", "title": "Applier backlog per node", "gridPos": {"h":8,"w":8,"x":0,"y":20},
+      "datasource": {"type":"prometheus","uid":"prometheus"},
+      "targets": [{"refId":"A","expr":"vindex_node_applier_backlog","legendFormat":"{{node}}"}]
+    },
+    {
+      "type": "timeseries", "title": "Heap used per node", "gridPos": {"h":8,"w":8,"x":8,"y":20},
+      "datasource": {"type":"prometheus","uid":"prometheus"},
+      "fieldConfig": {"defaults":{"unit":"bytes"}},
+      "targets": [{"refId":"A","expr":"vindex_node_heap_used_bytes","legendFormat":"{{node}}"}]
+    },
+    {
+      "type": "timeseries", "title": "Node uptime (s)", "gridPos": {"h":8,"w":8,"x":16,"y":20},
+      "datasource": {"type":"prometheus","uid":"prometheus"},
+      "fieldConfig": {"defaults":{"unit":"s"}},
+      "targets": [{"refId":"A","expr":"vindex_node_uptime_ms/1000","legendFormat":"{{node}}"}]
+    }
+  ]
+}
