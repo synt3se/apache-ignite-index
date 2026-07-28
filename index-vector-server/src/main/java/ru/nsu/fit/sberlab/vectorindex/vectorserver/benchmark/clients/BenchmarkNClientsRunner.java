@@ -478,10 +478,8 @@ public final class BenchmarkNClientsRunner {
 
     private void validateArguments(int clientCount, int warmupSeconds, int testSeconds,
                                    int neighborCount, String queriesPath, String igniteAddress, String cacheName,
-                                   int dimension, String searchMode, long preparationNanos
+                                   int dimension, long preparationNanos
     ) {
-        if (searchMode == null || searchMode.isBlank())
-            throw new IllegalArgumentException("Search mode is required");
         if (clientCount <= 0) throw new IllegalArgumentException("Client count must be positive");
         if (warmupSeconds < 0) throw new IllegalArgumentException("Warmup seconds must not be negative");
         if (testSeconds <= 0) throw new IllegalArgumentException("Test seconds must be positive");
