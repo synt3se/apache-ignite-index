@@ -34,12 +34,11 @@ public final class BenchmarkNClientsRunner {
             String igniteAddress,
             String cacheName,
             int dimension,
-            String searchMode,
             long preparationNanos
     ) {
         validateArguments(
                 clientCount, warmupSeconds, testSeconds, neighborCount,
-                queriesPath, igniteAddress, cacheName, dimension, searchMode, preparationNanos
+                queriesPath, igniteAddress, cacheName, dimension, preparationNanos
         );
 
         List<QueryVector> queries = queryReader.read(queriesPath);
@@ -56,7 +55,7 @@ public final class BenchmarkNClientsRunner {
 
         System.out.println("=== N clients benchmark STARTED ===");
         System.out.println("Clients: " + clientCount);
-        System.out.println("Search mode: " + searchMode);
+        System.out.println("Search path: aggregator (deadline + partial)");
         System.out.println("Queries: " + queries.size());
         System.out.println("Vector dimension: " + queries.get(0).vector().length);
         System.out.println("Neighbor count: " + neighborCount);
@@ -65,7 +64,7 @@ public final class BenchmarkNClientsRunner {
         System.out.println("===================================");
 
         try {
-            createClients(clients, clientCount, igniteAddress, cacheName, dimension, searchMode);
+            createClients(clients, clientCount, igniteAddress, cacheName, dimension);
             boolean measure = false;
 
             if (warmupSeconds > 0) {
@@ -100,8 +99,7 @@ public final class BenchmarkNClientsRunner {
             int clientCount,
             String igniteAddress,
             String cacheName,
-            int dimension,
-            String searchMode
+            int dimension
     ) {
         System.out.println("Creating " + clientCount + " Ignite clients...");
 
@@ -110,8 +108,7 @@ public final class BenchmarkNClientsRunner {
                     clientId,
                     igniteAddress,
                     cacheName,
-                    dimension,
-                    searchMode
+                    dimension
             );
 
             clients.add(client);

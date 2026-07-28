@@ -15,7 +15,7 @@ final class BenchmarkClient implements AutoCloseable {
     private final DistributedVectorIndex index;
 
     public BenchmarkClient(int id, String igniteAddress, String cacheName,
-                           int dimension, String searchMode) {
+                           int dimension) {
         if (id < 0)
             throw new IllegalArgumentException("Client id must not be negative");
 
@@ -39,13 +39,7 @@ final class BenchmarkClient implements AutoCloseable {
                 .setAddresses(addresses);;
 
         this.igniteClient = Ignition.startClient(configuration);
-        this.index = new DistributedVectorIndex(
-                igniteClient,
-                cacheName,
-                dimension,
-                searchMode,
-                new SimpleMeterRegistry()
-        );
+        this.index = new DistributedVectorIndex(igniteClient, cacheName, dimension, new SimpleMeterRegistry());
     }
 
     int id() {

@@ -51,7 +51,6 @@ public class BenchmarkMain {
                             "vectors");
                     int dimension = Integer.parseInt(environment.
                             getRequiredProperty("vector.dimension"));
-                    String searchMode = environment.getProperty("search.mode", "task");
                     BenchmarkNClientsRunner runner = new BenchmarkNClientsRunner();
 
                     runner.run(
@@ -63,7 +62,6 @@ public class BenchmarkMain {
                             igniteAddress,
                             cacheName,
                             dimension,
-                            searchMode,
                             preparationNanos
                     );
                 }
