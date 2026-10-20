@@ -9,7 +9,6 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicLong;
 
 import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import ru.nsu.fit.sberlab.vectorindex.common.ScoredVector;
@@ -41,7 +40,6 @@ class LocalSearchTest {
     }
 
     @Test
-    @Tag("known-issue")
     @DisplayName("К4: a partition activated after its search snapshot must not count as searched")
     void coverageDescribesSearchedPartitionsRatherThanLaterActivation() {
         PartitionRuntime<Object> partition = runtime(0);

@@ -17,7 +17,6 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
@@ -203,7 +202,6 @@ public abstract class PartitionRuntimeContract {
     }
 
     @Test
-    @Tag("known-issue")
     @DisplayName("Input ownership: mutating upsert's float[] must not change the indexed vector")
     void addCopiesCallerOwnedArray() throws Exception {
         try (RuntimeHarness h = harness(new VectorSpec(16, Metric.COSINE)).ready()) {
@@ -360,7 +358,6 @@ public abstract class PartitionRuntimeContract {
     // ------------------------------------------------------- расписания сборки (§7.10)
 
     @Test
-    @Tag("known-issue")
     @DisplayName("К1: delete after merge capture must stay deleted after graph publication")
     void deletionAfterUpdatedVectorWasCapturedMustSurvivePublication() throws Exception {
         try (RuntimeHarness h = harness(COSINE3).built(initialVectors())) {

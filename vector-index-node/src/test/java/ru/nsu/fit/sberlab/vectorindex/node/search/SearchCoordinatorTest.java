@@ -17,7 +17,6 @@ import java.util.stream.IntStream;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import ru.nsu.fit.sberlab.vectorindex.common.ScoredVector;
@@ -255,7 +254,6 @@ class SearchCoordinatorTest {
     }
 
     @Test
-    @Tag("known-issue")
     @DisplayName("К4: hydration must not start after gathering exhausts the request deadline")
     void doesNotStartHydrationAfterDeadlineIsExhausted() {
         budgetMs = 100;

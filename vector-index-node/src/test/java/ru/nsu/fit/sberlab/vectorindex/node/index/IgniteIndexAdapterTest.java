@@ -15,7 +15,6 @@ import java.util.concurrent.TimeUnit;
 
 import org.apache.ignite.logger.NullLogger;
 import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
@@ -171,7 +170,6 @@ class IgniteIndexAdapterTest {
     }
 
     @Test
-    @Tag("known-issue")
     @DisplayName("К2: overflow during a running scan must survive reconcile and trigger recovery")
     void overflowDuringRebuildIsNotForgottenByConcurrentReconcile() throws Exception {
         try (Fixture fixture = new Fixture()) {
