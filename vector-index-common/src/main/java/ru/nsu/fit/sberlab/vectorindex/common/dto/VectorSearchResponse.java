@@ -14,6 +14,9 @@ public class VectorSearchResponse implements Serializable {
 
     public String indexId;
     public SearchStatus status;
+    /** Ошибка запроса; {@code null} — запрос выполнен (статус описывает полноту). */
+    public SearchError error;
+    public String message;
     public List<Incompleteness> incomplete = new ArrayList<>();
     public List<IndexHit> hits = new ArrayList<>();
     public int expectedPartitions;
@@ -32,5 +35,14 @@ public class VectorSearchResponse implements Serializable {
 
     public boolean partial() {
         return status != SearchStatus.COMPLETE;
+    }
+
+    public static VectorSearchResponse failed(String indexId, SearchError error, String message) {
+        VectorSearchResponse response = new VectorSearchResponse();
+        response.indexId = indexId;
+        response.status = SearchStatus.FAILED;
+        response.error = error;
+        response.message = message;
+        return response;
     }
 }

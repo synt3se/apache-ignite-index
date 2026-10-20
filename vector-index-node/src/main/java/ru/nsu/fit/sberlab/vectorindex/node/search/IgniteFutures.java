@@ -5,12 +5,12 @@ import java.util.concurrent.CompletableFuture;
 import org.apache.ignite.lang.IgniteFuture;
 
 /** IgniteFuture → CompletableFuture; отмена пробрасывается обратно в Ignite. */
-final class IgniteFutures {
+public final class IgniteFutures {
 
     private IgniteFutures() {
     }
 
-    static <T> CompletableFuture<T> toCompletable(IgniteFuture<T> future) {
+    public static <T> CompletableFuture<T> toCompletable(IgniteFuture<T> future) {
         CompletableFuture<T> result = new CompletableFuture<>();
         future.listen(done -> {
             try {

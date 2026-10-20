@@ -152,7 +152,7 @@ public final class SearchCoordinator {
         ordered.sort(IndexHit.ORDER);
         failed.sort((a, b) -> Integer.compare(a.partition, b.partition));
         return new DistributedSearchResult(ordered, snapshot.partitions(), toArray(searched), failed, toArray(gaps),
-                timedOut, responded, futures.size(), duplicates);
+                timedOut, responded, futures.size(), duplicates, snapshot.version());
     }
 
     private static void failAll(List<PartitionFailure> failed, int[] parts, PartitionFailure.Reason reason, String node) {

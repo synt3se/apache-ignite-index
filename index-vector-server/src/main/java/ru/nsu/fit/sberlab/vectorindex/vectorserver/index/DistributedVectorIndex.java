@@ -6,6 +6,7 @@ import org.apache.ignite.client.ClientCache;
 import org.apache.ignite.client.ClientException;
 import org.apache.ignite.client.IgniteClient;
 import org.apache.ignite.client.IgniteClientFuture;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
@@ -14,6 +15,12 @@ import ru.nsu.fit.sberlab.vectorindex.common.dto.*;
 import ru.nsu.fit.sberlab.vectorindex.node.compute.ClearVectorTask;
 import ru.nsu.fit.sberlab.vectorindex.node.compute.StatsTask;
 import ru.nsu.fit.sberlab.vectorindex.node.service.SearchAggregationService;
+import ru.nsu.fit.sberlab.vectorindex.core.NanoClock;
+import ru.nsu.fit.sberlab.vectorindex.node.search.Awaiter;
+import ru.nsu.fit.sberlab.vectorindex.vectorserver.search.ClientDocumentStore;
+import ru.nsu.fit.sberlab.vectorindex.vectorserver.search.DemoHydrator;
+import ru.nsu.fit.sberlab.vectorindex.vectorserver.search.IndexSearchClient;
+import java.util.concurrent.TimeUnit;
 import java.util.HashMap;
 import java.util.Map;
 import ru.nsu.fit.sberlab.vectorindex.node.compute.RebuildIndexesTask;
@@ -38,19 +45,37 @@ public class DistributedVectorIndex implements Index {
 
     private final Counter searchTotal;
     private final Counter searchPartial;
-    private SearchAggregationService aggregator;
+    private final String defaultIndex;
+    private final long adminTimeoutMs;
+    private final IndexSearchClient searchClient;
 
+    /** Для бенчмарк-раннеров вне Spring: индекс по умолчанию и таймауты сервера по умолчанию. */
+    public DistributedVectorIndex(IgniteClient igniteClient, String cacheName, int dimension, MeterRegistry registry) {
+        this(igniteClient, cacheName, dimension, "vectors", 2_000, 15_000, registry);
+    }
+
+    @Autowired
     public DistributedVectorIndex(
             IgniteClient igniteClient,
             @Value("${ignite.cache.name:vectors}") String cacheName,
             @Value("${vector.dimension}") int dimension,
+            @Value("${vindex.default-index:vectors}") String defaultIndex,
+            @Value("${vector.search.timeout-ms:2000}") long searchTimeoutMs,
+            @Value("${vector.admin.timeout-ms:15000}") long adminTimeoutMs,
             MeterRegistry registry
     ) {
         this.igniteClient = igniteClient;
         this.cache = igniteClient.getOrCreateCache(cacheName);
         this.dimension = dimension;
+        this.defaultIndex = defaultIndex;
+        this.adminTimeoutMs = adminTimeoutMs;
         this.searchTotal = registry.counter("vindex.search.total");
         this.searchPartial = registry.counter("vindex.search.partial");
+        // Гидрация — здесь, в прикладном слое; бюджет начинается на сервере и ограничивает вызов сервиса.
+        this.searchClient = new IndexSearchClient(
+                (request, timeoutMs) -> aggregator(timeoutMs).search(request),
+                new DemoHydrator(new ClientDocumentStore(cache), Awaiter.BLOCKING, NanoClock.SYSTEM),
+                NanoClock.SYSTEM, TimeUnit.MILLISECONDS.toNanos(searchTimeoutMs));
     }
 
     private void validateVector(float[] vector) {
@@ -100,11 +125,10 @@ public class DistributedVectorIndex implements Index {
         }
     }
 
+    /** Совместимость демо: список без статуса; статус — в {@link #searchFull}. */
     @Override
     public List<Neighbor> search(float[] queryVector, int count) {
-        validateVector(queryVector);
-
-        SearchResponse response = callAggregator(queryVector, count);
+        SearchResponse response = searchFull(queryVector, count);
 
         List<Neighbor> result = new ArrayList<>(response.results.size());
         for (SearchHit hit : response.results) {
@@ -357,33 +381,51 @@ public class DistributedVectorIndex implements Index {
         return cs;
     }
 
-    private SearchAggregationService aggregator() {
-        if (aggregator == null) {
-            aggregator = igniteClient.services()
-                    .serviceProxy(SearchAggregationService.NAME, SearchAggregationService.class);
-        }
-        return aggregator;
+    /** Прокси сервиса с ограничением ожидания вызова; тонкий клиент выбирает узел заново при каждом вызове. */
+    private SearchAggregationService aggregator(long timeoutMs) {
+        return igniteClient.services().serviceProxy(SearchAggregationService.NAME, SearchAggregationService.class,
+                Math.max(1, timeoutMs));
     }
 
-    private SearchResponse callAggregator(float[] queryVector, int count) {
-        SearchResponse response;
-        try {
-            response = aggregator().search(queryVector, count);
-        } catch (ClientException e) {
-            // node dead
-            System.err.println("[search] aggregator failed, retry on another node: " + e);
-            aggregator = null;
-            response = aggregator().search(queryVector, count);
-        }
+    /** Поиск с документами демо-кэша и полным статусом; индекс по умолчанию — {@code vindex.default-index}. */
+    @Override
+    public SearchResponse searchFull(float[] queryVector, int count) {
+        validateVector(queryVector);
+        SearchResponse response = searchClient.searchWithDocuments(defaultIndex, queryVector, count);
         searchTotal.increment();
-        if (response != null && response.partial) {
+        if (response.partial) {
             searchPartial.increment();
         }
         return response;
     }
 
     @Override
-    public SearchResponse searchFull(float[] queryVector, int count) {
-        return callAggregator(queryVector, count);
+    public VectorSearchResponse search(VectorSearchRequest request) {
+        VectorSearchResponse response = searchClient.search(request);
+        searchTotal.increment();
+        if (response.partial()) {
+            searchPartial.increment();
+        }
+        return response;
+    }
+
+    @Override
+    public List<IndexInfo> indexes() {
+        return aggregator(adminTimeoutMs).indexes();
+    }
+
+    @Override
+    public IndexStatus status(String indexId) {
+        return aggregator(adminTimeoutMs).status(indexId);
+    }
+
+    @Override
+    public IndexOperationResult unload(String indexId) {
+        return aggregator(adminTimeoutMs).unload(indexId);
+    }
+
+    @Override
+    public IndexOperationResult rebuild(String indexId) {
+        return aggregator(adminTimeoutMs).rebuild(indexId);
     }
 }

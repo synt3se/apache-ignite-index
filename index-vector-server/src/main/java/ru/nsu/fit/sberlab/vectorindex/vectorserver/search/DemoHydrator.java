@@ -1,4 +1,4 @@
-package ru.nsu.fit.sberlab.vectorindex.node.search;
+package ru.nsu.fit.sberlab.vectorindex.vectorserver.search;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -10,18 +10,21 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
-import ru.nsu.fit.sberlab.vectorindex.common.dto.IndexHit;
 import ru.nsu.fit.sberlab.vectorindex.common.VectorObject;
+import ru.nsu.fit.sberlab.vectorindex.common.dto.IndexHit;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.SearchHit;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.SearchResponse;
+import ru.nsu.fit.sberlab.vectorindex.common.dto.VectorSearchResponse;
 import ru.nsu.fit.sberlab.vectorindex.core.Budget;
 import ru.nsu.fit.sberlab.vectorindex.core.NanoClock;
+import ru.nsu.fit.sberlab.vectorindex.node.search.Awaiter;
 
 /**
- * Гидрация демо-ответа (url, metadata) — отдельный этап после поиска, в том же бюджете:
- * не начинается после его исчерпания, ожидание каждого батча ограничено остатком.
- * Удалённые к моменту гидрации ключи пропускаются, следующие батчи добирают top-k.
- * Документы — текущие, а не той версии, по которой посчитано расстояние (источник версий не даёт).
+ * Гидрация демо-ответа (url, metadata) в прикладном слое — отдельный этап после поиска, в том
+ * же бюджете: не начинается после его исчерпания, ожидание каждого батча ограничено остатком.
+ * Удалённые к моменту гидрации ключи пропускаются, следующие батчи добирают top-k из
+ * переданных кандидатов. Документы — текущие, а не той версии, по которой посчитано расстояние
+ * (источник версий не даёт). Демо-кэш хранит ключи {@code Long}; другие ключи пропускаются.
  */
 public final class DemoHydrator {
 
@@ -37,10 +40,10 @@ public final class DemoHydrator {
         this.clock = Objects.requireNonNull(clock, "clock");
     }
 
-    public SearchResponse respond(DistributedSearchResult result, int k, Budget budget, long startNanos) {
-        boolean timedOut = result.timedOut();
-        List<SearchHit> hits = new ArrayList<>(Math.min(k, result.hits().size()));
-        List<IndexHit> ordered = result.hits();
+    public SearchResponse respond(VectorSearchResponse found, int k, Budget budget, long startNanos) {
+        boolean timedOut = found.timedOut;
+        List<IndexHit> ordered = found.hits == null ? List.of() : found.hits;
+        List<SearchHit> hits = new ArrayList<>(Math.min(k, ordered.size()));
         int i = 0;
         while (i < ordered.size() && hits.size() < k) {
             if (budget.exhausted()) {
@@ -50,7 +53,7 @@ public final class DemoHydrator {
             int end = Math.min(ordered.size(), i + BATCH);
             Set<Long> ids = new HashSet<>();
             for (int j = i; j < end; j++) {
-                if (ordered.get(j).key instanceof Long id) { // демо-кэш — ключи Long
+                if (ordered.get(j).key instanceof Long id) {
                     ids.add(id);
                 }
             }
@@ -81,16 +84,16 @@ public final class DemoHydrator {
         SearchResponse response = new SearchResponse();
         response.results = hits;
         response.tookMs = TimeUnit.NANOSECONDS.toMillis(clock.nanoTime() - startNanos);
-        response.respondedNodes = result.respondedNodes();
-        response.totalNodes = result.totalNodes();
-        response.activePartitions = result.searchedPartitions().length;
-        response.totalPartitions = result.expectedPartitions();
-        response.searchedPartitions = result.searchedPartitions();
-        response.failedPartitions = new ArrayList<>(result.failedPartitions());
-        response.knownGapPartitions = result.knownGapPartitions();
-        response.duplicateKeys = result.duplicateKeys();
+        response.respondedNodes = found.respondedNodes;
+        response.totalNodes = found.totalNodes;
+        response.activePartitions = found.searchedPartitions == null ? 0 : found.searchedPartitions.length;
+        response.totalPartitions = found.expectedPartitions;
+        response.searchedPartitions = found.searchedPartitions;
+        response.failedPartitions = found.failedPartitions == null ? new ArrayList<>() : new ArrayList<>(found.failedPartitions);
+        response.knownGapPartitions = found.knownGapPartitions;
+        response.duplicateKeys = found.duplicateKeys;
         response.timedOut = timedOut;
-        response.partial = result.partial() || timedOut;
+        response.partial = found.partial() || timedOut;
         return response;
     }
 }

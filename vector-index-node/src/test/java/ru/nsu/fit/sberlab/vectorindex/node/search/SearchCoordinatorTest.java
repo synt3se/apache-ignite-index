@@ -12,24 +12,25 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeoutException;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.IntStream;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import ru.nsu.fit.sberlab.vectorindex.common.dto.Incompleteness;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.IndexHit;
-import ru.nsu.fit.sberlab.vectorindex.common.VectorObject;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.NodeSearchResult;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.PartitionFailure;
-import ru.nsu.fit.sberlab.vectorindex.common.dto.SearchResponse;
+import ru.nsu.fit.sberlab.vectorindex.common.dto.SearchStatus;
+import ru.nsu.fit.sberlab.vectorindex.common.dto.VectorSearchResponse;
 import ru.nsu.fit.sberlab.vectorindex.core.Budget;
 import ru.nsu.fit.sberlab.vectorindex.testkit.ManualClock;
 
 /**
- * Распределённый поиск без узлов Ignite и сети: назначение, транспорт, документы и часы —
- * подмены, ожидание управляется временем теста (без sleep). Перенос {@code SearchAggregatorServiceImplTest}.
+ * Распределённый поиск без узлов Ignite и сети: назначение, транспорт и часы — подмены,
+ * ожидание управляется временем теста (без sleep). Перенос {@code SearchAggregatorServiceImplTest};
+ * сценарии гидрации (включая К4) — в {@code IndexSearchClientTest} серверного модуля.
  */
 class SearchCoordinatorTest {
     private final ManualClock clock = new ManualClock();
@@ -38,8 +39,6 @@ class SearchCoordinatorTest {
     private final Map<String, Duration> slowNodes = new HashMap<>();
     private final java.util.Set<String> instantTimeouts = new java.util.HashSet<>();
     private final Map<String, NodeSearchRequest> requests = new HashMap<>();
-    private final Map<Long, VectorObject> records = new HashMap<>();
-    private final AtomicInteger getAllCalls = new AtomicInteger();
     private int partitions = 4;
     private long budgetMs = 2_000;
 
@@ -64,7 +63,6 @@ class SearchCoordinatorTest {
     };
 
     private SearchCoordinator coordinator;
-    private DemoHydrator hydrator;
 
     @BeforeEach
     void setUp() {
@@ -74,16 +72,6 @@ class SearchCoordinatorTest {
             return responses.get(node);
         };
         coordinator = new SearchCoordinator(topology, transport, awaiter);
-        DocumentStore documents = ids -> {
-            getAllCalls.incrementAndGet();
-            // Reverse key order deliberately: getAll does not promise distance order.
-            Map<Long, VectorObject> loaded = new LinkedHashMap<>();
-            ids.stream().sorted(java.util.Comparator.reverseOrder()).forEach(id -> {
-                if (records.containsKey(id)) loaded.put(id, records.get(id));
-            });
-            return CompletableFuture.completedFuture(loaded);
-        };
-        hydrator = new DemoHydrator(documents, awaiter, clock);
     }
 
     @Test
@@ -91,17 +79,16 @@ class SearchCoordinatorTest {
     void mergesGlobalTopK() {
         node(parts(0, 1), candidate(1, 0.8), candidate(3, 0.3));
         node(parts(2, 3), candidate(2, 0.2), candidate(4, 0.1));
-        store(1, 2, 3, 4);
 
-        SearchResponse response = search(3);
+        VectorSearchResponse response = search(3);
 
-        assertThat(response.results).extracting(hit -> hit.id).containsExactly(4L, 2L, 3L);
-        assertThat(response.results).extracting(hit -> hit.distance).containsExactly(0.1, 0.2, 0.3);
-        assertThat(response.partial).isFalse();
+        assertThat(response.hits).extracting(hit -> hit.key).containsExactly(4L, 2L, 3L);
+        assertThat(response.hits).extracting(hit -> hit.distance).containsExactly(0.1, 0.2, 0.3);
+        assertThat(response.partial()).isFalse();
         assertThat(response.respondedNodes).isEqualTo(2);
         assertThat(response.totalNodes).isEqualTo(2);
-        assertThat(response.activePartitions).isEqualTo(4);
-        assertThat(response.totalPartitions).isEqualTo(4);
+        assertThat(response.searchedPartitions.length).isEqualTo(4);
+        assertThat(response.expectedPartitions).isEqualTo(4);
         assertThat(response.searchedPartitions).containsExactly(0, 1, 2, 3);
     }
 
@@ -110,56 +97,12 @@ class SearchCoordinatorTest {
     void deduplicatesCandidatesWithinAndAcrossNodes() {
         node(parts(0, 1), candidate(7, 0.9), candidate(7, 0.4));
         node(parts(2, 3), candidate(7, 0.1), candidate(8, 0.2));
-        store(7, 8);
 
-        SearchResponse response = search(3);
+        VectorSearchResponse response = search(3);
 
-        assertThat(response.results).extracting(hit -> hit.id).containsExactly(7L, 8L);
-        assertThat(response.results).extracting(hit -> hit.distance).containsExactly(0.1, 0.2);
+        assertThat(response.hits).extracting(hit -> hit.key).containsExactly(7L, 8L);
+        assertThat(response.hits).extracting(hit -> hit.distance).containsExactly(0.1, 0.2);
         assertThat(response.duplicateKeys).as("assignment violation is visible, not silently resolved").isEqualTo(2);
-    }
-
-    @Test
-    @DisplayName("Hydration preserves score order and attaches the corresponding record")
-    void hydrationKeepsSearchOrderAndRecordMetadata() {
-        node(parts(0, 1, 2, 3), candidate(1, 0.1), candidate(2, 0.2), candidate(3, 0.3));
-        store(1, 2, 3);
-
-        SearchResponse response = search(3);
-
-        assertThat(response.results).extracting(hit -> hit.id).containsExactly(1L, 2L, 3L);
-        assertThat(response.results).extracting(hit -> hit.url)
-                .containsExactly("https://vectors/1", "https://vectors/2", "https://vectors/3");
-        assertThat(response.results).extracting(hit -> hit.metadata)
-                .containsExactly("metadata-1", "metadata-2", "metadata-3");
-    }
-
-    @Test
-    @DisplayName("Deleted candidates are skipped and later hydration batches backfill top-k")
-    void backfillsAfterDeletedCandidatesAcrossHydrationBatches() {
-        IndexHit[] candidates = IntStream.range(0, 300)
-                .mapToObj(id -> candidate(id, id / 300.0)).toArray(IndexHit[]::new);
-        node(parts(0, 1, 2, 3), candidates);
-        // Every candidate in the first batch was deleted before hydration.
-        store(270, 299);
-
-        SearchResponse response = search(2);
-
-        assertThat(response.results).extracting(hit -> hit.id).containsExactly(270L, 299L);
-        assertThat(getAllCalls).hasValue(2);
-        assertThat(response.partial).isFalse();
-    }
-
-    @Test
-    @DisplayName("Fewer live candidates than k yields a shorter complete answer")
-    void returnsOnlyLiveRecordsWhenBackfillIsExhausted() {
-        node(parts(0, 1, 2, 3), candidate(1, 0.1), candidate(2, 0.2), candidate(3, 0.3));
-        store(2);
-
-        SearchResponse response = search(10);
-
-        assertThat(response.results).extracting(hit -> hit.id).containsExactly(2L);
-        assertThat(response.partial).isFalse();
     }
 
     @Test
@@ -167,15 +110,14 @@ class SearchCoordinatorTest {
     void degradesOnNodeFailure() {
         node(parts(0, 1), candidate(1, 0.1));
         failedNode(parts(2, 3), new IllegalStateException("simulated node failure"));
-        store(1);
 
-        SearchResponse response = search(1);
+        VectorSearchResponse response = search(1);
 
-        assertThat(response.results).extracting(hit -> hit.id).containsExactly(1L);
-        assertThat(response.partial).isTrue();
+        assertThat(response.hits).extracting(hit -> hit.key).containsExactly(1L);
+        assertThat(response.partial()).isTrue();
         assertThat(response.respondedNodes).isEqualTo(1);
         assertThat(response.totalNodes).isEqualTo(2);
-        assertThat(response.activePartitions).isEqualTo(2);
+        assertThat(response.searchedPartitions.length).isEqualTo(2);
         assertThat(response.failedPartitions).extracting(f -> f.partition, f -> f.reason).containsExactly(
                 tuple(2, PartitionFailure.Reason.NODE_FAILED), tuple(3, PartitionFailure.Reason.NODE_FAILED));
     }
@@ -186,12 +128,11 @@ class SearchCoordinatorTest {
         slowNode(parts(0, 1), Duration.ZERO);
         instantTimeouts.add("node-0");
         node(parts(2, 3), candidate(1, 0.1));
-        store(1);
 
-        SearchResponse response = search(1);
+        VectorSearchResponse response = search(1);
 
-        assertThat(response.results).extracting(hit -> hit.id).containsExactly(1L);
-        assertThat(response.partial).isTrue();
+        assertThat(response.hits).extracting(hit -> hit.key).containsExactly(1L);
+        assertThat(response.partial()).isTrue();
         assertThat(response.respondedNodes).isEqualTo(1);
     }
 
@@ -200,15 +141,14 @@ class SearchCoordinatorTest {
     void marksMissingPartitionsAsPartialEvenWhenTopKIsFull() {
         node(parts(0), candidate(1, 0.1));
         node(parts(1), candidate(2, 0.2));
-        store(1, 2);
 
-        SearchResponse response = search(2);
+        VectorSearchResponse response = search(2);
 
-        assertThat(response.results).hasSize(2);
+        assertThat(response.hits).hasSize(2);
         assertThat(response.respondedNodes).isEqualTo(response.totalNodes).isEqualTo(2);
-        assertThat(response.activePartitions).isEqualTo(2);
-        assertThat(response.totalPartitions).isEqualTo(4);
-        assertThat(response.partial).isTrue();
+        assertThat(response.searchedPartitions.length).isEqualTo(2);
+        assertThat(response.expectedPartitions).isEqualTo(4);
+        assertThat(response.partial()).isTrue();
         assertThat(response.failedPartitions).extracting(f -> f.reason).containsOnly(PartitionFailure.Reason.NO_OWNER);
     }
 
@@ -218,57 +158,36 @@ class SearchCoordinatorTest {
         node(parts(0, 1), candidate(1, 0.1));
         assignment.put("null-node", parts(2, 3));
         responses.put("null-node", CompletableFuture.completedFuture(null));
-        store(1);
 
-        SearchResponse response = search(1);
+        VectorSearchResponse response = search(1);
 
-        assertThat(response.results).extracting(hit -> hit.id).containsExactly(1L);
+        assertThat(response.hits).extracting(hit -> hit.key).containsExactly(1L);
         assertThat(response.respondedNodes).isEqualTo(1);
-        assertThat(response.partial).isTrue();
+        assertThat(response.partial()).isTrue();
     }
 
     @Test
-    @DisplayName("An empty fully searched index is complete and needs no hydration")
-    void completeEmptyIndexDoesNotHydrate() {
+    @DisplayName("An empty fully searched index is a complete answer")
+    void completeEmptyIndexIsComplete() {
         node(parts(0, 1, 2, 3));
 
-        SearchResponse response = search(10);
+        VectorSearchResponse response = search(10);
 
-        assertThat(response.results).isEmpty();
-        assertThat(response.partial).isFalse();
-        assertThat(response.activePartitions).isEqualTo(4);
-        assertThat(getAllCalls).hasValue(0);
+        assertThat(response.hits).isEmpty();
+        assertThat(response.partial()).isFalse();
+        assertThat(response.searchedPartitions.length).isEqualTo(4);
     }
 
     @Test
     @DisplayName("Without server nodes the result is empty and partition coverage is partial")
     void noServersMeansNoPartitionCoverage() {
-        SearchResponse response = search(10);
+        VectorSearchResponse response = search(10);
 
-        assertThat(response.results).isEmpty();
+        assertThat(response.hits).isEmpty();
         assertThat(response.totalNodes).isZero();
         assertThat(response.respondedNodes).isZero();
-        assertThat(response.activePartitions).isZero();
-        assertThat(response.partial).isTrue();
-        assertThat(getAllCalls).hasValue(0);
-    }
-
-    @Test
-    @DisplayName("К4: hydration must not start after gathering exhausts the request deadline")
-    void doesNotStartHydrationAfterDeadlineIsExhausted() {
-        budgetMs = 100;
-        node(parts(0, 1), candidate(1, 0.1));
-        // A real future waits out the supplied budget before reporting timeout.
-        // The margin crosses the deadline without a timing assertion.
-        slowNode(parts(2, 3), Duration.ofMillis(20));
-        store(1);
-
-        SearchResponse response = search(1);
-
-        assertThat(getAllCalls).hasValue(0);
-        assertThat(response.results).isEmpty();
-        assertThat(response.partial).isTrue();
-        assertThat(response.timedOut).isTrue();
+        assertThat(response.searchedPartitions.length).isZero();
+        assertThat(response.partial()).isTrue();
     }
 
     // ------------------------------------------------------------ новое: назначение и бюджет
@@ -281,14 +200,13 @@ class SearchCoordinatorTest {
         a.failedPartitions.add(new PartitionFailure(1, PartitionFailure.Reason.NO_RUNTIME, "a"));
         respond("a", parts(0, 1), a);
         respond("b", parts(2, 3), result(new int[]{1, 2, 3}, candidate(2, 0.2)));
-        store(1, 2);
 
-        SearchResponse response = search(2);
+        VectorSearchResponse response = search(2);
 
         assertThat(response.searchedPartitions).containsExactly(0, 2, 3);
         assertThat(response.failedPartitions).extracting(f -> f.partition, f -> f.reason)
                 .containsExactly(tuple(1, PartitionFailure.Reason.NO_RUNTIME));
-        assertThat(response.partial).isTrue();
+        assertThat(response.partial()).isTrue();
     }
 
     @Test
@@ -297,13 +215,12 @@ class SearchCoordinatorTest {
         NodeSearchResult result = result(new int[]{0, 1, 2, 3}, candidate(1, 0.1));
         result.knownGapPartitions = new int[]{2};
         respond("a", parts(0, 1, 2, 3), result);
-        store(1);
 
-        SearchResponse response = search(1);
+        VectorSearchResponse response = search(1);
 
-        assertThat(response.activePartitions).isEqualTo(4);
+        assertThat(response.searchedPartitions.length).isEqualTo(4);
         assertThat(response.knownGapPartitions).containsExactly(2);
-        assertThat(response.partial).isTrue();
+        assertThat(response.partial()).isTrue();
     }
 
     @Test
@@ -323,21 +240,124 @@ class SearchCoordinatorTest {
     void unreportedAssignedPartitionIsNotCoverage() {
         respond("a", parts(0, 1, 2, 3), result(new int[]{0, 1, 2}));
 
-        SearchResponse response = search(1);
+        VectorSearchResponse response = search(1);
 
         assertThat(response.failedPartitions).extracting(f -> f.partition, f -> f.reason)
                 .containsExactly(tuple(3, PartitionFailure.Reason.NOT_REPORTED));
-        assertThat(response.partial).isTrue();
+        assertThat(response.partial()).isTrue();
+    }
+
+    // ------------------------------------------------------------ строгий ответ и причины неполноты
+
+    @Test
+    void completeAnswerIsCompleteEvenInStrictMode() {
+        node(parts(0, 1), candidate(1, 0.1));
+        node(parts(2, 3), candidate(2, 0.2));
+
+        VectorSearchResponse response = search(2, false);
+
+        assertThat(response.status).isEqualTo(SearchStatus.COMPLETE);
+        assertThat(response.incomplete).isEmpty();
+        assertThat(response.hits).extracting(hit -> hit.key).containsExactly(1L, 2L);
+    }
+
+    @Test
+    @DisplayName("Strict mode fails on a known gap even though every partition was searched")
+    void strictModeFailsOnKnownGapWithFullCoverage() {
+        NodeSearchResult result = result(new int[]{0, 1, 2, 3}, candidate(1, 0.1));
+        result.knownGapPartitions = new int[]{2};
+        respond("a", parts(0, 1, 2, 3), result);
+
+        VectorSearchResponse strict = search(1, false);
+
+        assertThat(strict.searchedPartitions).hasSize(4);
+        assertThat(strict.status).isEqualTo(SearchStatus.FAILED);
+        assertThat(strict.incomplete).containsExactly(Incompleteness.KNOWN_GAP);
+        assertThat(strict.hits).as("no hits from an incomplete strict answer").isEmpty();
+        assertThat(strict.knownGapPartitions).containsExactly(2);
+        assertThat(search(1, true).status).isEqualTo(SearchStatus.PARTIAL);
+    }
+
+    @Test
+    void strictModeFailsOnMissingPartitions() {
+        node(parts(0), candidate(1, 0.1));
+        node(parts(1), candidate(2, 0.2));          // партиции 2 и 3 без владельца
+
+        VectorSearchResponse strict = search(2, false);
+
+        assertThat(strict.status).isEqualTo(SearchStatus.FAILED);
+        assertThat(strict.incomplete).containsExactly(Incompleteness.MISSING_PARTITIONS);
+        assertThat(strict.hits).isEmpty();
+        assertThat(strict.failedPartitions).extracting(f -> f.reason).containsOnly(PartitionFailure.Reason.NO_OWNER);
+    }
+
+    @Test
+    void strictModeFailsWhenAnExpectedOwnerTimesOut() {
+        node(parts(0, 1), candidate(1, 0.1));
+        slowNode(parts(2, 3), Duration.ZERO);
+
+        VectorSearchResponse strict = search(1, false);
+
+        assertThat(strict.status).isEqualTo(SearchStatus.FAILED);
+        assertThat(strict.incomplete).contains(Incompleteness.TIMED_OUT, Incompleteness.NODE_NO_RESPONSE,
+                Incompleteness.MISSING_PARTITIONS);
+        assertThat(strict.hits).isEmpty();
+    }
+
+    @Test
+    void strictModeFailsWhenAnExpectedOwnerDoesNotRespond() {
+        node(parts(0, 1), candidate(1, 0.1));
+        assignment.put("null-node", parts(2, 3));
+        responses.put("null-node", CompletableFuture.completedFuture(null));
+
+        VectorSearchResponse strict = search(1, false);
+
+        assertThat(strict.status).isEqualTo(SearchStatus.FAILED);
+        assertThat(strict.incomplete).contains(Incompleteness.NODE_NO_RESPONSE, Incompleteness.MISSING_PARTITIONS);
+        assertThat(strict.failedPartitions).extracting(f -> f.reason)
+                .containsOnly(PartitionFailure.Reason.NODE_NO_RESPONSE);
+    }
+
+    @Test
+    void strictModeFailsOnDuplicateKeysAndOnDefinitionMismatch() {
+        node(parts(0, 1), candidate(7, 0.1));
+        node(parts(2, 3), candidate(7, 0.2));
+        assertThat(search(1, false).incomplete).containsExactly(Incompleteness.DUPLICATE_KEYS);
+
+        assignment.clear();
+        responses.clear();
+        node(parts(0, 1), candidate(1, 0.1));
+        respond("other-definition", parts(2, 3), NodeSearchResult.rejected(parts(2, 3),
+                PartitionFailure.Reason.DEFINITION_MISMATCH, "other-definition"));
+
+        VectorSearchResponse strict = search(1, false);
+        assertThat(strict.status).isEqualTo(SearchStatus.FAILED);
+        assertThat(strict.incomplete).containsExactly(Incompleteness.MISSING_PARTITIONS);
+        assertThat(strict.failedPartitions).extracting(f -> f.reason)
+                .containsOnly(PartitionFailure.Reason.DEFINITION_MISMATCH);
+    }
+
+    @Test
+    void nodesReceiveTheIndexAndTheCoordinatorFingerprint() {
+        node(parts(0, 1, 2, 3));
+
+        search(1);
+
+        assertThat(requests.values()).extracting(NodeSearchRequest::indexId, NodeSearchRequest::fingerprint)
+                .containsOnly(tuple("vectors", "fingerprint"));
     }
 
     // ------------------------------------------------------------ helpers
 
-    private SearchResponse search(int k) {
-        long start = clock.nanoTime();
+    private VectorSearchResponse search(int k) {
+        return search(k, true);
+    }
+
+    private VectorSearchResponse search(int k, boolean allowPartial) {
         Budget budget = Budget.remaining(clock, Duration.ofMillis(budgetMs).toNanos());
         DistributedSearchResult result = coordinator.search(
                 new NodeQuery("vectors", "fingerprint", new float[]{1, 0}, k, false, Map.of()), budget);
-        return hydrator.respond(result, k, budget, start);
+        return result.toResponse("vectors", k, allowPartial, 0);
     }
 
     private void node(int[] partitionsOfNode, IndexHit... candidates) {
@@ -371,12 +391,6 @@ class SearchCoordinatorTest {
 
     private static int[] parts(int... values) {
         return values;
-    }
-
-    private void store(long... ids) {
-        for (long id : ids) {
-            records.put(id, new VectorObject(new float[]{1, 0}, "https://vectors/" + id, "metadata-" + id));
-        }
     }
 
     private static IndexHit candidate(long id, double distance) {
