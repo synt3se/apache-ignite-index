@@ -1,0 +1,2 @@
+# Скрипты оболочки выполняются в Linux-контейнерах и Git Bash: CRLF ломает их при core.autocrlf=true.
+*.sh text eol=lf
