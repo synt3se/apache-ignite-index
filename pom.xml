@@ -9,6 +9,9 @@
     <packaging>pom</packaging>
     <modules>
         <module>vector-index-common</module>
+        <module>vector-index-core</module>
+        <module>vector-index-testkit</module>
+        <module>vector-index-jvector</module>
         <module>vector-index-node</module>
         <module>index-vector-server</module>
         <module>gateway-service</module>

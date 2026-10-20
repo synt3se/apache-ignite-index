@@ -5,6 +5,9 @@ FROM maven:3.9-eclipse-temurin-17 AS build
 WORKDIR /src
 COPY pom.xml .
 COPY vector-index-common/pom.xml  vector-index-common/
+COPY vector-index-core/pom.xml    vector-index-core/
+COPY vector-index-testkit/pom.xml vector-index-testkit/
+COPY vector-index-jvector/pom.xml  vector-index-jvector/
 COPY vector-index-node/pom.xml    vector-index-node/
 COPY index-vector-server/pom.xml  index-vector-server/
 COPY gateway-service/pom.xml      gateway-service/
