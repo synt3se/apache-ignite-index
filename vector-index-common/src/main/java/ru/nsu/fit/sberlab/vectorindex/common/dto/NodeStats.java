@@ -1,13 +1,23 @@
 package ru.nsu.fit.sberlab.vectorindex.common.dto;
 
 import java.io.Serializable;
+import java.util.ArrayList;
+import java.util.List;
 
+/**
+ * Статистика узла. Общие ресурсы узла (heap, общая очередь применения, uptime) — по одному
+ * значению на узел. Поля индекса ниже — индекс по умолчанию (совместимость {@code /vectors/stats}
+ * и дашбордов); все индексы узла — в {@link #indexes}.
+ */
 public class NodeStats implements Serializable {
     public String nodeId;
+    /** Индекс, которому соответствуют поля индекса ниже. */
+    public String indexId;
+    public List<IndexNodeStatus> indexes = new ArrayList<>();
     public int ownedPartitions;
     public int activePartitions;
     public long liveVectors;
-    public long applierBacklog; // отставание индекса от кэша
+    public long applierBacklog; // общая очередь применения узла (все индексы)
     public int dirtyPartitions;
     public long appliedTotal; // сколько изменений применено с запуска
     public long enginePendingVectors;
