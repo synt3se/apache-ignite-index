@@ -10,6 +10,7 @@ import static org.awaitility.Awaitility.await;
 import java.util.ArrayList;
 import java.util.List;
 import java.nio.file.Path;
+import java.util.concurrent.TimeUnit;
 
 import org.apache.ignite.Ignite;
 import org.apache.ignite.IgniteCache;
@@ -32,8 +33,16 @@ import org.junit.jupiter.api.io.TempDir;
 import ru.nsu.fit.sberlab.vectorindex.common.ScoredVector;
 import ru.nsu.fit.sberlab.vectorindex.common.VectorObject;
 import ru.nsu.fit.sberlab.vectorindex.common.indextype.IndexType;
+import ru.nsu.fit.sberlab.vectorindex.common.dto.PartitionFailure;
+import ru.nsu.fit.sberlab.vectorindex.core.Budget;
+import ru.nsu.fit.sberlab.vectorindex.core.NanoClock;
+import ru.nsu.fit.sberlab.vectorindex.node.index.IgniteIndexAdapter;
 import ru.nsu.fit.sberlab.vectorindex.node.index.JVectorProperties;
-import ru.nsu.fit.sberlab.vectorindex.node.index.PartitionIndexManager;
+import ru.nsu.fit.sberlab.vectorindex.node.search.Awaiter;
+import ru.nsu.fit.sberlab.vectorindex.node.search.DistributedSearchResult;
+import ru.nsu.fit.sberlab.vectorindex.node.search.IgniteNodeTransport;
+import ru.nsu.fit.sberlab.vectorindex.node.search.IgniteSearchTopology;
+import ru.nsu.fit.sberlab.vectorindex.node.search.SearchCoordinator;
 /**
  * Проверяем «индекс — производная кэша», дёргая менеджер напрямую:
  * записываем ТОЛЬКО в кэш, а поиск идёт по локальным индексам узлов.
@@ -43,7 +52,7 @@ class DerivativeIndexIT {
     @TempDir
     Path workDirectory;
 
-    private final List<PartitionIndexManager> managers = new ArrayList<>();
+    private final List<IgniteIndexAdapter> managers = new ArrayList<>();
 
     private static final TcpDiscoveryVmIpFinder IP_FINDER = new TcpDiscoveryVmIpFinder();
     static {
@@ -70,7 +79,7 @@ class DerivativeIndexIT {
 
     @AfterEach
     void tearDown() {
-        managers.forEach(PartitionIndexManager::stop);
+        managers.forEach(IgniteIndexAdapter::stop);
         Ignition.stopAll(true);
     }
 
@@ -80,8 +89,8 @@ class DerivativeIndexIT {
         Ignite b = Ignition.start(cfg("n2"));
         awaitServers(a, 2);
 
-        PartitionIndexManager mA = started(a);
-        PartitionIndexManager mB = started(b);
+        IgniteIndexAdapter mA = started(a);
+        IgniteIndexAdapter mB = started(b);
         seed(a, 5);
 
         await().atMost(ofSeconds(15)).pollInterval(ofMillis(300))
@@ -93,8 +102,8 @@ class DerivativeIndexIT {
         Ignite a = Ignition.start(cfg("n1"));
         Ignite b = Ignition.start(cfg("n2"));
         awaitServers(a, 2);
-        PartitionIndexManager mA = started(a);
-        PartitionIndexManager mB = started(b);
+        IgniteIndexAdapter mA = started(a);
+        IgniteIndexAdapter mB = started(b);
         seed(a, 5);
         await().atMost(ofSeconds(15)).untilAsserted(() -> assertConverged(0, mA, mB));
 
@@ -124,8 +133,8 @@ class DerivativeIndexIT {
         Ignite a = Ignition.start(cfg("n1"));
         Ignite b = Ignition.start(cfg("n2"));
         awaitServers(a, 2);
-        PartitionIndexManager mA = started(a);
-        PartitionIndexManager mB = started(b);
+        IgniteIndexAdapter mA = started(a);
+        IgniteIndexAdapter mB = started(b);
         seed(a, 5);
         await().atMost(ofSeconds(15)).untilAsserted(() -> assertConverged(0, mA, mB));
 
@@ -141,8 +150,8 @@ class DerivativeIndexIT {
         Ignite a = Ignition.start(cfg("n1"));
         Ignite b = Ignition.start(cfg("n2"));
         awaitServers(a, 2);
-        PartitionIndexManager mA = started(a);
-        PartitionIndexManager mB = started(b);
+        IgniteIndexAdapter mA = started(a);
+        IgniteIndexAdapter mB = started(b);
         seed(a, 5);
         await().atMost(ofSeconds(15)).untilAsserted(() -> assertConverged(0, mA, mB));
 
@@ -152,18 +161,51 @@ class DerivativeIndexIT {
 
         Ignite b2 = Ignition.start(cfg("n2"));           // вернулся
         awaitServers(a, 2);
-        PartitionIndexManager mB2 = started(b2);
+        IgniteIndexAdapter mB2 = started(b2);
 
         await().atMost(ofSeconds(30)).pollInterval(ofMillis(500))
                 .untilAsserted(() -> assertConverged(2, mA, mB2));
     }
 
+    @Test
+    void distributedSearchThroughComputeJobsReportsCoverage() {   // D: координатор → узлы по назначению
+        Ignite a = Ignition.start(cfg("n1"));
+        Ignite b = Ignition.start(cfg("n2"));
+        awaitServers(a, 2);
+        IgniteIndexAdapter mA = started(a);
+        IgniteIndexAdapter mB = started(b);
+        seed(a, 5);
+        await().atMost(ofSeconds(15)).untilAsserted(() -> assertConverged(0, mA, mB));
+        SearchCoordinator coordinator = new SearchCoordinator(new IgniteSearchTopology(a, "vectors"),
+                new IgniteNodeTransport(a), Awaiter.BLOCKING);
+
+        await().atMost(ofSeconds(15)).untilAsserted(() -> {
+            DistributedSearchResult result = coordinator.search(oneHot(3), 5, budget());
+            assertThat(result.partial()).isFalse();
+            assertThat(result.searchedPartitions()).hasSize(32);
+            assertThat(result.hits()).extracting(ScoredVector::id).hasSize(5).doesNotHaveDuplicates();
+            assertThat(result.hits().get(0).id()).isEqualTo(3L);
+            assertThat(result.duplicateKeys()).isZero();
+        });
+
+        mB.stop();                                      // индекс на n2 остановлен, узел жив
+        DistributedSearchResult degraded = coordinator.search(oneHot(3), 5, budget());
+        assertThat(degraded.partial()).isTrue();
+        assertThat(degraded.failedPartitions()).isNotEmpty()
+                .extracting(failure -> failure.reason).containsOnly(PartitionFailure.Reason.NO_INDEX);
+        assertThat(degraded.searchedPartitions().length + degraded.failedPartitions().size()).isEqualTo(32);
+    }
+
     // ------------------------------------------------------------- helpers
 
+    private static Budget budget() {
+        return Budget.remaining(NanoClock.SYSTEM, TimeUnit.SECONDS.toNanos(5));
+    }
+
     /** Сырое склеивание локальных выдач БЕЗ дедупа — так видно, эксклюзивно ли владение. */
-    private static void assertConverged(int hot, PartitionIndexManager... managers) {
+    private static void assertConverged(int hot, IgniteIndexAdapter... managers) {
         List<ScoredVector> raw = new ArrayList<>();
-        for (PartitionIndexManager m : managers) {
+        for (IgniteIndexAdapter m : managers) {
             raw.addAll(m.searchLocal(oneHot(hot), 5));
         }
         assertThat(raw).extracting(ScoredVector::id).doesNotHaveDuplicates(); // один primary на вектор
@@ -173,8 +215,8 @@ class DerivativeIndexIT {
         assertThat(top.distance()).isCloseTo(0.0, within(1e-6));
     }
 
-    private PartitionIndexManager started(Ignite ignite) {
-        PartitionIndexManager m = new PartitionIndexManager(
+    private IgniteIndexAdapter started(Ignite ignite) {
+        IgniteIndexAdapter m = new IgniteIndexAdapter(
                 ignite, "vectors", 512, IndexType.JVECTOR_INDEX, testJvectorProps());
         m.start();
         managers.add(m);

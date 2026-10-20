@@ -121,6 +121,7 @@ public final class IgniteIndexAdapter {
             ignite.events().localListen(cacheListener, EventType.EVT_CACHE_OBJECT_PUT, EventType.EVT_CACHE_OBJECT_REMOVED);
             ignite.events().localListen(topologyListener, EventType.EVT_NODE_JOINED, EventType.EVT_NODE_LEFT,
                     EventType.EVT_NODE_FAILED, EventType.EVT_CACHE_REBALANCE_STOPPED);
+            NodeIndexContext.register(ignite, this);
         }
         if (resources.housekeeper != null) {
             resources.housekeeper.schedule(() -> safeReconcile(true), 1, TimeUnit.SECONDS);
@@ -134,11 +135,16 @@ public final class IgniteIndexAdapter {
     public void stop() {
         stopped = true;
         if (ignite != null) {
-            if (cacheListener != null) {
-                ignite.events().stopLocalListen(cacheListener);
-            }
-            if (topologyListener != null) {
-                ignite.events().stopLocalListen(topologyListener);
+            try {
+                NodeIndexContext.unregister(ignite, this);
+                if (cacheListener != null) {
+                    ignite.events().stopLocalListen(cacheListener);
+                }
+                if (topologyListener != null) {
+                    ignite.events().stopLocalListen(topologyListener);
+                }
+            } catch (IllegalStateException nodeAlreadyStopped) {
+                // узел остановлен раньше адаптера: слушатели и nodeLocalMap ушли вместе с ним
             }
         }
         for (PartitionRuntime<Object> runtime : runtimes.values()) {

@@ -6,7 +6,7 @@ import org.apache.ignite.services.Service;
 import org.apache.ignite.services.ServiceContext;
 
 import ru.nsu.fit.sberlab.vectorindex.node.index.JVectorProperties;
-import ru.nsu.fit.sberlab.vectorindex.node.index.PartitionIndexManager;
+import ru.nsu.fit.sberlab.vectorindex.node.index.IgniteIndexAdapter;
 import ru.nsu.fit.sberlab.vectorindex.common.indextype.IndexType;
 
 public class LocalIndexServiceImpl implements Service {
@@ -15,7 +15,7 @@ public class LocalIndexServiceImpl implements Service {
 
     @IgniteInstanceResource
     private transient Ignite ignite;
-    private transient PartitionIndexManager manager;
+    private transient IgniteIndexAdapter manager;
     private IndexType indexType = IndexType.JVECTOR_INDEX;
 
     private int dimension = 512;
@@ -39,7 +39,7 @@ public class LocalIndexServiceImpl implements Service {
     @Override
     public void init(ServiceContext ctx) {
         ignite.log().info("[vindex] service init, indexType=" + indexType);
-        manager = new PartitionIndexManager(
+        manager = new IgniteIndexAdapter(
                 ignite,
                 "vectors",
                 dimension,

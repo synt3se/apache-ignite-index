@@ -5,8 +5,10 @@ import org.apache.ignite.compute.ComputeJob;
 import org.apache.ignite.compute.ComputeJobAdapter;
 import org.apache.ignite.compute.ComputeJobResult;
 import org.apache.ignite.compute.ComputeTaskAdapter;
+import org.apache.ignite.Ignite;
+import org.apache.ignite.resources.IgniteInstanceResource;
+import ru.nsu.fit.sberlab.vectorindex.node.index.IgniteIndexAdapter;
 import ru.nsu.fit.sberlab.vectorindex.node.index.NodeIndexContext;
-import ru.nsu.fit.sberlab.vectorindex.node.index.PartitionIndexManager;
 
 import java.util.HashMap;
 import java.util.List;
@@ -30,12 +32,15 @@ public class RebuildIndexesTask extends ComputeTaskAdapter<Void, Void> {
     }
 
     private static class RebuildIndexesJob extends ComputeJobAdapter {
+        @IgniteInstanceResource
+        private transient Ignite ignite;
+
         @Override
         public Object execute() {
-            PartitionIndexManager manager = NodeIndexContext.manager();
-            if (manager == null) throw new IllegalStateException("PartitionIndexManager is not initialized");
+            IgniteIndexAdapter adapter = NodeIndexContext.manager(ignite);
+            if (adapter == null) throw new IllegalStateException("vector index adapter is not initialized");
 
-            manager.resumeIndexing();   // снимает bulk-паузу и делает полный rebuild
+            adapter.resumeIndexing();   // снимает bulk-паузу и делает полный пересканирование
             return null;
         }
     }
