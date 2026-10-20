@@ -414,6 +414,67 @@ class PartitionRuntimeTest {
     }
 
     @Test
+    void budgetExpiredWhileSearchingTheDeltaDoesNotStartTheBase() {
+        PartitionRuntime<Object> rt = readyObjectRuntime();
+        AtomicLong now = new AtomicLong();
+        AtomicBoolean armed = new AtomicBoolean();
+        // Поиск по active ищет ordinal ключа в базе (hashCode) — в этот момент бюджет истекает.
+        rt.upsert(expiringKey(armed, now), v(3, 3));
+
+        try (ReadView<Object> view = rt.openView().orElseThrow()) {
+            assertThat(view.search(v(0, 0), exactTopK(3, now)).completion())
+                    .as("sanity: within the budget the search completes").isEqualTo(Completion.COMPLETE);
+            armed.set(true);
+            LocalSearchResult<Object> result = view.search(v(0, 0), exactTopK(3, now));
+
+            assertThat(armed).as("the budget expired inside the delta stage").isFalse();
+            assertThat(result.completion()).isEqualTo(Completion.BUDGET_EXHAUSTED);
+            assertThat(result.hits()).isEmpty();
+        }
+    }
+
+    @Test
+    void budgetExpiredWhileSearchingFrozenLayersDoesNotStartTheBase() {
+        PartitionRuntime<Object> rt = readyObjectRuntime();
+        AtomicLong now = new AtomicLong();
+        AtomicBoolean armed = new AtomicBoolean();
+        rt.upsert(expiringKey(armed, now), v(3, 3));
+        BuildToken<Object> token = rt.capture().orElseThrow(); // ключ уходит во frozen
+        rt.upsert(4L, v(4, 4)); // frozen-этап проверяет перекрытие ключа в active (hashCode)
+
+        try (ReadView<Object> view = rt.openView().orElseThrow()) {
+            assertThat(view.search(v(0, 0), exactTopK(4, now)).completion())
+                    .as("sanity: within the budget the search completes").isEqualTo(Completion.COMPLETE);
+            armed.set(true);
+            LocalSearchResult<Object> result = view.search(v(0, 0), exactTopK(4, now));
+
+            assertThat(armed).as("the budget expired inside the frozen stage").isFalse();
+            assertThat(result.completion()).isEqualTo(Completion.BUDGET_EXHAUSTED);
+            assertThat(result.hits()).isEmpty();
+        } finally {
+            rt.abandonBuild(token);
+        }
+    }
+
+    @Test
+    void frozenPreparationIsBoundedByTheBudgetAndAnInterruptedOneIsNotCached() {
+        AtomicLong now = new AtomicLong();
+        DeltaLayer layer = DeltaLayer.EMPTY;
+        for (long id = 0; id < 3000; id++) {
+            layer = layer.put(new TickingKey(id, now), new Entry(1, v(id, id)));
+        }
+        FrozenGroup group = new FrozenGroup(BaseSegment.empty(), java.util.List.of(layer));
+
+        // Каждое хэширование ключа — тик часов: подготовка тратит бюджет пропорционально записям.
+        assertThat(group.resolution(Budget.remaining(now::get, 1000)))
+                .as("preparation interrupted by the budget").isNull();
+        assertThat(group.resolution(Budget.unlimited()).liveKeys())
+                .as("a later request prepares the whole resolution").hasSize(3000);
+        assertThat(group.resolution(Budget.remaining(now::get, 0)))
+                .as("a completed resolution is cached and reused").isNotNull();
+    }
+
+    @Test
     void underfilledAnnFallsBackToExactSearchWhileBudgetAllows() throws Exception {
         ready(Map.of(1L, v(1, 1), 2L, v(2, 2), 3L, v(3, 3)));
         optimize();
@@ -454,6 +515,52 @@ class PartitionRuntimeTest {
     }
 
     // ------------------------------------------------------------ helpers
+
+    /** База {1, 2} без структуры: поиск по ней — точный перебор. */
+    private PartitionRuntime<Object> readyObjectRuntime() {
+        PartitionRuntime<Object> rt = PartitionRuntime.create(RuntimeConfig.of("stages", 0, L2, algorithm));
+        ScanSession<Object> scan = rt.beginScan();
+        scan.offer(1L, v(1, 1));
+        scan.offer(2L, v(2, 2));
+        assertThat(rt.publishScan(scan)).isEqualTo(PublishResult.PUBLISHED);
+        return rt;
+    }
+
+    /** Бюджет 10 нс от текущего момента {@code now}. */
+    private static SearchParams exactTopK(int k, AtomicLong now) {
+        return SearchParams.exactTopK(k).withBudget(Budget.remaining(now::get, 10));
+    }
+
+    /** Ключ, первое хэширование которого после взвода переводит часы за любой бюджет. */
+    private static Object expiringKey(AtomicBoolean armed, AtomicLong now) {
+        return new Object() {
+            @Override public int hashCode() {
+                if (armed.compareAndSet(true, false)) {
+                    now.addAndGet(1_000);
+                }
+                return 77;
+            }
+        };
+    }
+
+    private static final class TickingKey {
+        private final long id;
+        private final AtomicLong clock;
+
+        TickingKey(long id, AtomicLong clock) {
+            this.id = id;
+            this.clock = clock;
+        }
+
+        @Override public int hashCode() {
+            clock.incrementAndGet();
+            return Long.hashCode(id);
+        }
+
+        @Override public boolean equals(Object other) {
+            return other instanceof TickingKey key && key.id == id;
+        }
+    }
 
     private void ready(Map<Long, float[]> records) {
         publishScan(runtime, records);

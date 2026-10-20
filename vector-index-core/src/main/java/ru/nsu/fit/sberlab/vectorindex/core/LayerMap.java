@@ -1,6 +1,8 @@
 package ru.nsu.fit.sberlab.vectorindex.core;
 
+import java.util.Map;
 import java.util.function.BiConsumer;
+import java.util.function.BiPredicate;
 
 import org.pcollections.HashPMap;
 import org.pcollections.HashTreePMap;
@@ -46,5 +48,15 @@ final class LayerMap<K, V> {
     /** Порядок обхода детерминирован для одинакового содержимого (по хэшу ключа). */
     void forEach(BiConsumer<? super K, ? super V> action) {
         map.forEach(action);
+    }
+
+    /** Тот же порядок, что у {@link #forEach}; {@code false} из {@code action} прекращает обход. */
+    boolean forEachWhile(BiPredicate<? super K, ? super V> action) {
+        for (Map.Entry<K, V> entry : map.entrySet()) {
+            if (!action.test(entry.getKey(), entry.getValue())) {
+                return false;
+            }
+        }
+        return true;
     }
 }

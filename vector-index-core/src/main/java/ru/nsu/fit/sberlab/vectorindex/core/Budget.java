@@ -11,6 +11,9 @@ public final class Budget {
 
     private static final long UNBOUNDED = Long.MAX_VALUE / 4;
 
+    /** Циклы ядра проверяют бюджет перед первым элементом и далее раз в 1024 элемента. */
+    static final int CHECK_MASK = 1023;
+
     private final NanoClock clock;
     private final long deadlineNanos;
     private volatile boolean cancelled;

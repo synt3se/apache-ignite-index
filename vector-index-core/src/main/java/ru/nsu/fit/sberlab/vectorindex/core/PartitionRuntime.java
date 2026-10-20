@@ -174,9 +174,11 @@ public final class PartitionRuntime<K> implements AutoCloseable {
     /**
      * O(1) под замком: {@code frozen' = frozen + [active]}, {@code active' = ∅}.
      * Пусто, если runtime не в READY, открыт скан, уже есть незавершённый токен
-     * или собирать нечего.
+     * или собирать нечего. После замка — O(|frozen|) на разрешение frozen-слоёв.
      */
     public Optional<BuildToken<K>> capture() {
+        BuildToken<K> token;
+        State captured;
         lockWriters();
         try {
             State s = state;
@@ -194,12 +196,15 @@ public final class PartitionRuntime<K> implements AutoCloseable {
                 frozen = Collections.unmodifiableList(grown);
             }
             s.base.retain();
-            BuildToken<K> token = new BuildToken<>(this, s.base, frozen, revision, clock.nanoTime());
-            state = s.captured(frozen, token);
-            return Optional.of(token);
+            token = new BuildToken<>(this, s.base, frozen, revision, clock.nanoTime());
+            captured = s.captured(frozen, token);
+            state = captured;
         } finally {
             writers.unlock();
         }
+        // Прогрев вне замка, в потоке сборки: поиску не придётся готовить frozen из своего бюджета.
+        captured.group.resolution();
+        return Optional.of(token);
     }
 
     /**

@@ -14,8 +14,6 @@ import ru.nsu.fit.sberlab.vectorindex.core.algorithm.VectorAlgorithm;
 /** {@link ReadView} над одним неизменяемым {@link State}; база удерживается до close(). */
 final class StateView<K> implements ReadView<K> {
 
-    private static final int BUDGET_CHECK_MASK = 1023;
-
     private final PartitionRuntime<K> runtime;
     private final State state;
     private final AtomicBoolean closed = new AtomicBoolean();
@@ -94,13 +92,20 @@ final class StateView<K> implements ReadView<K> {
         if (k <= 0) {
             return new LocalSearchResult<>(Completion.COMPLETE, List.of(), false);
         }
+        // Каждый этап начинается только в бюджете: циклы проверяют его перед первым элементом
+        // и далее раз в 1024 элемента. Начатый этап может выйти за бюджет не больше чем на
+        // интервал проверки или один неделимый обход структуры (ADR-7).
         Budget budget = params.budget();
         if (budget.exhausted()) {
             return LocalSearchResult.exhausted();
         }
 
+        // 0. Разрешение frozen-слоёв: обычно прогрето при capture, иначе — за счёт этого запроса.
+        FrozenGroup.Resolution frozen = state.group.resolution(budget);
+        if (frozen == null) {
+            return LocalSearchResult.exhausted();
+        }
         TopHits top = new TopHits(k);
-        FrozenGroup.Resolution frozen = state.group.resolution();
         OrdinalMask mask = frozen.mask();
         long baseRevision = base.revision;
 
@@ -109,10 +114,12 @@ final class StateView<K> implements ReadView<K> {
             OrdinalMask activeMask = base.size() == 0 ? null
                     : (mask == null ? new OrdinalMask(base.size()) : mask.copy());
             int[] visited = {0};
-            boolean[] exhausted = {false};
-            state.active.entries.forEach((key, entry) -> {
-                if (exhausted[0] || entry.revision() <= baseRevision) {
-                    return;
+            boolean finished = state.active.entries.forEachWhile((key, entry) -> {
+                if ((visited[0]++ & Budget.CHECK_MASK) == 0 && budget.exhausted()) {
+                    return false;
+                }
+                if (entry.revision() <= baseRevision) {
+                    return true;
                 }
                 if (activeMask != null) {
                     int ordinal = base.ordinalOf(key);
@@ -123,11 +130,9 @@ final class StateView<K> implements ReadView<K> {
                 if (entry.live()) {
                     top.offer(key, runtime.spec().distance(q, entry.vector()));
                 }
-                if ((++visited[0] & BUDGET_CHECK_MASK) == 0 && budget.exhausted()) {
-                    exhausted[0] = true;
-                }
+                return true;
             });
-            if (exhausted[0]) {
+            if (!finished) {
                 return LocalSearchResult.exhausted();
             }
             if (activeMask != null) {
@@ -137,7 +142,7 @@ final class StateView<K> implements ReadView<K> {
 
         // 2. Живые действующие записи frozen, не перекрытые active.
         for (int i = 0; i < frozen.liveKeys().length; i++) {
-            if ((i & BUDGET_CHECK_MASK) == BUDGET_CHECK_MASK && budget.exhausted()) {
+            if ((i & Budget.CHECK_MASK) == 0 && budget.exhausted()) {
                 return LocalSearchResult.exhausted();
             }
             Object key = frozen.liveKeys()[i];
@@ -152,6 +157,9 @@ final class StateView<K> implements ReadView<K> {
         int baseLive = base.size() - (mask == null ? 0 : mask.cardinality());
         boolean underfilled = false;
         if (baseLive > 0) {
+            if (budget.exhausted()) {
+                return LocalSearchResult.exhausted(); // не полагаемся на проверку внутри алгоритма
+            }
             OrdinalFilter accept = mask == null ? OrdinalFilter.ALL : mask;
             if (!useStructure) {
                 if (!exactScan(base, accept, null, q, top, budget)) {
@@ -209,7 +217,7 @@ final class StateView<K> implements ReadView<K> {
     private boolean exactScan(BaseSegment base, OrdinalFilter accept, BitSet skip, float[] q, TopHits top,
                               Budget budget) {
         for (int ordinal = 0; ordinal < base.size(); ordinal++) {
-            if ((ordinal & BUDGET_CHECK_MASK) == BUDGET_CHECK_MASK && budget.exhausted()) {
+            if ((ordinal & Budget.CHECK_MASK) == 0 && budget.exhausted()) {
                 return false;
             }
             if (accept.accept(ordinal) && (skip == null || !skip.get(ordinal))) {
