@@ -465,6 +465,11 @@ public final class PartitionRuntime<K> implements AutoCloseable {
         return state.phase == Phase.CLOSED;
     }
 
+    /** Фаза без сборки полного {@link #status()}. */
+    public Phase phase() {
+        return state.phase;
+    }
+
     public RuntimeStatus status() {
         return statusOf(state);
     }

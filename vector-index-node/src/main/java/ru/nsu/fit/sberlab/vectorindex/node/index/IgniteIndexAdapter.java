@@ -65,7 +65,8 @@ public final class IgniteIndexAdapter {
     private final boolean ownsResources;
 
     private final ConcurrentHashMap<Integer, PartitionRuntime<Object>> runtimes = new ConcurrentHashMap<>();
-    private final Set<Integer> scanQueued = ConcurrentHashMap.newKeySet();
+    /** Runtime (по идентичности), чей скан стоит в очереди или выполняется: задание — эпизода, не номера партиции. */
+    private final Set<PartitionRuntime<Object>> scanQueued = ConcurrentHashMap.newKeySet();
     private final AtomicBoolean reconcileDebounce = new AtomicBoolean();
     private final AtomicBoolean reconcileRunning = new AtomicBoolean();
     private volatile boolean stopped;
@@ -268,7 +269,8 @@ public final class IgniteIndexAdapter {
             } else if (rebuildAll) {
                 runtime.requestRepair(RepairReason.MANUAL);
                 scheduled += scheduleScan(partition, runtime) ? 1 : 0;
-            } else if (runtime.repairPending()) {
+            } else if (runtime.repairPending() || runtime.phase() == Phase.LOADING) {
+                // LOADING без скана в очереди — первоначальный скан не состоялся (отказ пула и т. п.)
                 scheduled += scheduleScan(partition, runtime) ? 1 : 0;
             }
         }
@@ -282,16 +284,19 @@ public final class IgniteIndexAdapter {
                 definition.algorithm(), definition.policy(), resources.builds::requestOptimization, clock));
     }
 
-    /** Не больше одного скана на партицию; повтор после скана решают счётчики сверки runtime. */
+    /**
+     * Не больше одного скана на runtime; повтор после скана решают счётчики сверки runtime.
+     * Задание прежнего эпизода той же партиции не мешает скану нового: оно завершится само.
+     */
     private boolean scheduleScan(int partition, PartitionRuntime<Object> runtime) {
-        if (stopped || !scanQueued.add(partition)) {
+        if (stopped || !scanQueued.add(runtime)) {
             return false;
         }
         try {
             resources.scanPool.execute(() -> runScan(partition, runtime));
             return true;
         } catch (RejectedExecutionException shuttingDown) {
-            scanQueued.remove(partition);
+            scanQueued.remove(runtime);
             return false;
         }
     }
@@ -332,7 +337,7 @@ public final class IgniteIndexAdapter {
                     + TimeUnit.NANOSECONDS.toMillis(clock.nanoTime() - started) + " ms: " + published
                     + (again ? " (repair requested during scan - another pass)" : ""));
         } finally {
-            scanQueued.remove(partition);
+            scanQueued.remove(runtime);
             if (again) {
                 scheduleScan(partition, runtime);
             }

@@ -261,6 +261,50 @@ class IgniteIndexAdapterTest {
     }
 
     @Test
+    @DisplayName("A queued scan of the previous ownership episode must not swallow the first scan of the next one")
+    void partitionThatLeftAndReturnedWhileItsOldScanWasQueuedStillGetsItsFirstScan() throws Exception {
+        try (Fixture fixture = new Fixture()) {
+            fixture.source.put(10, 1, 0);
+            fixture.adapter.forceReconcile(false);        // эпизод 1: первоначальный скан в очереди
+            var first = fixture.adapter.runtime(0);
+            fixture.source.owned.set(new int[0]);
+            fixture.adapter.forceReconcile(false);        // партиция ушла: эпизод 1 закрыт
+            fixture.source.owned.set(new int[]{0});
+            fixture.adapter.forceReconcile(false);        // вернулась: эпизод 2 ждёт своего скана
+            var second = fixture.adapter.runtime(0);
+            assertThat(second).isNotSameAs(first);
+            assertThat(first.isClosed()).isTrue();
+
+            // Задание эпизода 1 завершается без работы, скан эпизода 2 стоит в очереди сам по себе:
+            // без повторной сверки (её страховку проверяет следующий тест).
+            fixture.scans.runAll();
+
+            assertThat(second.phase()).isEqualTo(Phase.READY);
+            assertThat(fixture.adapter.searchLocal(new float[]{1, 0}, 10)).extracting(ScoredVector::id)
+                    .containsExactly(10L);
+        }
+    }
+
+    @Test
+    void firstScanRejectedByThePoolIsRetriedByTheNextReconcile() throws Exception {
+        try (Fixture fixture = new Fixture()) {
+            fixture.source.put(10, 1, 0);
+            fixture.scans.rejectNext(1);
+            fixture.adapter.forceReconcile(false);        // runtime создан, скан не принят пулом
+            assertThat(fixture.adapter.runtime(0).phase()).isEqualTo(Phase.LOADING);
+            assertThat(fixture.adapter.runtime(0).repairPending()).isFalse();
+            assertThat(fixture.scans.pending()).isZero();
+
+            fixture.adapter.forceReconcile(false);
+            fixture.scans.runAll();
+
+            assertThat(fixture.adapter.runtime(0).phase()).isEqualTo(Phase.READY);
+            assertThat(fixture.adapter.searchLocal(new float[]{1, 0}, 10)).extracting(ScoredVector::id)
+                    .containsExactly(10L);
+        }
+    }
+
+    @Test
     void unsupportedKeyTypeIsCountedNotSilentlyIgnored() throws Exception {
         try (Fixture fixture = new Fixture()) {
             fixture.rebuildAll();
