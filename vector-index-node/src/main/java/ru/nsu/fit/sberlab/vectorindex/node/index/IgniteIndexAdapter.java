@@ -450,7 +450,7 @@ public final class IgniteIndexAdapter {
         s.applierOverflowsTotal = applierOverflows.sum();
         s.applyErrorsTotal = applyErrors.sum();
         s.unsupportedKeysTotal = unsupportedKeys.sum();
-        s.engine = definition.legacyType().name();
+        s.engine = definition.kind().legacyEngineName();
         s.dimension = definition.spec().dimension();
         s.indexMemoryEstimateBytes = s.liveVectors * bytesPerVectorEstimate();
         Runtime rt = Runtime.getRuntime();
@@ -467,7 +467,7 @@ public final class IgniteIndexAdapter {
     private long bytesPerVectorEstimate() {
         long vector = 16L + (long) definition.spec().dimension() * Float.BYTES;
         long base = vector + 64;
-        return definition.legacyType() == IndexType.JVECTOR_INDEX ? base + 2L * 32 * Integer.BYTES : base;
+        return definition.kind() == AlgorithmKind.JVECTOR ? base + 2L * 32 * Integer.BYTES : base;
     }
 
     /** Для тестов: runtime партиции текущего эпизода. */
