@@ -71,7 +71,7 @@ class DerivativeIndexIT {
         p.setRefineFinalGraph(true);
         p.setAddRebuildRatio(0.10);
         // These ITs exercise cache events and ownership changes. Graph merge races are
-        // exercised with controlled barriers in JVectorPartitionIndexTest instead.
+        // exercised step by step in PartitionRuntimeContract instead.
         p.setDeleteRebuildRatio(10);
         p.setMinAdditionsBeforeRebuild(10_000);
         return p;
