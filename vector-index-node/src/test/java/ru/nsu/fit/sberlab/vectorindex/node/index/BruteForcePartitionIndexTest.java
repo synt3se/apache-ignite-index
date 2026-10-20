@@ -7,6 +7,8 @@ import java.util.Comparator;
 import java.util.List;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Tag;
 import ru.nsu.fit.sberlab.vectorindex.common.ScoredVector;
 
 class BruteForcePartitionIndexTest {
@@ -41,5 +43,18 @@ class BruteForcePartitionIndexTest {
         assertThat(idx.search(oneHot(1), 5))
                 .extracting(ScoredVector::id)
                 .doesNotContain(1L);
+    }
+
+    @Test
+    @Tag("known-issue")
+    @DisplayName("Input ownership: mutating add's float[] must not change the indexed vector")
+    void addCopiesCallerOwnedArray() {
+        BruteForcePartitionIndex idx = new BruteForcePartitionIndex();
+        float[] callerVector = oneHot(1);
+        idx.add(1, callerVector);
+        callerVector[1] = -1;
+
+        assertThat(idx.search(oneHot(1), 1)).singleElement()
+                .satisfies(neighbor -> assertThat(neighbor.distance()).isCloseTo(0, within(1e-6)));
     }
 }

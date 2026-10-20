@@ -9,6 +9,7 @@ import static org.awaitility.Awaitility.await;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.nio.file.Path;
 
 import org.apache.ignite.Ignite;
 import org.apache.ignite.IgniteCache;
@@ -17,12 +18,16 @@ import org.apache.ignite.cache.CacheAtomicityMode;
 import org.apache.ignite.cache.CacheMode;
 import org.apache.ignite.cache.affinity.rendezvous.RendezvousAffinityFunction;
 import org.apache.ignite.configuration.CacheConfiguration;
+import org.apache.ignite.configuration.DataRegionConfiguration;
+import org.apache.ignite.configuration.DataStorageConfiguration;
 import org.apache.ignite.configuration.IgniteConfiguration;
 import org.apache.ignite.events.EventType;
 import org.apache.ignite.spi.discovery.tcp.TcpDiscoverySpi;
 import org.apache.ignite.spi.discovery.tcp.ipfinder.vm.TcpDiscoveryVmIpFinder;
+import org.apache.ignite.spi.communication.tcp.TcpCommunicationSpi;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import ru.nsu.fit.sberlab.vectorindex.common.ScoredVector;
 import ru.nsu.fit.sberlab.vectorindex.common.VectorObject;
@@ -35,10 +40,15 @@ import ru.nsu.fit.sberlab.vectorindex.node.index.PartitionIndexManager;
  */
 class DerivativeIndexIT {
 
+    @TempDir
+    Path workDirectory;
+
+    private final List<PartitionIndexManager> managers = new ArrayList<>();
+
     private static final TcpDiscoveryVmIpFinder IP_FINDER = new TcpDiscoveryVmIpFinder();
     static {
         IP_FINDER.setShared(true);
-        IP_FINDER.setAddresses(List.of("127.0.0.1:47500..47509"));
+        IP_FINDER.setAddresses(List.of("127.0.0.1:37500..37509"));
     }
 
     private static JVectorProperties testJvectorProps() {
@@ -51,13 +61,16 @@ class DerivativeIndexIT {
         p.setAddHierarchy(true);
         p.setRefineFinalGraph(true);
         p.setAddRebuildRatio(0.10);
-        p.setDeleteRebuildRatio(0.20);
-        p.setMinAdditionsBeforeRebuild(2);   // маленькое — чтобы инкрементальные пересборки срабатывали на малых тестовых данных
+        // These ITs exercise cache events and ownership changes. Graph merge races are
+        // exercised with controlled barriers in JVectorPartitionIndexTest instead.
+        p.setDeleteRebuildRatio(10);
+        p.setMinAdditionsBeforeRebuild(10_000);
         return p;
     }
 
     @AfterEach
     void tearDown() {
+        managers.forEach(PartitionIndexManager::stop);
         Ignition.stopAll(true);
     }
 
@@ -73,6 +86,37 @@ class DerivativeIndexIT {
 
         await().atMost(ofSeconds(15)).pollInterval(ofMillis(300))
                 .untilAsserted(() -> assertConverged(3, mA, mB));
+    }
+
+    @Test
+    void updatesAndDeletesConvergeThroughCacheEvents() {
+        Ignite a = Ignition.start(cfg("n1"));
+        Ignite b = Ignition.start(cfg("n2"));
+        awaitServers(a, 2);
+        PartitionIndexManager mA = started(a);
+        PartitionIndexManager mB = started(b);
+        seed(a, 5);
+        await().atMost(ofSeconds(15)).untilAsserted(() -> assertConverged(0, mA, mB));
+
+        IgniteCache<Long, VectorObject> cache = a.cache("vectors");
+        cache.put(0L, new VectorObject(oneHot(7), "updated-image", "updated-metadata"));
+        await().atMost(ofSeconds(15)).untilAsserted(() -> {
+            List<ScoredVector> results = new ArrayList<>(mA.searchLocal(oneHot(7), 10));
+            results.addAll(mB.searchLocal(oneHot(7), 10));
+            assertThat(results).extracting(ScoredVector::id).doesNotHaveDuplicates().hasSize(5);
+            assertThat(results).filteredOn(neighbor -> neighbor.id() == 0)
+                    .singleElement().satisfies(neighbor ->
+                            assertThat(neighbor.distance()).isCloseTo(0, within(1e-6)));
+        });
+
+        cache.remove(0L);
+        cache.remove(2L);
+        await().atMost(ofSeconds(15)).untilAsserted(() -> {
+            List<ScoredVector> results = new ArrayList<>(mA.searchLocal(oneHot(7), 10));
+            results.addAll(mB.searchLocal(oneHot(7), 10));
+            assertThat(results).extracting(ScoredVector::id)
+                    .containsExactlyInAnyOrder(1L, 3L, 4L);
+        });
     }
 
     @Test
@@ -129,10 +173,11 @@ class DerivativeIndexIT {
         assertThat(top.distance()).isCloseTo(0.0, within(1e-6));
     }
 
-    private static PartitionIndexManager started(Ignite ignite) {
+    private PartitionIndexManager started(Ignite ignite) {
         PartitionIndexManager m = new PartitionIndexManager(
                 ignite, "vectors", 512, IndexType.JVECTOR_INDEX, testJvectorProps());
         m.start();
+        managers.add(m);
         return m;
     }
 
@@ -154,16 +199,22 @@ class DerivativeIndexIT {
                 .until(() -> ignite.cluster().forServers().nodes().size() == n);
     }
 
-    private static IgniteConfiguration cfg(String name) {
+    private IgniteConfiguration cfg(String name) {
         IgniteConfiguration c = new IgniteConfiguration();
         c.setIgniteInstanceName(name);
         c.setConsistentId(name);
+        c.setLocalHost("127.0.0.1");
+        c.setWorkDirectory(workDirectory.resolve(name).toString());
+        c.setDataStorageConfiguration(new DataStorageConfiguration().setDefaultDataRegionConfiguration(
+                new DataRegionConfiguration().setInitialSize(32L * 1024 * 1024).setMaxSize(64L * 1024 * 1024)));
         c.setPeerClassLoadingEnabled(false);
         c.setIncludeEventTypes(
                 EventType.EVT_CACHE_OBJECT_PUT, EventType.EVT_CACHE_OBJECT_REMOVED,
                 EventType.EVT_NODE_JOINED, EventType.EVT_NODE_LEFT, EventType.EVT_NODE_FAILED,
                 EventType.EVT_CACHE_REBALANCE_STOPPED);
-        c.setDiscoverySpi(new TcpDiscoverySpi().setIpFinder(IP_FINDER));
+        c.setDiscoverySpi(new TcpDiscoverySpi().setIpFinder(IP_FINDER)
+                .setLocalPort(37500).setLocalPortRange(9));
+        c.setCommunicationSpi(new TcpCommunicationSpi().setLocalPort(37200).setLocalPortRange(9));
 
         CacheConfiguration<Long, VectorObject> cache = new CacheConfiguration<>("vectors");
         cache.setCacheMode(CacheMode.PARTITIONED);

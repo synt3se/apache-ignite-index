@@ -72,7 +72,17 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.2.5</version>
                 <configuration>
+                    <!-- Keep the default unit-test patterns and run the local Ignite ITs too. -->
+                    <includes>
+                        <include>**/Test*.java</include>
+                        <include>**/*Test.java</include>
+                        <include>**/*Tests.java</include>
+                        <include>**/*TestCase.java</include>
+                        <include>**/*IT.java</include>
+                    </includes>
                     <argLine>
+                        -XX:ActiveProcessorCount=4
+                        -Djava.net.preferIPv4Stack=true
                         --add-opens=java.base/java.nio=ALL-UNNAMED
                         --add-opens=java.base/sun.nio.ch=ALL-UNNAMED
                         --add-opens=java.base/java.lang=ALL-UNNAMED
