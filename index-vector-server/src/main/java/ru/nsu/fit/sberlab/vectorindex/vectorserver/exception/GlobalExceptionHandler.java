@@ -10,6 +10,9 @@ import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 
 import javax.validation.ConstraintViolationException;
+
+import ru.nsu.fit.sberlab.vectorindex.common.dto.SearchError;
+import ru.nsu.fit.sberlab.vectorindex.vectorserver.search.IndexRequestException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -71,6 +74,16 @@ public class GlobalExceptionHandler {
 
         return new ResponseEntity<>(response, HttpStatus.NOT_FOUND);
     }
+    @ExceptionHandler(IndexRequestException.class)
+    public ResponseEntity<Map<String, Object>> handleIndexRequest(IndexRequestException ex) {
+        HttpStatus status = ex.error() == SearchError.UNKNOWN_INDEX ? HttpStatus.NOT_FOUND : HttpStatus.BAD_REQUEST;
+        Map<String, Object> response = new HashMap<>();
+        response.put("status", status.value());
+        response.put("error", ex.error().name());
+        response.put("message", ex.getMessage());
+        return new ResponseEntity<>(response, status);
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, Object>> handleAll(Exception ex) {
         log.error("Unhandled error during request processing", ex);

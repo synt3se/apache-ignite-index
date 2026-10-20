@@ -55,11 +55,29 @@ public class VectorService {
         return ResponseEntity.noContent().build();
     }
 
+    /**
+     * Совместимость демо: тело — {@code List<Neighbor>} без статуса, как раньше; статус
+     * выполнения — в заголовках {@code X-Vindex-*}. Полный статус — {@code /vectors/search/full}
+     * и {@code /indexes/{id}/search}.
+     */
     public ResponseEntity<List<Neighbor>> search(SearchRequest request) {
         log.debug("Received SearchRequest");
-        List<Neighbor> result = index.search(request.vector(), request.count());
-        log.debug("SearchRequest processed. Neighbors: " + result);
-        return ResponseEntity.ok(result);
+        ResponseEntity<List<Neighbor>> response = compatible(index.searchFull(request.vector(), request.count()));
+        log.debug("SearchRequest processed. Neighbors: " + response.getBody());
+        return response;
+    }
+
+    static ResponseEntity<List<Neighbor>> compatible(SearchResponse response) {
+        List<Neighbor> neighbors = new java.util.ArrayList<>(response.results.size());
+        for (SearchHit hit : response.results) {
+            neighbors.add(new Neighbor(hit.id, hit.distance, hit.url, hit.metadata));
+        }
+        return ResponseEntity.ok()
+                .header("X-Vindex-Partial", String.valueOf(response.partial))
+                .header("X-Vindex-Timed-Out", String.valueOf(response.timedOut))
+                .header("X-Vindex-Searched-Partitions", String.valueOf(response.activePartitions))
+                .header("X-Vindex-Expected-Partitions", String.valueOf(response.totalPartitions))
+                .body(neighbors);
     }
 
     public ResponseEntity<String> save(SaveRequest request) {
