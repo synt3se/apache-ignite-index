@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Пример конфигурации узла с несколькими индексами (этап C). Определения статические и
+  одинаковые на всех узлах; разбор этого файла проверяет IgniteXmlConfigTest.
+  Индексы:
+    images — кэш vectors, поле vector (демо VectorObject), 512, COSINE, JVector;
+    title, body — кэш docs, разные поля одного значения, разные размерности и метрики;
+    sift — кэш sift, значение кэша само является float[] (поле не задано), 128, SQUARED_L2, Flat.
+-->
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:util="http://www.springframework.org/schema/util"
+       xmlns:context="http://www.springframework.org/schema/context"
+       xsi:schemaLocation="
+           http://www.springframework.org/schema/beans
+           http://www.springframework.org/schema/beans/spring-beans.xsd
+           http://www.springframework.org/schema/util
+           http://www.springframework.org/schema/util/spring-util.xsd
+           http://www.springframework.org/schema/context
+           http://www.springframework.org/schema/context/spring-context.xsd">
+
+    <context:property-placeholder/>
+
+    <bean id="jvector" class="ru.nsu.fit.sberlab.vectorindex.node.index.JVectorProperties">
+        <property name="m" value="32"/>
+        <property name="efConstruction" value="100"/>
+        <property name="efSearch" value="1"/>
+        <property name="neighborOverflow" value="1.2"/>
+        <property name="alpha" value="1.2"/>
+        <property name="addHierarchy" value="true"/>
+        <property name="refineFinalGraph" value="true"/>
+        <property name="addRebuildRatio" value="0.10"/>
+        <property name="deleteRebuildRatio" value="0.20"/>
+        <property name="minAdditionsBeforeRebuild" value="256"/>
+    </bean>
+
+    <bean class="org.apache.ignite.configuration.IgniteConfiguration">
+        <property name="includeEventTypes">
+            <list>
+                <util:constant static-field="org.apache.ignite.events.EventType.EVT_CACHE_OBJECT_PUT"/>
+                <util:constant static-field="org.apache.ignite.events.EventType.EVT_CACHE_OBJECT_REMOVED"/>
+                <util:constant static-field="org.apache.ignite.events.EventType.EVT_NODE_JOINED"/>
+                <util:constant static-field="org.apache.ignite.events.EventType.EVT_NODE_LEFT"/>
+                <util:constant static-field="org.apache.ignite.events.EventType.EVT_NODE_FAILED"/>
+                <util:constant static-field="org.apache.ignite.events.EventType.EVT_CACHE_REBALANCE_STOPPED"/>
+            </list>
+        </property>
+
+        <property name="cacheConfiguration">
+            <list>
+                <bean class="org.apache.ignite.configuration.CacheConfiguration">
+                    <property name="name" value="vectors"/>
+                    <property name="atomicityMode" value="ATOMIC"/>
+                    <property name="backups" value="1"/>
+                </bean>
+                <bean class="org.apache.ignite.configuration.CacheConfiguration">
+                    <property name="name" value="docs"/>
+                    <property name="atomicityMode" value="ATOMIC"/>
+                    <property name="backups" value="1"/>
+                </bean>
+                <bean class="org.apache.ignite.configuration.CacheConfiguration">
+                    <property name="name" value="sift"/>
+                    <property name="atomicityMode" value="ATOMIC"/>
+                    <property name="backups" value="1"/>
+                </bean>
+            </list>
+        </property>
+
+        <property name="serviceConfiguration">
+            <list>
+                <bean class="org.apache.ignite.services.ServiceConfiguration">
+                    <property name="name" value="LocalIndexService"/>
+                    <property name="maxPerNodeCount" value="1"/>
+                    <property name="totalCount" value="0"/>
+                    <property name="service">
+                        <bean class="ru.nsu.fit.sberlab.vectorindex.node.service.LocalIndexServiceImpl">
+                            <property name="indexes">
+                                <list>
+                                    <bean class="ru.nsu.fit.sberlab.vectorindex.node.index.VectorIndexConfiguration">
+                                        <property name="name" value="images"/>
+                                        <property name="cacheName" value="vectors"/>
+                                        <property name="field" value="vector"/>
+                                        <property name="dimension" value="512"/>
+                                        <property name="metric" value="COSINE"/>
+                                        <property name="algorithm" value="JVECTOR"/>
+                                        <property name="jvectorProperties" ref="jvector"/>
+                                    </bean>
+                                    <bean class="ru.nsu.fit.sberlab.vectorindex.node.index.VectorIndexConfiguration">
+                                        <property name="name" value="title"/>
+                                        <property name="cacheName" value="docs"/>
+                                        <property name="field" value="title"/>
+                                        <property name="dimension" value="64"/>
+                                        <property name="metric" value="COSINE"/>
+                                        <property name="algorithm" value="FLAT"/>
+                                    </bean>
+                                    <bean class="ru.nsu.fit.sberlab.vectorindex.node.index.VectorIndexConfiguration">
+                                        <property name="name" value="body"/>
+                                        <property name="cacheName" value="docs"/>
+                                        <property name="field" value="body"/>
+                                        <property name="dimension" value="32"/>
+                                        <property name="metric" value="SQUARED_L2"/>
+                                        <property name="algorithm" value="FLAT"/>
+                                    </bean>
+                                    <bean class="ru.nsu.fit.sberlab.vectorindex.node.index.VectorIndexConfiguration">
+                                        <property name="name" value="sift"/>
+                                        <property name="cacheName" value="sift"/>
+                                        <property name="dimension" value="128"/>
+                                        <property name="metric" value="SQUARED_L2"/>
+                                        <property name="algorithm" value="FLAT"/>
+                                    </bean>
+                                </list>
+                            </property>
+                        </bean>
+                    </property>
+                </bean>
+
+                <bean class="org.apache.ignite.services.ServiceConfiguration">
+                    <property name="name" value="SearchAggregationService"/>
+                    <property name="maxPerNodeCount" value="1"/>
+                    <property name="totalCount" value="0"/>
+                    <property name="service">
+                        <bean class="ru.nsu.fit.sberlab.vectorindex.node.service.SearchAggregatorServiceImpl"/>
+                    </property>
+                </bean>
+            </list>
+        </property>
+    </bean>
+</beans>
