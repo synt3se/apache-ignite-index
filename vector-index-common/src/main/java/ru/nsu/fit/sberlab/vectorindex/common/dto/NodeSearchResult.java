@@ -3,16 +3,14 @@ package ru.nsu.fit.sberlab.vectorindex.common.dto;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
-import ru.nsu.fit.sberlab.vectorindex.common.ScoredVector;
 
 /**
  * Ответ узла: top-k по партициям, реально обработанным в этом проходе, и их готовность.
  * Партиция без результата перечисляется в {@link #failedPartitions} с причиной.
  */
 public class NodeSearchResult implements Serializable {
-    public List<ScoredVector> results;
-    /** Совместимость: число обработанных партиций ({@code searchedPartitions.length}). */
-    public int activePartitions;
+    /** Ключи источника ({@link KeyType}) и расстояния по возрастанию. */
+    public List<IndexHit> hits = new ArrayList<>();
     /** Партиции, вид которых был открыт в фазе READY и поиск по которым завершился. */
     public int[] searchedPartitions = new int[0];
     /** Обработанные партиции с известным пробелом относительно источника (ожидающая сверка). */
@@ -24,8 +22,15 @@ public class NodeSearchResult implements Serializable {
 
     public NodeSearchResult() {}
 
-    public NodeSearchResult(List<ScoredVector> results, int activePartitions) {
-        this.results = results;
-        this.activePartitions = activePartitions;
+    /** Ответ без поиска: все назначенные партиции отклонены по одной причине. */
+    public static NodeSearchResult rejected(int[] partitions, PartitionFailure.Reason reason, String nodeId) {
+        NodeSearchResult result = new NodeSearchResult();
+        result.nodeId = nodeId;
+        if (partitions != null) {
+            for (int partition : partitions) {
+                result.failedPartitions.add(new PartitionFailure(partition, reason, nodeId));
+            }
+        }
+        return result;
     }
 }

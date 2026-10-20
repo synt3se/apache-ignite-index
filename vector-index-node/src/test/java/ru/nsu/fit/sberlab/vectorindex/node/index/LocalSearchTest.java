@@ -11,7 +11,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-import ru.nsu.fit.sberlab.vectorindex.common.ScoredVector;
+import ru.nsu.fit.sberlab.vectorindex.common.dto.IndexHit;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.NodeSearchResult;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.PartitionFailure;
 import ru.nsu.fit.sberlab.vectorindex.core.Budget;
@@ -34,8 +34,8 @@ class LocalSearchTest {
     void noManagerMeansNoCoverage() {
         NodeSearchResult result = search(new int[]{0}, Runnable::run, Budget.unlimited());
 
-        assertThat(result.results).isEmpty();
-        assertThat(result.activePartitions).isZero();
+        assertThat(result.hits).isEmpty();
+        assertThat(result.searchedPartitions).isEmpty();
         assertThat(result.failedPartitions).extracting(f -> f.reason).containsExactly(PartitionFailure.Reason.NO_RUNTIME);
     }
 
@@ -52,12 +52,12 @@ class LocalSearchTest {
 
         NodeSearchResult result = search(new int[]{0}, publishRightAfterTheSearch, Budget.unlimited());
 
-        assertThat(result.results).isEmpty();
-        assertThat(result.activePartitions)
+        assertThat(result.hits).isEmpty();
+        assertThat(result.searchedPartitions.length)
                 .as("the only partition had no index when this request visited it")
                 .isZero();
         assertThat(result.failedPartitions).extracting(f -> f.reason).containsExactly(PartitionFailure.Reason.LOADING);
-        assertThat(search(new int[]{0}, Runnable::run, Budget.unlimited()).activePartitions)
+        assertThat(search(new int[]{0}, Runnable::run, Budget.unlimited()).searchedPartitions.length)
                 .as("the next request sees the published view").isEqualTo(1);
     }
 
@@ -78,7 +78,7 @@ class LocalSearchTest {
                 org.assertj.core.groups.Tuple.tuple(2, PartitionFailure.Reason.CLOSED),
                 org.assertj.core.groups.Tuple.tuple(3, PartitionFailure.Reason.LOADING),
                 org.assertj.core.groups.Tuple.tuple(4, PartitionFailure.Reason.NO_RUNTIME));
-        assertThat(result.results).extracting(ScoredVector::id).containsExactly(1L, 2L);
+        assertThat(result.hits).extracting(h -> h.key).containsExactly(1L, 2L);
     }
 
     @Test

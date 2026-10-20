@@ -13,7 +13,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeoutException;
 
-import ru.nsu.fit.sberlab.vectorindex.common.ScoredVector;
+import ru.nsu.fit.sberlab.vectorindex.common.dto.IndexHit;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.NodeSearchResult;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.PartitionFailure;
 import ru.nsu.fit.sberlab.vectorindex.core.Budget;
@@ -68,7 +68,7 @@ public final class SearchCoordinator {
         // Gather в пределах остатка бюджета.
         TreeSet<Integer> searched = new TreeSet<>();
         TreeSet<Integer> gaps = new TreeSet<>();
-        Map<Long, Double> best = new HashMap<>();
+        Map<Object, Double> best = new HashMap<>();
         int responded = 0;
         int duplicates = 0;
         boolean timedOut = false;
@@ -129,16 +129,16 @@ public final class SearchCoordinator {
                     failed.add(new PartitionFailure(p, PartitionFailure.Reason.NOT_REPORTED, node));
                 }
             }
-            if (result.results != null) {
-                for (ScoredVector hit : result.results) {
-                    Double previous = best.get(hit.id());
+            if (result.hits != null) {
+                for (IndexHit hit : result.hits) {
+                    Double previous = best.get(hit.key);
                     if (previous != null) {
                         duplicates++;
-                        if (hit.distance() < previous) {
-                            best.put(hit.id(), hit.distance());
+                        if (hit.distance < previous) {
+                            best.put(hit.key, hit.distance);
                         }
                     } else {
-                        best.put(hit.id(), hit.distance());
+                        best.put(hit.key, hit.distance);
                     }
                 }
             }
@@ -147,12 +147,9 @@ public final class SearchCoordinator {
             timedOut = true;
         }
 
-        List<ScoredVector> ordered = new ArrayList<>(best.size());
-        best.forEach((id, distance) -> ordered.add(new ScoredVector(id, distance)));
-        ordered.sort((a, b) -> {
-            int byDistance = Double.compare(a.distance(), b.distance());
-            return byDistance != 0 ? byDistance : Long.compare(a.id(), b.id());
-        });
+        List<IndexHit> ordered = new ArrayList<>(best.size());
+        best.forEach((key, distance) -> ordered.add(new IndexHit(key, distance)));
+        ordered.sort(IndexHit.ORDER);
         failed.sort((a, b) -> Integer.compare(a.partition, b.partition));
         return new DistributedSearchResult(ordered, snapshot.partitions(), toArray(searched), failed, toArray(gaps),
                 timedOut, responded, futures.size(), duplicates);

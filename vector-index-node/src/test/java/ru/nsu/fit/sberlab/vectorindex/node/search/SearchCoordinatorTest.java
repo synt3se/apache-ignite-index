@@ -19,7 +19,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-import ru.nsu.fit.sberlab.vectorindex.common.ScoredVector;
+import ru.nsu.fit.sberlab.vectorindex.common.dto.IndexHit;
 import ru.nsu.fit.sberlab.vectorindex.common.VectorObject;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.NodeSearchResult;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.PartitionFailure;
@@ -137,8 +137,8 @@ class SearchCoordinatorTest {
     @Test
     @DisplayName("Deleted candidates are skipped and later hydration batches backfill top-k")
     void backfillsAfterDeletedCandidatesAcrossHydrationBatches() {
-        ScoredVector[] candidates = IntStream.range(0, 300)
-                .mapToObj(id -> candidate(id, id / 300.0)).toArray(ScoredVector[]::new);
+        IndexHit[] candidates = IntStream.range(0, 300)
+                .mapToObj(id -> candidate(id, id / 300.0)).toArray(IndexHit[]::new);
         node(parts(0, 1, 2, 3), candidates);
         // Every candidate in the first batch was deleted before hydration.
         store(270, 299);
@@ -339,7 +339,7 @@ class SearchCoordinatorTest {
         return hydrator.respond(result, k, budget, start);
     }
 
-    private void node(int[] partitionsOfNode, ScoredVector... candidates) {
+    private void node(int[] partitionsOfNode, IndexHit... candidates) {
         respond("node-" + assignment.size(), partitionsOfNode, result(partitionsOfNode, candidates));
     }
 
@@ -361,8 +361,9 @@ class SearchCoordinatorTest {
         slowNodes.put(node, extraWait);
     }
 
-    private static NodeSearchResult result(int[] searched, ScoredVector... candidates) {
-        NodeSearchResult result = new NodeSearchResult(new ArrayList<>(List.of(candidates)), searched.length);
+    private static NodeSearchResult result(int[] searched, IndexHit... candidates) {
+        NodeSearchResult result = new NodeSearchResult();
+        result.hits = new ArrayList<>(List.of(candidates));
         result.searchedPartitions = searched.clone();
         return result;
     }
@@ -377,7 +378,7 @@ class SearchCoordinatorTest {
         }
     }
 
-    private static ScoredVector candidate(long id, double distance) {
-        return new ScoredVector(id, distance);
+    private static IndexHit candidate(long id, double distance) {
+        return new IndexHit(id, distance);
     }
 }

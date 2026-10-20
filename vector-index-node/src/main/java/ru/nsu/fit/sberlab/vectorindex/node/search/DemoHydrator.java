@@ -10,7 +10,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
-import ru.nsu.fit.sberlab.vectorindex.common.ScoredVector;
+import ru.nsu.fit.sberlab.vectorindex.common.dto.IndexHit;
 import ru.nsu.fit.sberlab.vectorindex.common.VectorObject;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.SearchHit;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.SearchResponse;
@@ -40,7 +40,7 @@ public final class DemoHydrator {
     public SearchResponse respond(DistributedSearchResult result, int k, Budget budget, long startNanos) {
         boolean timedOut = result.timedOut();
         List<SearchHit> hits = new ArrayList<>(Math.min(k, result.hits().size()));
-        List<ScoredVector> ordered = result.hits();
+        List<IndexHit> ordered = result.hits();
         int i = 0;
         while (i < ordered.size() && hits.size() < k) {
             if (budget.exhausted()) {
@@ -50,7 +50,9 @@ public final class DemoHydrator {
             int end = Math.min(ordered.size(), i + BATCH);
             Set<Long> ids = new HashSet<>();
             for (int j = i; j < end; j++) {
-                ids.add(ordered.get(j).id());
+                if (ordered.get(j).key instanceof Long id) { // демо-кэш — ключи Long
+                    ids.add(id);
+                }
             }
             Map<Long, VectorObject> loaded;
             try {
@@ -66,10 +68,11 @@ public final class DemoHydrator {
                 throw new IllegalStateException("hydration failed", failure.getCause());
             }
             for (int j = i; j < end && hits.size() < k; j++) {
-                ScoredVector candidate = ordered.get(j);
-                VectorObject document = loaded == null ? null : loaded.get(candidate.id());
+                IndexHit candidate = ordered.get(j);
+                VectorObject document = loaded == null || !(candidate.key instanceof Long id) ? null : loaded.get(id);
                 if (document != null) {
-                    hits.add(new SearchHit(candidate.id(), candidate.distance(), document.getUrl(), document.getMetadata()));
+                    hits.add(new SearchHit((Long) candidate.key, candidate.distance, document.getUrl(),
+                            document.getMetadata()));
                 }
             }
             i = end;

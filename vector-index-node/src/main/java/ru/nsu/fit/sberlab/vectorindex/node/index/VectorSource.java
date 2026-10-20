@@ -15,11 +15,11 @@ interface VectorSource {
 
     int partitionOf(Object key);
 
-    /** Текущий вектор ключа или {@code null}: записи нет или вектор отсутствует. */
-    float[] read(Object key);
+    /** Текущее значение ключа для индекса; {@link SourceValue#ABSENT}, если записи нет. */
+    SourceValue read(Object key);
 
-    /** Локальный скан партиции; записи без вектора не передаются. */
-    void scan(int partition, BiConsumer<Object, float[]> consumer);
+    /** Локальный скан партиции: все записи, решение по каждой принимает адаптер. */
+    void scan(int partition, BiConsumer<Object, SourceValue> consumer);
 
     long topologyVersion();
 }

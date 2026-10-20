@@ -11,7 +11,7 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 
-import ru.nsu.fit.sberlab.vectorindex.common.ScoredVector;
+import ru.nsu.fit.sberlab.vectorindex.common.dto.IndexHit;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.NodeSearchResult;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.PartitionFailure;
 import ru.nsu.fit.sberlab.vectorindex.core.Budget;
@@ -94,17 +94,16 @@ final class LocalSearch {
             hits.addAll(outcome.hits());
         }
         hits.sort(Comparator.comparingDouble(Hit::distance));
-        List<ScoredVector> top = new ArrayList<>(Math.min(k, hits.size()));
+        List<IndexHit> top = new ArrayList<>(Math.min(k, hits.size()));
         for (Hit<Object> hit : hits) {
             if (top.size() >= k) {
                 break;
             }
-            top.add(new ScoredVector((Long) hit.key(), hit.distance())); // адаптер B принимает только Long
+            top.add(new IndexHit(hit.key(), hit.distance()));
         }
-        result.results = top;
+        result.hits = top;
         result.searchedPartitions = searched.stream().mapToInt(Integer::intValue).toArray();
         result.knownGapPartitions = gaps.stream().mapToInt(Integer::intValue).toArray();
-        result.activePartitions = result.searchedPartitions.length;
         return result;
     }
 

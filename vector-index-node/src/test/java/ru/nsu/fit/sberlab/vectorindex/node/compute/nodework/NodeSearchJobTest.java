@@ -17,8 +17,7 @@ class NodeSearchJobTest {
         NodeSearchResult result = new NodeSearchJob(new NodeSearchRequest(new float[]{1, 0}, 3, new int[]{0, 5}, 1_000))
                 .call();
 
-        assertThat(result.results).isEmpty();
-        assertThat(result.activePartitions).isZero();
+        assertThat(result.hits).isEmpty();
         assertThat(result.searchedPartitions).isEmpty();
         assertThat(result.failedPartitions).extracting(f -> f.partition, f -> f.reason).containsExactly(
                 org.assertj.core.groups.Tuple.tuple(0, PartitionFailure.Reason.NO_INDEX),

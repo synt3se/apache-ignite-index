@@ -42,6 +42,8 @@ public class IndexNodeStatus implements Serializable {
 
     public long liveVectors;
     public long deltaEntries;
+    /** Живые записи дельты, ещё не вошедшие в построенную структуру. */
+    public long deltaLive;
     public int frozenLayers;
 
     /** Принятые к применению изменения, ещё не завершённые: в очереди и выполняющиеся. */

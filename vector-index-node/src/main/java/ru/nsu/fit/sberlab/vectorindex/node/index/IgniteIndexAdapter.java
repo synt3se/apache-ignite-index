@@ -6,6 +6,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -20,7 +21,9 @@ import org.apache.ignite.events.Event;
 import org.apache.ignite.events.EventType;
 import org.apache.ignite.lang.IgnitePredicate;
 
-import ru.nsu.fit.sberlab.vectorindex.common.ScoredVector;
+import ru.nsu.fit.sberlab.vectorindex.common.dto.IndexHit;
+import ru.nsu.fit.sberlab.vectorindex.common.dto.IndexNodeStatus;
+import ru.nsu.fit.sberlab.vectorindex.common.dto.KeyType;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.NodeSearchResult;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.NodeStats;
 import ru.nsu.fit.sberlab.vectorindex.common.indextype.IndexType;
@@ -73,11 +76,14 @@ public final class IgniteIndexAdapter {
     private volatile long bulkPauseUntilMs;
 
     private final LongAdder applied = new LongAdder();
+    private final AtomicLong pendingApplies = new AtomicLong(); // принятые полосой и ещё не завершённые
     private final LongAdder applyLatencyNanos = new LongAdder();
     private final AtomicLong applyLatencyMax = new AtomicLong();
     private final LongAdder applierOverflows = new LongAdder();
     private final LongAdder applyErrors = new LongAdder();
     private final LongAdder unsupportedKeys = new LongAdder();
+    private final LongAdder wrongTypeValues = new LongAdder();
+    private final LongAdder noVectorValues = new LongAdder();
     private final LongAdder reconcileErrors = new LongAdder();
 
     private IgnitePredicate<Event> cacheListener;
@@ -86,9 +92,12 @@ public final class IgniteIndexAdapter {
     /** Прежняя конфигурация сервиса: один индекс на узел, COSINE, JVector или перебор. */
     public IgniteIndexAdapter(Ignite ignite, String cacheName, int dimension, IndexType indexType,
                               JVectorProperties properties) {
-        this(IndexDefinition.fromLegacy(cacheName, dimension, indexType, properties),
-                new IgniteVectorSource(ignite, cacheName),
-                NodeResources.create("vindex-" + cacheName), NanoClock.SYSTEM, ignite.log(), ignite,
+        this(IndexDefinition.fromLegacy(cacheName, dimension, indexType, properties), ignite);
+    }
+
+    private IgniteIndexAdapter(IndexDefinition definition, Ignite ignite) {
+        this(definition, new IgniteVectorSource(ignite, definition.cacheName(), definition.field()),
+                NodeResources.create("vindex-" + definition.indexId()), NanoClock.SYSTEM, ignite.log(), ignite,
                 String.valueOf(ignite.cluster().localNode().consistentId()), true);
     }
 
@@ -171,17 +180,20 @@ public final class IgniteIndexAdapter {
         if (stopped || paused()) {
             return;
         }
-        if (!(rawKey instanceof Long key)) {
-            unsupportedKeys.increment(); // в v1 транспорт результатов поддерживает только Long
+        if (KeyType.of(rawKey) == null) {
+            unsupportedKeys.increment(); // v1: Long, String, UUID — классы JDK на всём пути ответа
             return;
         }
+        Object key = rawKey;
         int partition = source.partitionOf(key);
         PartitionRuntime<Object> runtime = runtimes.get(partition);
         if (runtime == null) {
             return; // не наша primary-партиция или runtime ещё не создан: его скан прочитает ключ
         }
         long received = clock.nanoTime();
+        pendingApplies.incrementAndGet();
         if (!resources.applier.submit(partition, () -> applyKey(runtime, key, received))) {
+            pendingApplies.decrementAndGet();
             applierOverflows.increment();
             runtime.requestRepair(RepairReason.APPLIER_OVERFLOW);
             log.warning("[vindex] applier queue full - partition " + partition + " needs repair");
@@ -189,10 +201,9 @@ public final class IgniteIndexAdapter {
         }
     }
 
-    private void applyKey(PartitionRuntime<Object> runtime, Long key, long receivedNanos) {
+    private void applyKey(PartitionRuntime<Object> runtime, Object key, long receivedNanos) {
         try {
-            float[] vector = source.read(key);
-            ApplyResult result = vector == null ? runtime.delete(key) : runtime.upsert(key, vector);
+            ApplyResult result = apply(runtime, key, source.read(key));
             if (result.status() == ApplyResult.Status.REJECTED) {
                 log.warning("[vindex] rejected vector for key " + key + ": " + result.reason());
             }
@@ -206,7 +217,23 @@ public final class IgniteIndexAdapter {
             requestReconcile();
         } finally {
             applied.increment();
+            pendingApplies.decrementAndGet();
         }
+    }
+
+    /** Вектор — upsert; без вектора — delete; неверный тип — delete и счётчик (исключение из проекции). */
+    private ApplyResult apply(PartitionRuntime<Object> runtime, Object key, SourceValue value) {
+        if (value instanceof SourceValue.Vector present) {
+            return runtime.upsert(key, present.vector());
+        }
+        if (value instanceof SourceValue.WrongType wrong) {
+            wrongTypeValues.increment();
+            log.warning("[vindex] index " + definition.indexId() + ": field '" + definition.field()
+                    + "' of key " + key + " is " + wrong.type() + ", not float[] - excluded from the index");
+        } else if (value instanceof SourceValue.NoVector) {
+            noVectorValues.increment();
+        }
+        return runtime.delete(key);
     }
 
     void onTopologyChanged() {
@@ -316,11 +343,15 @@ public final class IgniteIndexAdapter {
             }
             ScanSession<Object> scan = runtime.beginScan();
             try {
-                source.scan(partition, (key, vector) -> {
-                    if (key instanceof Long) {
-                        scan.offer(key, vector);
-                    } else {
+                source.scan(partition, (key, value) -> {
+                    if (KeyType.of(key) == null) {
                         unsupportedKeys.increment();
+                    } else if (value instanceof SourceValue.Vector present) {
+                        scan.offer(key, present.vector());
+                    } else if (value instanceof SourceValue.WrongType) {
+                        wrongTypeValues.increment(); // не попадает в базу скана — исключено из проекции
+                    } else if (value instanceof SourceValue.NoVector) {
+                        noVectorValues.increment();
                     }
                 });
             } catch (RuntimeException e) {
@@ -395,9 +426,9 @@ public final class IgniteIndexAdapter {
                 nodeId, source.topologyVersion());
     }
 
-    /** Совместимость: top-k по всем локальным партициям в фазе READY. */
-    public List<ScoredVector> searchLocal(float[] query, int count) {
-        return search(null, query, count, null, Budget.unlimited()).results;
+    /** Top-k по всем локальным партициям в фазе READY (тесты и диагностика). */
+    public List<IndexHit> searchLocal(float[] query, int count) {
+        return search(null, query, count, null, Budget.unlimited()).hits;
     }
 
     public int activePartitionsCount() {
@@ -410,28 +441,43 @@ public final class IgniteIndexAdapter {
         return ready;
     }
 
-    public NodeStats localStats() {
-        NodeStats s = new NodeStats();
+    /** Готовность и метрики индекса на этом узле; общие ресурсы узла сюда не входят. */
+    public IndexNodeStatus localStatus() {
+        IndexNodeStatus s = new IndexNodeStatus();
         s.nodeId = nodeId;
-        s.ownedPartitions = runtimes.size();
-        long nowMs = 0;
-        for (PartitionRuntime<Object> runtime : runtimes.values()) {
-            RuntimeStatus st = runtime.status();
+        s.indexId = definition.indexId();
+        s.state = IndexNodeStatus.State.LOADED;
+        s.fingerprint = definition.fingerprint();
+        s.algorithm = definition.kind().name();
+        s.metric = definition.spec().metric().name();
+        s.dimension = definition.spec().dimension();
+        List<Integer> owned = new ArrayList<>();
+        List<Integer> ready = new ArrayList<>();
+        List<Integer> loading = new ArrayList<>();
+        List<Integer> repair = new ArrayList<>();
+        long maxRepairAgeMs = 0;
+        for (Map.Entry<Integer, PartitionRuntime<Object>> entry : new TreeMap<>(runtimes).entrySet()) {
+            RuntimeStatus st = entry.getValue().status();
+            int partition = entry.getKey();
+            owned.add(partition);
             if (st.phase() == Phase.READY) {
-                s.activePartitions++;
+                ready.add(partition);
                 s.liveVectors += st.liveCount();
             } else if (st.phase() == Phase.LOADING) {
-                s.loadingPartitions++;
+                loading.add(partition);
             }
             if (st.repairPending()) {
-                s.repairPendingPartitions++;
-                nowMs = Math.max(nowMs, TimeUnit.NANOSECONDS.toMillis(st.repairPendingAgeNanos()));
+                repair.add(partition);
+                maxRepairAgeMs = Math.max(maxRepairAgeMs, TimeUnit.NANOSECONDS.toMillis(st.repairPendingAgeNanos()));
             }
-            if (st.optimization() == OptimizationState.FAILED) {
-                s.optimizationFailedPartitions++;
+            switch (st.optimization()) {
+                case NOT_BUILT -> s.optimizationNotBuilt++;
+                case BUILDING -> s.optimizationBuilding++;
+                case BUILT -> s.optimizationBuilt++;
+                case FAILED -> s.optimizationFailed++;
             }
-            s.enginePendingVectors += st.deltaLive();
             s.deltaEntries += st.deltaEntries();
+            s.deltaLive += st.deltaLive();
             s.frozenLayers += st.frozenLayers();
             s.dedupSkippedTotal += st.dedupSkipped();
             s.buildFailuresTotal += st.buildFailures();
@@ -441,23 +487,69 @@ public final class IgniteIndexAdapter {
             s.lastBuildDurationNanosMax = Math.max(s.lastBuildDurationNanosMax, st.lastBuildDurationNanos());
             s.lastPublishLatencyNanosMax = Math.max(s.lastPublishLatencyNanosMax, st.lastPublishLatencyNanos());
         }
-        s.maxRepairPendingAgeMs = nowMs;
-        s.dirtyPartitions = s.repairPendingPartitions;
-        s.applierBacklog = resources.applier.backlog();
+        s.ownedPartitions = toArray(owned);
+        s.readyPartitions = toArray(ready);
+        s.loadingPartitions = toArray(loading);
+        s.repairPendingPartitions = toArray(repair);
+        s.maxRepairPendingAgeMs = maxRepairAgeMs;
+        s.pendingApplies = pendingApplies.get();
+        s.scansInProgress = scanQueued.size();
         s.appliedTotal = applied.sum();
         s.applyLatencyNanosTotal = applyLatencyNanos.sum();
         s.applyLatencyNanosMax = applyLatencyMax.get();
         s.applierOverflowsTotal = applierOverflows.sum();
         s.applyErrorsTotal = applyErrors.sum();
         s.unsupportedKeysTotal = unsupportedKeys.sum();
-        s.engine = definition.kind().legacyEngineName();
-        s.dimension = definition.spec().dimension();
+        s.wrongTypeValuesTotal = wrongTypeValues.sum();
+        s.noVectorValuesTotal = noVectorValues.sum();
         s.indexMemoryEstimateBytes = s.liveVectors * bytesPerVectorEstimate();
+        return s;
+    }
+
+    /** Совместимость {@code /vectors/stats}: этот индекс и общие ресурсы узла. */
+    public NodeStats localStats() {
+        IndexNodeStatus st = localStatus();
+        NodeStats s = new NodeStats();
+        s.nodeId = nodeId;
+        s.indexId = st.indexId;
+        s.indexes.add(st);
+        s.ownedPartitions = st.ownedPartitions.length;
+        s.activePartitions = st.readyPartitions.length;
+        s.loadingPartitions = st.loadingPartitions.length;
+        s.repairPendingPartitions = st.repairPendingPartitions.length;
+        s.dirtyPartitions = s.repairPendingPartitions;
+        s.maxRepairPendingAgeMs = st.maxRepairPendingAgeMs;
+        s.optimizationFailedPartitions = st.optimizationFailed;
+        s.liveVectors = st.liveVectors;
+        s.deltaEntries = st.deltaEntries;
+        s.enginePendingVectors = st.deltaLive;
+        s.frozenLayers = st.frozenLayers;
+        s.dedupSkippedTotal = st.dedupSkippedTotal;
+        s.buildFailuresTotal = st.buildFailuresTotal;
+        s.publishRejectedTotal = st.publishRejectedTotal;
+        s.rejectedVectorsTotal = st.rejectedVectorsTotal;
+        s.writerLockWaitNanosMax = st.writerLockWaitNanosMax;
+        s.lastBuildDurationNanosMax = st.lastBuildDurationNanosMax;
+        s.lastPublishLatencyNanosMax = st.lastPublishLatencyNanosMax;
+        s.appliedTotal = st.appliedTotal;
+        s.applyLatencyNanosTotal = st.applyLatencyNanosTotal;
+        s.applyLatencyNanosMax = st.applyLatencyNanosMax;
+        s.applierOverflowsTotal = st.applierOverflowsTotal;
+        s.applyErrorsTotal = st.applyErrorsTotal;
+        s.unsupportedKeysTotal = st.unsupportedKeysTotal;
+        s.engine = definition.kind().legacyEngineName();
+        s.dimension = st.dimension;
+        s.indexMemoryEstimateBytes = st.indexMemoryEstimateBytes;
+        s.applierBacklog = resources.applier.backlog();
         Runtime rt = Runtime.getRuntime();
         s.heapUsedBytes = rt.totalMemory() - rt.freeMemory();
         s.heapMaxBytes = rt.maxMemory();
         s.uptimeMs = ManagementFactory.getRuntimeMXBean().getUptime();
         return s;
+    }
+
+    private static int[] toArray(List<Integer> values) {
+        return values.stream().mapToInt(Integer::intValue).toArray();
     }
 
     /**

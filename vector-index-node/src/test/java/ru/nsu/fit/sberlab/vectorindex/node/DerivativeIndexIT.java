@@ -30,7 +30,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-import ru.nsu.fit.sberlab.vectorindex.common.ScoredVector;
+import ru.nsu.fit.sberlab.vectorindex.common.dto.IndexHit;
 import ru.nsu.fit.sberlab.vectorindex.common.VectorObject;
 import ru.nsu.fit.sberlab.vectorindex.common.indextype.IndexType;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.PartitionFailure;
@@ -110,20 +110,19 @@ class DerivativeIndexIT {
         IgniteCache<Long, VectorObject> cache = a.cache("vectors");
         cache.put(0L, new VectorObject(oneHot(7), "updated-image", "updated-metadata"));
         await().atMost(ofSeconds(15)).untilAsserted(() -> {
-            List<ScoredVector> results = new ArrayList<>(mA.searchLocal(oneHot(7), 10));
+            List<IndexHit> results = new ArrayList<>(mA.searchLocal(oneHot(7), 10));
             results.addAll(mB.searchLocal(oneHot(7), 10));
-            assertThat(results).extracting(ScoredVector::id).doesNotHaveDuplicates().hasSize(5);
-            assertThat(results).filteredOn(neighbor -> neighbor.id() == 0)
-                    .singleElement().satisfies(neighbor ->
-                            assertThat(neighbor.distance()).isCloseTo(0, within(1e-6)));
+            assertThat(results).extracting(h -> h.key).doesNotHaveDuplicates().hasSize(5);
+            assertThat(results).filteredOn(hit -> Long.valueOf(0L).equals(hit.key))
+                    .singleElement().satisfies(hit -> assertThat(hit.distance).isCloseTo(0, within(1e-6)));
         });
 
         cache.remove(0L);
         cache.remove(2L);
         await().atMost(ofSeconds(15)).untilAsserted(() -> {
-            List<ScoredVector> results = new ArrayList<>(mA.searchLocal(oneHot(7), 10));
+            List<IndexHit> results = new ArrayList<>(mA.searchLocal(oneHot(7), 10));
             results.addAll(mB.searchLocal(oneHot(7), 10));
-            assertThat(results).extracting(ScoredVector::id)
+            assertThat(results).extracting(h -> h.key)
                     .containsExactlyInAnyOrder(1L, 3L, 4L);
         });
     }
@@ -183,8 +182,8 @@ class DerivativeIndexIT {
             DistributedSearchResult result = coordinator.search(oneHot(3), 5, budget());
             assertThat(result.partial()).isFalse();
             assertThat(result.searchedPartitions()).hasSize(32);
-            assertThat(result.hits()).extracting(ScoredVector::id).hasSize(5).doesNotHaveDuplicates();
-            assertThat(result.hits().get(0).id()).isEqualTo(3L);
+            assertThat(result.hits()).extracting(h -> h.key).hasSize(5).doesNotHaveDuplicates();
+            assertThat(result.hits().get(0).key).isEqualTo(3L);
             assertThat(result.duplicateKeys()).isZero();
         });
 
@@ -204,15 +203,15 @@ class DerivativeIndexIT {
 
     /** Сырое склеивание локальных выдач БЕЗ дедупа — так видно, эксклюзивно ли владение. */
     private static void assertConverged(int hot, IgniteIndexAdapter... managers) {
-        List<ScoredVector> raw = new ArrayList<>();
+        List<IndexHit> raw = new ArrayList<>();
         for (IgniteIndexAdapter m : managers) {
             raw.addAll(m.searchLocal(oneHot(hot), 5));
         }
-        assertThat(raw).extracting(ScoredVector::id).doesNotHaveDuplicates(); // один primary на вектор
-        assertThat(raw).extracting(ScoredVector::id).hasSize(5);              // ничего не потеряно
-        ScoredVector top = raw.stream().min(comparingDouble(ScoredVector::distance)).orElseThrow();
-        assertThat(top.id()).isEqualTo((long) hot);                          // верный ближайший
-        assertThat(top.distance()).isCloseTo(0.0, within(1e-6));
+        assertThat(raw).extracting(h -> h.key).doesNotHaveDuplicates(); // один primary на вектор
+        assertThat(raw).extracting(h -> h.key).hasSize(5);              // ничего не потеряно
+        IndexHit top = raw.stream().min(comparingDouble(h -> h.distance)).orElseThrow();
+        assertThat(top.key).isEqualTo((long) hot);                          // верный ближайший
+        assertThat(top.distance).isCloseTo(0.0, within(1e-6));
     }
 
     private IgniteIndexAdapter started(Ignite ignite) {

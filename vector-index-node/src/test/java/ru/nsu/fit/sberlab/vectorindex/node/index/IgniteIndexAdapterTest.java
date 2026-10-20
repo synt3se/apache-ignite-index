@@ -18,7 +18,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
-import ru.nsu.fit.sberlab.vectorindex.common.ScoredVector;
+import ru.nsu.fit.sberlab.vectorindex.common.dto.IndexHit;
+import ru.nsu.fit.sberlab.vectorindex.common.dto.KeyType;
 import ru.nsu.fit.sberlab.vectorindex.common.indextype.IndexType;
 import ru.nsu.fit.sberlab.vectorindex.core.Phase;
 import ru.nsu.fit.sberlab.vectorindex.core.maintenance.Backoff;
@@ -50,7 +51,7 @@ class IgniteIndexAdapterTest {
 
             assertThat(fixture.adapter.activePartitionsCount()).isEqualTo(2);
             assertThat(fixture.adapter.searchLocal(new float[]{1, 0}, 2))
-                    .extracting(ScoredVector::id, ScoredVector::distance)
+                    .extracting(h -> h.key, h -> h.distance)
                     .containsExactly(tuple(10L, 0.0), tuple(31L, 1.0));
             assertThat(fixture.adapter.localStats().liveVectors).isEqualTo(3);
         }
@@ -68,7 +69,7 @@ class IgniteIndexAdapterTest {
 
             fixture.releaseApplier();
 
-            fixture.awaitSearch(new float[]{0, 1}, new ScoredVector(10, 0));
+            fixture.awaitSearch(new float[]{0, 1}, new IndexHit(10L, 0.0));
         }
     }
 
@@ -82,7 +83,7 @@ class IgniteIndexAdapterTest {
             fixture.eventAndAwaitApplied(10, 1);
             fixture.eventAndAwaitApplied(10, 2);
             assertThat(fixture.adapter.searchLocal(new float[]{0, 1}, 10))
-                    .extracting(ScoredVector::id, ScoredVector::distance)
+                    .extracting(h -> h.key, h -> h.distance)
                     .containsExactly(tuple(10L, 0.0));
 
             fixture.source.remove(10);
@@ -113,7 +114,7 @@ class IgniteIndexAdapterTest {
 
             assertThat(fixture.adapter.activePartitionsCount()).isEqualTo(1);
             assertThat(fixture.adapter.searchLocal(new float[]{1, 0}, 10))
-                    .extracting(ScoredVector::id, ScoredVector::distance)
+                    .extracting(h -> h.key, h -> h.distance)
                     .containsExactly(tuple(31L, 1.0));
             assertThat(moved.isClosed()).as("the old ownership episode is closed").isTrue();
         }
@@ -133,7 +134,7 @@ class IgniteIndexAdapterTest {
             fixture.scans.runAll();
 
             assertThat(fixture.adapter.searchLocal(new float[]{0, 1}, 10))
-                    .extracting(ScoredVector::id, ScoredVector::distance)
+                    .extracting(h -> h.key, h -> h.distance)
                     .containsExactly(tuple(10L, 0.0));
             assertThat(fixture.adapter.localStats().applierOverflowsTotal).isEqualTo(1);
         }
@@ -164,7 +165,7 @@ class IgniteIndexAdapterTest {
             inFlight.get(3, TimeUnit.SECONDS);
 
             assertThat(fixture.adapter.searchLocal(new float[]{0, -1}, 10))
-                    .extracting(ScoredVector::id, ScoredVector::distance)
+                    .extracting(h -> h.key, h -> h.distance)
                     .containsExactly(tuple(10L, 0.0), tuple(30L, 1.0));
         }
     }
@@ -192,7 +193,7 @@ class IgniteIndexAdapterTest {
 
             // No new event or forced full rebuild: periodic reconcile must suffice to converge.
             assertThat(fixture.adapter.searchLocal(new float[]{0, 1}, 10))
-                    .extracting(ScoredVector::id, ScoredVector::distance)
+                    .extracting(h -> h.key, h -> h.distance)
                     .containsExactly(tuple(10L, 0.0));
         }
     }
@@ -216,7 +217,7 @@ class IgniteIndexAdapterTest {
             fixture.scans.runAll();
 
             assertThat(fixture.adapter.searchLocal(new float[]{0, 1}, 10))
-                    .extracting(ScoredVector::id, ScoredVector::distance)
+                    .extracting(h -> h.key, h -> h.distance)
                     .containsExactly(tuple(20L, 0.0));
         }
     }
@@ -238,7 +239,7 @@ class IgniteIndexAdapterTest {
             fixture.scans.runAll();
 
             assertThat(fixture.adapter.searchLocal(new float[]{0, 1}, 10))
-                    .extracting(ScoredVector::id, ScoredVector::distance).containsExactly(tuple(10L, 0.0));
+                    .extracting(h -> h.key, h -> h.distance).containsExactly(tuple(10L, 0.0));
             assertThat(fixture.adapter.localStats().repairPendingPartitions).isZero();
             assertThat(fixture.adapter.localStats().applyErrorsTotal).isEqualTo(1);
         }
@@ -255,7 +256,7 @@ class IgniteIndexAdapterTest {
             assertThat(fixture.adapter.localStats().loadingPartitions).isEqualTo(1);
 
             fixture.scans.runAll();
-            assertThat(fixture.adapter.searchLocal(new float[]{1, 0}, 10)).extracting(ScoredVector::id)
+            assertThat(fixture.adapter.searchLocal(new float[]{1, 0}, 10)).extracting(h -> h.key)
                     .containsExactly(10L);
         }
     }
@@ -280,7 +281,7 @@ class IgniteIndexAdapterTest {
             fixture.scans.runAll();
 
             assertThat(second.phase()).isEqualTo(Phase.READY);
-            assertThat(fixture.adapter.searchLocal(new float[]{1, 0}, 10)).extracting(ScoredVector::id)
+            assertThat(fixture.adapter.searchLocal(new float[]{1, 0}, 10)).extracting(h -> h.key)
                     .containsExactly(10L);
         }
     }
@@ -299,7 +300,7 @@ class IgniteIndexAdapterTest {
             fixture.scans.runAll();
 
             assertThat(fixture.adapter.runtime(0).phase()).isEqualTo(Phase.READY);
-            assertThat(fixture.adapter.searchLocal(new float[]{1, 0}, 10)).extracting(ScoredVector::id)
+            assertThat(fixture.adapter.searchLocal(new float[]{1, 0}, 10)).extracting(h -> h.key)
                     .containsExactly(10L);
         }
     }
@@ -307,9 +308,66 @@ class IgniteIndexAdapterTest {
     @Test
     void unsupportedKeyTypeIsCountedNotSilentlyIgnored() throws Exception {
         try (Fixture fixture = new Fixture()) {
+            fixture.source.values.put(new java.util.Date(0), new SourceValue.Vector(new float[]{1, 0}));
+            fixture.rebuildAll();                         // скан встречает ключ неподдерживаемого типа
+            fixture.adapter.onKeyChanged(42);              // Integer: не Long, String или UUID
+
+            assertThat(fixture.adapter.localStatus().unsupportedKeysTotal).isEqualTo(2);
+            assertThat(fixture.adapter.searchLocal(new float[]{1, 0}, 10)).isEmpty();
+        }
+    }
+
+    @Test
+    void stringAndUuidKeysAreIndexedAndReturnedWithTheirOwnType() throws Exception {
+        try (Fixture fixture = new Fixture()) {
+            fixture.source.owned.set(new int[]{0, 1});
+            java.util.UUID uuid = new java.util.UUID(7, 9);
+            fixture.source.putKey("doc-1", 1, 0);
             fixture.rebuildAll();
-            fixture.adapter.onKeyChanged("not-a-long");
-            assertThat(fixture.adapter.localStats().unsupportedKeysTotal).isEqualTo(1);
+            fixture.source.putKey(uuid, 0.9f, 0.1f);
+            fixture.adapter.onKeyChanged(uuid);
+            fixture.flushApplier();
+
+            assertThat(fixture.adapter.searchLocal(new float[]{1, 0}, 10)).extracting(h -> h.key, IndexHit::keyType)
+                    .containsExactly(tuple("doc-1", KeyType.STRING), tuple(uuid, KeyType.UUID));
+            assertThat(fixture.adapter.localStatus().unsupportedKeysTotal).isZero();
+        }
+    }
+
+    @Test
+    void valueOfTheWrongTypeIsExcludedFromTheIndexAndCounted() throws Exception {
+        try (Fixture fixture = new Fixture()) {
+            fixture.source.put(10, 1, 0);
+            fixture.source.putWrongType(20);
+            fixture.rebuildAll();
+            assertThat(fixture.adapter.localStatus().wrongTypeValuesTotal).as("seen by the scan").isEqualTo(1);
+
+            fixture.source.putWrongType(10);               // был вектор, стало значение неверного типа
+            fixture.eventAndAwaitApplied(10, 1);
+
+            assertThat(fixture.adapter.searchLocal(new float[]{1, 0}, 10)).isEmpty();
+            assertThat(fixture.adapter.localStatus().wrongTypeValuesTotal).isEqualTo(2);
+        }
+    }
+
+    @Test
+    @DisplayName("Readiness counts an apply that is already running, not only the queue")
+    void runningApplyIsVisibleInReadinessWhileTheQueueIsEmpty() throws Exception {
+        try (Fixture fixture = new Fixture()) {
+            fixture.source.put(10, 1, 0);
+            fixture.rebuildAll();
+            FakeVectorSource.ScanBarrier read = fixture.source.blockNextReadOf(10L);
+            fixture.source.put(10, 0, 1);
+            fixture.adapter.onKeyChanged(10L);
+            assertThat(read.finishedReading.await(3, TimeUnit.SECONDS)).isTrue();
+
+            assertThat(fixture.applier.backlog()).as("nothing is queued any more").isZero();
+            assertThat(fixture.adapter.localStatus().pendingApplies).as("the apply is still running").isEqualTo(1);
+
+            read.release.countDown();
+            await().atMost(ofSeconds(3)).untilAsserted(() ->
+                    assertThat(fixture.adapter.localStatus().pendingApplies).isZero());
+            assertThat(fixture.adapter.searchLocal(new float[]{0, 1}, 1)).extracting(h -> h.key).containsExactly(10L);
         }
     }
 
@@ -325,7 +383,7 @@ class IgniteIndexAdapterTest {
             fixture.builds.runAll();
 
             assertThat(fixture.adapter.localStats().deltaEntries).isZero();
-            assertThat(fixture.adapter.searchLocal(new float[]{-1, 0}, 1)).extracting(ScoredVector::id)
+            assertThat(fixture.adapter.searchLocal(new float[]{-1, 0}, 1)).extracting(h -> h.key)
                     .containsExactly(30L);
         }
     }
@@ -368,11 +426,11 @@ class IgniteIndexAdapterTest {
                     assertThat(adapter.localStats().appliedTotal).isEqualTo(expectedTotal));
         }
 
-        void awaitSearch(float[] query, ScoredVector expected) {
+        void awaitSearch(float[] query, IndexHit expected) {
             await().atMost(ofSeconds(3)).untilAsserted(() ->
                     assertThat(adapter.searchLocal(query, 10))
-                            .extracting(ScoredVector::id, ScoredVector::distance)
-                            .containsExactly(tuple(expected.id(), expected.distance())));
+                            .extracting(h -> h.key, h -> h.distance)
+                            .containsExactly(tuple(expected.key, expected.distance)));
         }
 
         void blockApplier() throws InterruptedException {

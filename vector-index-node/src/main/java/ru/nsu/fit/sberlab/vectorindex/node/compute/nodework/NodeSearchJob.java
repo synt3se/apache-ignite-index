@@ -35,13 +35,7 @@ public class NodeSearchJob implements IgniteCallable<NodeSearchResult> {
     public NodeSearchResult call() {
         IgniteIndexAdapter adapter = NodeIndexContext.manager(ignite);
         if (adapter == null) {
-            NodeSearchResult empty = new NodeSearchResult(List.of(), 0);
-            if (request.partitions() != null) {
-                for (int partition : request.partitions()) {
-                    empty.failedPartitions.add(new PartitionFailure(partition, PartitionFailure.Reason.NO_INDEX, null));
-                }
-            }
-            return empty;
+            return NodeSearchResult.rejected(request.partitions(), PartitionFailure.Reason.NO_INDEX, null);
         }
         Budget budget = Budget.remaining(NanoClock.SYSTEM, request.budgetNanos());
         return adapter.search(request.partitions(), request.query(), request.k(), null, budget);

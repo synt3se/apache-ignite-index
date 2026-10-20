@@ -14,21 +14,29 @@ import java.util.function.BiConsumer;
 /** Источник в памяти: партиция = key mod 2; управляемые барьеры скана и сбои чтения. */
 final class FakeVectorSource implements VectorSource {
 
-    private static final float[] NO_VECTOR = new float[0];
-
-    final Map<Object, float[]> values = new ConcurrentHashMap<>();
+    final Map<Object, SourceValue> values = new ConcurrentHashMap<>();
     final AtomicReference<int[]> owned = new AtomicReference<>(new int[]{0});
     final Set<Object> failingReads = ConcurrentHashMap.newKeySet();
     final AtomicLong topology = new AtomicLong(1);
     private final AtomicReference<ScanBarrier> nextScan = new AtomicReference<>();
+    private final Map<Object, ScanBarrier> blockedReads = new ConcurrentHashMap<>();
     private final List<ScanBarrier> barriers = new ArrayList<>();
 
     void put(long key, float... vector) {
-        values.put(key, vector);
+        putKey(key, vector);
+    }
+
+    /** Ключ любого типа (String, UUID, неподдерживаемые). */
+    void putKey(Object key, float... vector) {
+        values.put(key, new SourceValue.Vector(vector.clone()));
     }
 
     void putWithoutVector(long key) {
-        values.put(key, NO_VECTOR);
+        values.put(key, SourceValue.NO_VECTOR);
+    }
+
+    void putWrongType(long key) {
+        values.put(key, new SourceValue.WrongType("java.lang.String"));
     }
 
     void remove(long key) {
@@ -45,6 +53,16 @@ final class FakeVectorSource implements VectorSource {
         return barrier;
     }
 
+    /** Следующее чтение ключа остановится внутри применения, пока тест его не отпустит. */
+    ScanBarrier blockNextReadOf(Object key) {
+        ScanBarrier barrier = new ScanBarrier();
+        synchronized (barriers) {
+            barriers.add(barrier);
+        }
+        blockedReads.put(key, barrier);
+        return barrier;
+    }
+
     void releaseAllBarriers() {
         synchronized (barriers) {
             barriers.forEach(barrier -> barrier.release.countDown());
@@ -52,7 +70,7 @@ final class FakeVectorSource implements VectorSource {
     }
 
     static int partition(Object key) {
-        return (int) Math.floorMod((Long) key, 2L);
+        return key instanceof Long id ? (int) Math.floorMod(id, 2L) : Math.floorMod(key.hashCode(), 2);
     }
 
     @Override
@@ -76,26 +94,34 @@ final class FakeVectorSource implements VectorSource {
     }
 
     @Override
-    public float[] read(Object key) {
+    public SourceValue read(Object key) {
         if (failingReads.contains(key)) {
             throw new IllegalStateException("simulated read failure for " + key);
         }
-        float[] vector = values.get(key);
-        return vector == null || vector == NO_VECTOR ? null : vector.clone();
+        ScanBarrier barrier = blockedReads.remove(key);
+        if (barrier != null) {
+            barrier.finishedReading.countDown();
+            await(barrier.release);
+        }
+        return copy(values.getOrDefault(key, SourceValue.ABSENT));
     }
 
     @Override
-    public void scan(int partition, BiConsumer<Object, float[]> consumer) {
+    public void scan(int partition, BiConsumer<Object, SourceValue> consumer) {
         ScanBarrier barrier = nextScan.getAndSet(null);
-        for (Map.Entry<Object, float[]> entry : List.copyOf(values.entrySet())) {
-            if (partition(entry.getKey()) == partition && entry.getValue() != NO_VECTOR) {
-                consumer.accept(entry.getKey(), entry.getValue().clone());
+        for (Map.Entry<Object, SourceValue> entry : List.copyOf(values.entrySet())) {
+            if (partition(entry.getKey()) == partition) {
+                consumer.accept(entry.getKey(), copy(entry.getValue()));
             }
         }
         if (barrier != null) {
             barrier.finishedReading.countDown();
             await(barrier.release);
         }
+    }
+
+    private static SourceValue copy(SourceValue value) {
+        return value instanceof SourceValue.Vector present ? new SourceValue.Vector(present.vector().clone()) : value;
     }
 
     @Override
