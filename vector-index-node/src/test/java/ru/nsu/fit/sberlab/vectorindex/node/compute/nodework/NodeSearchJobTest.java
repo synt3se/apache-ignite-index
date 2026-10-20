@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 
 import ru.nsu.fit.sberlab.vectorindex.common.dto.NodeSearchResult;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.PartitionFailure;
+import ru.nsu.fit.sberlab.vectorindex.node.search.NodeQuery;
 import ru.nsu.fit.sberlab.vectorindex.node.search.NodeSearchRequest;
 
 class NodeSearchJobTest {
@@ -14,7 +15,8 @@ class NodeSearchJobTest {
     @Test
     @DisplayName("A node without a local index reports its assigned partitions as not covered")
     void noManagerMeansNoCoverage() {
-        NodeSearchResult result = new NodeSearchJob(new NodeSearchRequest(new float[]{1, 0}, 3, new int[]{0, 5}, 1_000))
+        NodeSearchResult result = new NodeSearchJob(new NodeSearchRequest(
+                new NodeQuery("vectors", "fingerprint", new float[]{1, 0}, 3, false, java.util.Map.of()), new int[]{0, 5}, 1_000))
                 .call();
 
         assertThat(result.hits).isEmpty();

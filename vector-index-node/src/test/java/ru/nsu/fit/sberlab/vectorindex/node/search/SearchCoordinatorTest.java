@@ -335,7 +335,8 @@ class SearchCoordinatorTest {
     private SearchResponse search(int k) {
         long start = clock.nanoTime();
         Budget budget = Budget.remaining(clock, Duration.ofMillis(budgetMs).toNanos());
-        DistributedSearchResult result = coordinator.search(new float[]{1, 0}, k, budget);
+        DistributedSearchResult result = coordinator.search(
+                new NodeQuery("vectors", "fingerprint", new float[]{1, 0}, k, false, Map.of()), budget);
         return hydrator.respond(result, k, budget, start);
     }
 

@@ -40,7 +40,7 @@ final class LocalSearch {
     }
 
     static NodeSearchResult search(Map<Integer, PartitionRuntime<Object>> runtimes, int[] partitions, float[] query,
-                                   int k, AlgorithmSearchParams params, Budget budget, Executor pool,
+                                   int k, AlgorithmSearchParams params, boolean exact, Budget budget, Executor pool,
                                    String nodeId, long topologyVersion) {
         int n = partitions.length;
         AtomicReferenceArray<Outcome> outcomes = new AtomicReferenceArray<>(n);
@@ -57,7 +57,7 @@ final class LocalSearch {
             Runnable task = () -> {
                 Outcome outcome;
                 try {
-                    outcome = searchPartition(runtime, partition, query, k, params, budget);
+                    outcome = searchPartition(runtime, partition, query, k, params, exact, budget);
                 } catch (RuntimeException e) {
                     outcome = Outcome.failed(partition, PartitionFailure.Reason.ERROR);
                 }
@@ -108,7 +108,7 @@ final class LocalSearch {
     }
 
     private static Outcome searchPartition(PartitionRuntime<Object> runtime, int partition, float[] query, int k,
-                                           AlgorithmSearchParams params, Budget budget) {
+                                           AlgorithmSearchParams params, boolean exact, Budget budget) {
         Optional<ReadView<Object>> opened = runtime.openView();
         if (opened.isEmpty()) {
             return Outcome.failed(partition, PartitionFailure.Reason.CLOSED);
@@ -120,7 +120,7 @@ final class LocalSearch {
             if (budget.exhausted()) {
                 return Outcome.failed(partition, PartitionFailure.Reason.BUDGET);
             }
-            LocalSearchResult<Object> found = view.search(query, new SearchParams(k, false, params, budget));
+            LocalSearchResult<Object> found = view.search(query, new SearchParams(k, exact, params, budget));
             if (!found.complete()) {
                 return Outcome.failed(partition, PartitionFailure.Reason.BUDGET);
             }

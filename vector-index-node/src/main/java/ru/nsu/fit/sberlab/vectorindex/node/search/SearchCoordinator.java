@@ -38,7 +38,7 @@ public final class SearchCoordinator {
         this.awaiter = Objects.requireNonNull(awaiter, "awaiter");
     }
 
-    public DistributedSearchResult search(float[] query, int k, Budget budget) {
+    public DistributedSearchResult search(NodeQuery query, Budget budget) {
         SearchTopology.Snapshot snapshot = topology.snapshot();
         List<PartitionFailure> failed = new ArrayList<>();
         Set<Integer> assigned = new HashSet<>();
@@ -57,7 +57,7 @@ public final class SearchCoordinator {
             if (entry.getValue().length == 0) {
                 continue;
             }
-            NodeSearchRequest request = new NodeSearchRequest(query, k, entry.getValue().clone(), budget.remainingNanos());
+            NodeSearchRequest request = new NodeSearchRequest(query, entry.getValue().clone(), budget.remainingNanos());
             try {
                 futures.put(entry.getKey(), transport.search(entry.getKey(), request));
             } catch (RuntimeException sendFailed) {

@@ -8,6 +8,8 @@ import static org.assertj.core.api.Assertions.within;
 import static org.awaitility.Awaitility.await;
 
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.List;
 import java.nio.file.Path;
 import java.util.concurrent.TimeUnit;
@@ -37,6 +39,9 @@ import ru.nsu.fit.sberlab.vectorindex.common.dto.PartitionFailure;
 import ru.nsu.fit.sberlab.vectorindex.core.Budget;
 import ru.nsu.fit.sberlab.vectorindex.core.NanoClock;
 import ru.nsu.fit.sberlab.vectorindex.node.index.IgniteIndexAdapter;
+import ru.nsu.fit.sberlab.vectorindex.node.index.IndexDefinition;
+import ru.nsu.fit.sberlab.vectorindex.node.index.NodeIndexRegistry;
+import ru.nsu.fit.sberlab.vectorindex.node.search.NodeQuery;
 import ru.nsu.fit.sberlab.vectorindex.node.index.JVectorProperties;
 import ru.nsu.fit.sberlab.vectorindex.node.search.Awaiter;
 import ru.nsu.fit.sberlab.vectorindex.node.search.DistributedSearchResult;
@@ -52,7 +57,7 @@ class DerivativeIndexIT {
     @TempDir
     Path workDirectory;
 
-    private final List<IgniteIndexAdapter> managers = new ArrayList<>();
+    private final Map<String, NodeIndexRegistry> registries = new HashMap<>();
 
     private static final TcpDiscoveryVmIpFinder IP_FINDER = new TcpDiscoveryVmIpFinder();
     static {
@@ -79,7 +84,8 @@ class DerivativeIndexIT {
 
     @AfterEach
     void tearDown() {
-        managers.forEach(IgniteIndexAdapter::stop);
+        registries.values().forEach(NodeIndexRegistry::close);
+        registries.clear();
         Ignition.stopAll(true);
     }
 
@@ -137,7 +143,7 @@ class DerivativeIndexIT {
         seed(a, 5);
         await().atMost(ofSeconds(15)).untilAsserted(() -> assertConverged(0, mA, mB));
 
-        mB.stop();
+        stopIndex(b);
         Ignition.stop("n2", true);
 
         await().atMost(ofSeconds(20)).pollInterval(ofMillis(500))
@@ -154,7 +160,7 @@ class DerivativeIndexIT {
         seed(a, 5);
         await().atMost(ofSeconds(15)).untilAsserted(() -> assertConverged(0, mA, mB));
 
-        mB.stop();
+        stopIndex(b);
         Ignition.stop("n2", true);
         await().atMost(ofSeconds(20)).untilAsserted(() -> assertConverged(0, mA));
 
@@ -179,7 +185,7 @@ class DerivativeIndexIT {
                 new IgniteNodeTransport(a), Awaiter.BLOCKING);
 
         await().atMost(ofSeconds(15)).untilAsserted(() -> {
-            DistributedSearchResult result = coordinator.search(oneHot(3), 5, budget());
+            DistributedSearchResult result = coordinator.search(query(a, oneHot(3), 5), budget());
             assertThat(result.partial()).isFalse();
             assertThat(result.searchedPartitions()).hasSize(32);
             assertThat(result.hits()).extracting(h -> h.key).hasSize(5).doesNotHaveDuplicates();
@@ -187,11 +193,11 @@ class DerivativeIndexIT {
             assertThat(result.duplicateKeys()).isZero();
         });
 
-        mB.stop();                                      // индекс на n2 остановлен, узел жив
-        DistributedSearchResult degraded = coordinator.search(oneHot(3), 5, budget());
+        registries.get(b.name()).unload("vectors");      // индекс на n2 выгружен, узел жив
+        DistributedSearchResult degraded = coordinator.search(query(a, oneHot(3), 5), budget());
         assertThat(degraded.partial()).isTrue();
         assertThat(degraded.failedPartitions()).isNotEmpty()
-                .extracting(failure -> failure.reason).containsOnly(PartitionFailure.Reason.NO_INDEX);
+                .extracting(failure -> failure.reason).containsOnly(PartitionFailure.Reason.INDEX_UNLOADED);
         assertThat(degraded.searchedPartitions().length + degraded.failedPartitions().size()).isEqualTo(32);
     }
 
@@ -215,11 +221,20 @@ class DerivativeIndexIT {
     }
 
     private IgniteIndexAdapter started(Ignite ignite) {
-        IgniteIndexAdapter m = new IgniteIndexAdapter(
-                ignite, "vectors", 512, IndexType.JVECTOR_INDEX, testJvectorProps());
-        m.start();
-        managers.add(m);
-        return m;
+        NodeIndexRegistry registry = NodeIndexRegistry.start(ignite,
+                List.of(IndexDefinition.legacy(512, IndexType.JVECTOR_INDEX, testJvectorProps())));
+        registries.put(ignite.name(), registry);
+        return registry.adapter("vectors");
+    }
+
+    /** Индексная плоскость узла остановлена (как при отмене сервиса). */
+    private void stopIndex(Ignite ignite) {
+        registries.remove(ignite.name()).close();
+    }
+
+    private NodeQuery query(Ignite coordinatorNode, float[] vector, int k) {
+        IndexDefinition definition = registries.get(coordinatorNode.name()).definition("vectors");
+        return new NodeQuery(definition.indexId(), definition.fingerprint(), vector, k, false, Map.of());
     }
 
     private static void seed(Ignite ignite, int n) {

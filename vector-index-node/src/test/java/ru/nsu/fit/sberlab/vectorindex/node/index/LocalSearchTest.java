@@ -100,7 +100,7 @@ class LocalSearchTest {
     }
 
     private NodeSearchResult search(int[] partitions, Executor pool, Budget budget) {
-        return LocalSearch.search(runtimes, partitions, new float[]{1, 0}, 3, null, budget, pool, "node-a", 7);
+        return LocalSearch.search(runtimes, partitions, new float[]{1, 0}, 3, null, false, budget, pool, "node-a", 7);
     }
 
     private PartitionRuntime<Object> runtime(int partition) {

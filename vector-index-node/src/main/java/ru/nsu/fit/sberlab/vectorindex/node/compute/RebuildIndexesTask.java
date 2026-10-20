@@ -8,7 +8,7 @@ import org.apache.ignite.compute.ComputeTaskAdapter;
 import org.apache.ignite.Ignite;
 import org.apache.ignite.resources.IgniteInstanceResource;
 import ru.nsu.fit.sberlab.vectorindex.node.index.IgniteIndexAdapter;
-import ru.nsu.fit.sberlab.vectorindex.node.index.NodeIndexContext;
+import ru.nsu.fit.sberlab.vectorindex.node.index.NodeIndexRegistry;
 
 import java.util.HashMap;
 import java.util.List;
@@ -37,10 +37,12 @@ public class RebuildIndexesTask extends ComputeTaskAdapter<Void, Void> {
 
         @Override
         public Object execute() {
-            IgniteIndexAdapter adapter = NodeIndexContext.manager(ignite);
-            if (adapter == null) throw new IllegalStateException("vector index adapter is not initialized");
+            NodeIndexRegistry registry = NodeIndexRegistry.of(ignite);
+            if (registry == null) throw new IllegalStateException("vector index registry is not initialized");
 
-            adapter.resumeIndexing();   // снимает bulk-паузу и делает полный пересканирование
+            for (IgniteIndexAdapter adapter : registry.loadedAdapters()) {
+                adapter.resumeIndexing();   // снимает bulk-паузу и делает полное пересканирование
+            }
             return null;
         }
     }

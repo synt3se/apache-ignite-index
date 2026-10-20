@@ -9,6 +9,7 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -26,7 +27,6 @@ import ru.nsu.fit.sberlab.vectorindex.common.dto.IndexNodeStatus;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.KeyType;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.NodeSearchResult;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.NodeStats;
-import ru.nsu.fit.sberlab.vectorindex.common.indextype.IndexType;
 import ru.nsu.fit.sberlab.vectorindex.core.ApplyResult;
 import ru.nsu.fit.sberlab.vectorindex.core.Budget;
 import ru.nsu.fit.sberlab.vectorindex.core.NanoClock;
@@ -65,7 +65,6 @@ public final class IgniteIndexAdapter {
     private final IgniteLogger log;
     private final Ignite ignite;           // null без кластера (тесты)
     private final String nodeId;
-    private final boolean ownsResources;
 
     private final ConcurrentHashMap<Integer, PartitionRuntime<Object>> runtimes = new ConcurrentHashMap<>();
     /** Runtime (по идентичности), чей скан стоит в очереди или выполняется: задание — эпизода, не номера партиции. */
@@ -88,27 +87,22 @@ public final class IgniteIndexAdapter {
 
     private IgnitePredicate<Event> cacheListener;
     private IgnitePredicate<Event> topologyListener;
+    private final List<ScheduledFuture<?>> housekeeping = new ArrayList<>();
 
-    /** Прежняя конфигурация сервиса: один индекс на узел, COSINE, JVector или перебор. */
-    public IgniteIndexAdapter(Ignite ignite, String cacheName, int dimension, IndexType indexType,
-                              JVectorProperties properties) {
-        this(IndexDefinition.fromLegacy(cacheName, dimension, indexType, properties), ignite);
-    }
-
-    private IgniteIndexAdapter(IndexDefinition definition, Ignite ignite) {
-        this(definition, new IgniteVectorSource(ignite, definition.cacheName(), definition.field()),
-                NodeResources.create("vindex-" + definition.indexId()), NanoClock.SYSTEM, ignite.log(), ignite,
-                String.valueOf(ignite.cluster().localNode().consistentId()), true);
+    /** Индекс узла на общих ресурсах реестра ({@link NodeIndexRegistry}); ресурсами не владеет. */
+    IgniteIndexAdapter(Ignite ignite, IndexDefinition definition, NodeResources resources) {
+        this(definition, new IgniteVectorSource(ignite, definition.cacheName(), definition.field()), resources,
+                NanoClock.SYSTEM, ignite.log(), ignite, String.valueOf(ignite.cluster().localNode().consistentId()));
     }
 
     /** Без кластера: источник, пулы и часы внедряются (тесты). */
     IgniteIndexAdapter(IndexDefinition definition, VectorSource source, NodeResources resources,
                        NanoClock clock, IgniteLogger log) {
-        this(definition, source, resources, clock, log, null, "local", false);
+        this(definition, source, resources, clock, log, null, "local");
     }
 
     private IgniteIndexAdapter(IndexDefinition definition, VectorSource source, NodeResources resources,
-                               NanoClock clock, IgniteLogger log, Ignite ignite, String nodeId, boolean ownsResources) {
+                               NanoClock clock, IgniteLogger log, Ignite ignite, String nodeId) {
         this.definition = definition;
         this.source = source;
         this.resources = resources;
@@ -116,7 +110,10 @@ public final class IgniteIndexAdapter {
         this.log = log;
         this.ignite = ignite;
         this.nodeId = nodeId;
-        this.ownsResources = ownsResources;
+    }
+
+    public IndexDefinition definition() {
+        return definition;
     }
 
     // ---------------------------------------------------------------- жизненный цикл
@@ -131,22 +128,27 @@ public final class IgniteIndexAdapter {
             ignite.events().localListen(cacheListener, EventType.EVT_CACHE_OBJECT_PUT, EventType.EVT_CACHE_OBJECT_REMOVED);
             ignite.events().localListen(topologyListener, EventType.EVT_NODE_JOINED, EventType.EVT_NODE_LEFT,
                     EventType.EVT_NODE_FAILED, EventType.EVT_CACHE_REBALANCE_STOPPED);
-            NodeIndexContext.register(ignite, this);
         }
         if (resources.housekeeper != null) {
-            resources.housekeeper.schedule(() -> safeReconcile(true), 1, TimeUnit.SECONDS);
-            resources.housekeeper.scheduleWithFixedDelay(this::housekeeping,
-                    RECONCILE_INTERVAL_MS, RECONCILE_INTERVAL_MS, TimeUnit.MILLISECONDS);
+            synchronized (housekeeping) {
+                housekeeping.add(resources.housekeeper.schedule(() -> safeReconcile(true), 1, TimeUnit.SECONDS));
+                housekeeping.add(resources.housekeeper.scheduleWithFixedDelay(this::housekeeping,
+                        RECONCILE_INTERVAL_MS, RECONCILE_INTERVAL_MS, TimeUnit.MILLISECONDS));
+            }
         }
         log.info("[vindex] adapter started: index=" + definition.indexId() + ", algorithm="
                 + definition.algorithm().name() + ", visibility=eventual (cache events)");
     }
 
+    /** Закрывает только ресурсы этого индекса: подписки, периодические задания и runtime. */
     public void stop() {
         stopped = true;
+        synchronized (housekeeping) {
+            housekeeping.forEach(task -> task.cancel(false));
+            housekeeping.clear();
+        }
         if (ignite != null) {
             try {
-                NodeIndexContext.unregister(ignite, this);
                 if (cacheListener != null) {
                     ignite.events().stopLocalListen(cacheListener);
                 }
@@ -154,16 +156,13 @@ public final class IgniteIndexAdapter {
                     ignite.events().stopLocalListen(topologyListener);
                 }
             } catch (IllegalStateException nodeAlreadyStopped) {
-                // узел остановлен раньше адаптера: слушатели и nodeLocalMap ушли вместе с ним
+                // узел остановлен раньше адаптера: слушатели ушли вместе с ним
             }
         }
         for (PartitionRuntime<Object> runtime : runtimes.values()) {
             runtime.close();
         }
         runtimes.clear();
-        if (ownsResources) {
-            resources.close();
-        }
     }
 
     // ---------------------------------------------------------------- изменения
@@ -418,17 +417,18 @@ public final class IgniteIndexAdapter {
      *
      * @throws IllegalArgumentException неверный запрос
      */
-    public NodeSearchResult search(int[] partitions, float[] query, int k, AlgorithmSearchParams params, Budget budget) {
+    public NodeSearchResult search(int[] partitions, float[] query, int k, AlgorithmSearchParams params,
+                                   boolean exact, Budget budget) {
         definition.spec().prepareQuery(query); // неверный запрос — ошибка вызывающего, до рассылки по пулу
         int[] assigned = partitions != null ? partitions
                 : runtimes.keySet().stream().mapToInt(Integer::intValue).sorted().toArray();
-        return LocalSearch.search(runtimes, assigned, query, k, params, budget, resources.searchPool,
+        return LocalSearch.search(runtimes, assigned, query, k, params, exact, budget, resources.searchPool,
                 nodeId, source.topologyVersion());
     }
 
     /** Top-k по всем локальным партициям в фазе READY (тесты и диагностика). */
     public List<IndexHit> searchLocal(float[] query, int count) {
-        return search(null, query, count, null, Budget.unlimited()).hits;
+        return search(null, query, count, null, false, Budget.unlimited()).hits;
     }
 
     public int activePartitionsCount() {

@@ -79,6 +79,11 @@ public record IndexDefinition(String indexId, String cacheName, String field, Ve
         return of(cacheName, cacheName, "vector", dimension, Metric.COSINE, AlgorithmKind.fromLegacy(type), properties);
     }
 
+    /** Прежняя конфигурация сервиса для демо-кэша {@code vectors}. */
+    public static IndexDefinition legacy(int dimension, IndexType type, JVectorProperties properties) {
+        return fromLegacy("vectors", dimension, type, properties);
+    }
+
     /**
      * Параметры поиска алгоритма из запроса. Неизвестный параметр или чужой тип значения —
      * {@link IllegalArgumentException}; совместимость с {@code k} (JVector: {@code ef ≥ k})

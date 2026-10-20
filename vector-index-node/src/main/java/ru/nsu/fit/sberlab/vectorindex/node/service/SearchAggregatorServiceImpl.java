@@ -1,6 +1,7 @@
 package ru.nsu.fit.sberlab.vectorindex.node.service;
 
 
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.ignite.Ignite;
@@ -11,12 +12,15 @@ import ru.nsu.fit.sberlab.vectorindex.common.VectorObject;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.SearchResponse;
 import ru.nsu.fit.sberlab.vectorindex.core.Budget;
 import ru.nsu.fit.sberlab.vectorindex.core.NanoClock;
+import ru.nsu.fit.sberlab.vectorindex.node.index.IndexDefinition;
+import ru.nsu.fit.sberlab.vectorindex.node.index.NodeIndexRegistry;
 import ru.nsu.fit.sberlab.vectorindex.node.search.Awaiter;
 import ru.nsu.fit.sberlab.vectorindex.node.search.DemoHydrator;
 import ru.nsu.fit.sberlab.vectorindex.node.search.DistributedSearchResult;
 import ru.nsu.fit.sberlab.vectorindex.node.search.IgniteDocumentStore;
 import ru.nsu.fit.sberlab.vectorindex.node.search.IgniteNodeTransport;
 import ru.nsu.fit.sberlab.vectorindex.node.search.IgniteSearchTopology;
+import ru.nsu.fit.sberlab.vectorindex.node.search.NodeQuery;
 import ru.nsu.fit.sberlab.vectorindex.node.search.SearchCoordinator;
 
 /**
@@ -56,7 +60,14 @@ public class SearchAggregatorServiceImpl implements SearchAggregationService {
     public SearchResponse search(float[] vector, int count) {
         long start = NanoClock.SYSTEM.nanoTime();
         Budget budget = Budget.remaining(NanoClock.SYSTEM, timeoutNanos);
-        DistributedSearchResult result = coordinator.search(vector, count, budget);
+        NodeIndexRegistry registry = NodeIndexRegistry.of(ignite);
+        if (registry == null) {
+            throw new IllegalStateException("vector index registry is not initialized on this node");
+        }
+        IndexDefinition definition = registry.definition(registry.defaultIndexId());
+        definition.spec().prepareQuery(vector);
+        DistributedSearchResult result = coordinator.search(new NodeQuery(definition.indexId(),
+                definition.fingerprint(), vector, count, false, Map.of()), budget);
         return hydrator.respond(result, count, budget, start);
     }
 }

@@ -10,16 +10,17 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-public class ClearVectorTask extends ComputeTaskAdapter<Void, Void> {
+/** Совместимость bulk-загрузки: очистка индексов кэша (аргумент; {@code null} — демо-кэш {@code vectors}). */
+public class ClearVectorTask extends ComputeTaskAdapter<String, Void> {
     @Override
     public Map<? extends ComputeJob, ClusterNode> map(
             List<ClusterNode> subgrid,
-            Void arg
+            String arg
     ) {
         Map<ComputeJob, ClusterNode> jobs = new HashMap<>();
 
         for (ClusterNode node : subgrid) {
-            jobs.put(new ClearLocalIndexJob(), node);
+            jobs.put(new ClearLocalIndexJob(arg == null ? "vectors" : arg), node);
         }
 
         return jobs;
