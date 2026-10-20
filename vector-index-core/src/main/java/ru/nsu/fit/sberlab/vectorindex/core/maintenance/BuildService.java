@@ -4,6 +4,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ForkJoinPool;
@@ -124,6 +125,9 @@ public final class BuildService implements AutoCloseable {
                 if (built == null) {
                     throw new IllegalStateException(runtime.algorithm().name() + " returned no structure");
                 }
+            } catch (CancellationException cancelled) {
+                runtime.abandonBuild(token);
+                return Outcome.REJECTED;
             } catch (Exception e) {
                 runtime.buildFailed(token, e);
                 failed.increment();

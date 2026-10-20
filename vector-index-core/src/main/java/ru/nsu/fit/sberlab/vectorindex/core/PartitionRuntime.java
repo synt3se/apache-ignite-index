@@ -278,6 +278,26 @@ public final class PartitionRuntime<K> implements AutoCloseable {
         token.close();
     }
 
+    /**
+     * Сборка брошена без ошибки (токен устарел, сервис остановлен): состояние BUILDING
+     * снимается, счётчик ошибок не растёт. Токен закрывается.
+     */
+    public void abandonBuild(BuildToken<K> token) {
+        if (token.runtime != this) {
+            throw new IllegalArgumentException("token belongs to another runtime");
+        }
+        lockWriters();
+        try {
+            State s = state;
+            if (s.outstanding == token) {
+                state = s.withoutOutstanding();
+            }
+        } finally {
+            writers.unlock();
+        }
+        token.close();
+    }
+
     /** Токен ещё может быть опубликован (сборку имеет смысл продолжать). */
     public boolean isCurrent(BuildToken<?> token) {
         State s = state;

@@ -143,6 +143,22 @@ class BuildServiceTest {
     }
 
     @Test
+    void cancelledBuildIsAbandonedWithoutCountingAFailure() {
+        PartitionRuntime<Long> rt = runtime(MaintenancePolicy.thresholds(100, 0.1, 0.2));
+        publishScan(rt, Map.of(1L, new float[]{1, 1}));
+        algorithm.onNextBuild(() -> {
+            throw new java.util.concurrent.CancellationException("token became stale");
+        });
+        pool.runNext();
+
+        assertThat(rt.status().buildFailures()).isZero();
+        assertThat(rt.status().optimization()).isEqualTo(OptimizationState.NOT_BUILT);
+        assertThat(retries.pending()).isZero();
+        pool.runAll();
+        assertThat(rt.status().optimization()).as("re-requested after abandon").isEqualTo(OptimizationState.BUILT);
+    }
+
+    @Test
     void closedServiceIgnoresRequests() {
         PartitionRuntime<Long> rt = runtime(MaintenancePolicy.MANUAL);
         publishScan(rt, Map.of(1L, new float[]{1, 1}));
