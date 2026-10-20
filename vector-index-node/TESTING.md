@@ -7,9 +7,10 @@
 | `vector-index-core` | метрики и приём векторов, слои дельты, протокол `PartitionRuntime` (скан, ревизия базы, `liveCount`, токены сборки, виды) | нет |
 | `vector-index-testkit` | контрактный набор runtime для Flat, `BuildService` | нет |
 | `vector-index-jvector` | тот же контрактный набор для JVector, параметры поиска, recall | нет |
-| `vector-index-node` | адаптер на событиях Ignite, локальный поиск и покрытие, координатор и гидрация, интеграция на настоящем Ignite | да |
+| `vector-index-node` | определения и реестр индексов, извлечение поля `BinaryObject`, адаптер на событиях Ignite, локальный поиск и покрытие, координатор и строгий ответ, готовность по кластеру, интеграция на настоящем Ignite | да |
+| `index-vector-server` | гидрация в прикладном слое и бюджет на сервере, REST `/indexes`, совместимый `/vectors/search`, метрики Prometheus, разбор XML узла через Spring | нет |
 
-REST, Telegram, gateway, embedding-сервис и нагрузочные раннеры в этот набор не входят.
+Telegram, gateway, embedding-сервис и нагрузочные раннеры в этот набор не входят.
 
 ## Запуск
 
@@ -19,12 +20,15 @@ REST, Telegram, gateway, embedding-сервис и нагрузочные ран
 Из корня репозитория:
 
 ```powershell
-# Все проверки ядра, алгоритмов, адаптера и интеграционные (модули подтягиваются через -am).
+# Все проверки, включая серверный модуль (модули подтягиваются через -am).
 $env:JAVA_HOME = "C:\Program Files\Java\jdk-21.0.2"
+mvn -pl index-vector-server -am clean test
+
+# Без серверного модуля: ядро, алгоритмы, адаптер и интеграционные.
 mvn -pl vector-index-node -am clean test
 
 # Только интеграционные проверки на настоящем Ignite.
-mvn -pl vector-index-node -am test "-Dtest=DerivativeIndexIT" "-Dsurefire.failIfNoSpecifiedTests=false"
+mvn -pl vector-index-node -am test "-Dtest=*IT" "-Dsurefire.failIfNoSpecifiedTests=false"
 
 # Только ядро и алгоритмы, без Ignite.
 mvn -pl vector-index-core,vector-index-testkit,vector-index-jvector -am test
@@ -34,8 +38,10 @@ mvn -pl vector-index-core,vector-index-testkit,vector-index-jvector -am test
 реактора уже на фазе `test`, без `install`. Surefire в `vector-index-node` явно включает `*IT`:
 интеграционные проверки выполняются на фазе `test`. Отчёты — `*/target/surefire-reports/`.
 
-Прогон 20.10.2026 на JDK 21 / Ignite 2.18.0, `mvn -pl vector-index-node -am clean test`:
-**160 проверок, 0 падений** (core 35, testkit 43, jvector 38, node 44).
+Прогон 20.10.2026 на JDK 21 / Ignite 2.18.0, `mvn -pl index-vector-server -am clean test`:
+**207 проверок, 0 падений** (core 35, testkit 43, jvector 38, node 72, server 19).
+Серверный модуль использует JUnit 5.10.2 (BOM подключён раньше BOM Spring Boot) и те же
+`--add-opens`, что и узел.
 
 ## Известные дефекты прежней реализации — закрыты
 
@@ -48,7 +54,7 @@ mvn -pl vector-index-core,vector-index-testkit,vector-index-jvector -am test
 | К1: удаление теряется при публикации графа | `JVectorPartitionIndexTest.deletionAfterUpdatedVectorWasCapturedMustSurvivePublication` | `PartitionRuntimeContract` — то же имя; Flat и JVector |
 | К2: запрос восстановления теряется при overflow во время скана | `PartitionIndexManagerTest.overflowDuringRebuildIsNotForgottenByConcurrentReconcile` | `IgniteIndexAdapterTest` — то же имя |
 | К4: coverage не соответствует фактическому поиску | `NodeSearchJobCoverageTest.coverageDescribesSearchedPartitionsRatherThanLaterActivation` | `LocalSearchTest` — то же имя |
-| К4: гидрация после исчерпания бюджета | `SearchAggregatorServiceImplTest.doesNotStartHydrationAfterDeadlineIsExhausted` | `SearchCoordinatorTest` — то же имя |
+| К4: гидрация после исчерпания бюджета | `SearchAggregatorServiceImplTest.doesNotStartHydrationAfterDeadlineIsExhausted` | `IndexSearchClientTest` (серверный модуль, гидрация в прикладном слое) — то же имя и утверждения |
 | Владение входным массивом | `BruteForcePartitionIndexTest.addCopiesCallerOwnedArray` | `PartitionRuntimeContract` — то же имя; Flat и JVector |
 
 ## Что покрыто
@@ -76,17 +82,51 @@ mvn -pl vector-index-core,vector-index-testkit,vector-index-jvector -am test
   записи без вектора, top-k по партициям, смена владельца (эпизод закрывается), overflow в
   покое и во время скана, replay во время скана, bulk pause/resume (К5), ошибка чтения →
   сверка, фаза загрузки, первоначальный скан нового эпизода при задании прежнего в очереди
-  (партиция ушла и вернулась), отказ пула на первоначальном скане, неподдерживаемые ключи,
-  сборки в общем пуле.
+  (партиция ушла и вернулась), отказ пула на первоначальном скане, ключи `String` и `UUID` с
+  их типом, неподдерживаемые ключи, значение неверного типа исключается и считается,
+  выполняющееся применение видно в готовности при пустой очереди, сборки в общем пуле.
+- `IndexDefinitionTest`: прежняя конфигурация, проверка настроек, отпечаток (метрика,
+  размерность, поле, кэш, алгоритм и его параметры — да; пороги пересборки — нет), параметры
+  поиска по алгоритму, сериализация вложенных настроек.
+- `IgniteVectorSourceTest`: `localPeek` → `get`, поле `BinaryObject`, нет поля, неверный тип,
+  только FP32, значение без поля — само `float[]`.
+- `NodeIndexRegistryTest`: два индекса на разных полях одного кэша, общие ресурсы, выгрузка
+  одного не трогает runtime, поиск и обновления другого; `NO_INDEX` / `INDEX_UNLOADED` /
+  `DEFINITION_MISMATCH`; закрытие общих ресурсов ровно один раз; статистика узла.
 - `LocalSearchTest`: покрытие узла — партиции, вид которых открыт в READY и поиск завершён в
   бюджете; причины отказа по партициям, известный пробел, переполнение пула, бюджет.
-- `SearchCoordinatorTest`: глобальный top-k, повторы ключей (учитываются как нарушение), гидрация
-  и её батчи, отказы и таймауты узлов, неполное покрытие, назначение партиций и смена владельца
-  во время запроса (без двойного учёта), известный пробел до клиента, остаток бюджета узлам.
+- `SearchCoordinatorTest`: глобальный top-k, повторы ключей (учитываются как нарушение), отказы и
+  таймауты узлов, неполное покрытие, назначение партиций и смена владельца во время запроса (без
+  двойного учёта), известный пробел до клиента, остаток бюджета, `indexId` и отпечаток узлам;
+  строгий режим по каждой причине неполноты (известный пробел при полном покрытии, недостающие
+  партиции, таймаут, неответивший владелец, повтор ключа, другое определение).
+- `ClusterIndexViewsTest`: готовность по назначенным владельцам, известный пробел, выполняющиеся
+  применения и сканы, неответившие, выгрузившие и несогласные узлы; подтверждение операции
+  только всеми серверами; проверка запроса по определению координатора.
 - `StripedApplierTest`: порядок применения, независимость полос, переполнение.
 - `DerivativeIndexIT`: настоящий двухузловой Ignite — события put/update/remove, потеря и возврат
   узла без потерь и дубликатов, распределённый поиск через compute job (полное покрытие,
-  затем `NO_INDEX` и `partial` при остановленном индексе узла).
+  затем `INDEX_UNLOADED` и `partial` при выгруженном индексе узла).
+- `UniversalIndexIT`: двухузловой Ignite, определения в статической конфигурации сервисов, всё
+  через тонкий клиент — L2/128 (значение `float[]`, Flat) и cosine/512 (поле `BinaryObject`,
+  JVector) через один API со сверкой с `ExactModel`; два индекса на полях одного кэша, выгрузка
+  одного (результат по узлам) не мешает другому; известный пробел и строгий режим до клиента,
+  выгрузка на одном узле — `INDEX_UNLOADED` с этим узлом; тот же `indexId` с другим определением
+  никогда не `COMPLETE`. Значения и ключи — `BinaryObject` типов, классов которых нет ни в одной
+  JVM.
+
+Серверный модуль:
+
+- `IndexSearchClientTest`: сценарии гидрации из прежнего `SearchCoordinatorTest` (порядок и
+  документы, добор после удалённых, короткий ответ, без гидрации для пустого и неполного ответа,
+  К4); бюджет сервера ограничивает вызов сервиса и повтор; строгий ответ по таймауту; статус и
+  покрытие доходят до демо-ответа; ошибки запроса не гидрируются.
+- `IndexControllerTest`: 200 / 503 / 400 / 404, ключи с типом в JSON, операции по узлам.
+- `VectorServiceTest`: совместимый `/vectors/search` — прежнее тело, статус в заголовках.
+- `StatsMetricsPublisherTest`: метрики индекса с тегами `node` и `index`, общие ресурсы — по узлу.
+- `IgniteXmlConfigTest`: разбор XML через Spring без запуска Ignite — пример с несколькими
+  индексами (`src/test/resources/ignite-multi-index.xml`) и обе конфигурации Docker (прежний
+  индекс `vectors`), сериализация вложенных настроек.
 
 ## Управление конкурентностью и изоляция
 
@@ -97,13 +137,16 @@ Reflection и обращения к закрытым полям не испол�
 поэтому расписания детерминированы без задержек. Интерфейсы Ignite мокаются Mockito там, где
 проверяется именно Ignite-реализация (`IgniteVectorSourceTest`).
 
-Интеграционные тесты используют loopback, discovery-порты 37500–37509, communication-порты
-37200–37209 и временные рабочие каталоги; Docker и внешний кластер не нужны. Число доступных
-процессоров тестовой JVM ограничено четырьмя, data region узла — 64 МиБ.
+Интеграционные тесты используют loopback и временные рабочие каталоги; Docker и внешний кластер
+не нужны. `DerivativeIndexIT` — discovery 37500–37509, communication 37200–37209;
+`UniversalIndexIT` — discovery 37520–37529, communication 37220–37229, тонкий клиент 37800–37809.
+Число доступных процессоров тестовой JVM ограничено четырьмя.
 
 ## Границы покрытия
 
 Набор не проверяет синхронную видимость (`IndexingSpi` — отдельный спайк), транзакционные
-гарантии, persistence, совпадение версии документа с версией вектора при гидрации, несколько
-определений индексов на узле (этап C) и путь REST/бенчмарков. Видимость v1 — eventual на
-событиях кэша: проверяется сходимость, а не ограниченное отставание.
+гарантии, persistence, совпадение версии документа с версией вектора при гидрации, отдельную JVM
+с другим classpath (вместо неё — типы, классов которых нет ни в одной JVM), запуск узла из XML
+(XML разбирается в bean через Spring) и путь бенчмарков (этап D). Готовность — наблюдаемый
+признак, не барьер окончания загрузки. Видимость v1 — eventual на событиях кэша: проверяется
+сходимость, а не ограниченное отставание.
