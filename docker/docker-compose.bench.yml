@@ -1,0 +1,57 @@
+# Стенд VectorDBBench (этап D): два узла Ignite с индексами бенчмарка.
+# Отдельный проект, порты и сеть не пересекаются с docker-compose.yml.
+# Комплект jar-ов собирается в target/bench-ignite-libs, docker/ignite-libs не трогается:
+#   bash docker/build-ignite-libs.sh --out target/bench-ignite-libs --compare docker/ignite-libs
+#   docker compose -f docker/docker-compose.bench.yml up -d --build
+# Тонкий клиент — localhost:10810 (узел 1) и :10811 (узел 2).
+name: vindex-bench
+
+x-node: &node
+  image: ignite-java17:2.18.0
+  environment:
+    CONFIG_URI: /config/ignite-config.xml
+    JVM_OPTS: >-
+      -Xms1g -Xmx${VINDEX_BENCH_HEAP:-2g}
+      --add-opens=java.base/java.nio=ALL-UNNAMED
+      --add-opens=java.base/sun.nio.ch=ALL-UNNAMED
+      --add-opens=java.base/java.lang=ALL-UNNAMED
+      --add-opens=java.base/java.lang.invoke=ALL-UNNAMED
+      --add-opens=java.base/java.util=ALL-UNNAMED
+      --add-opens=java.base/java.io=ALL-UNNAMED
+      --add-opens=java.base/jdk.internal.misc=ALL-UNNAMED
+  volumes:
+    - ./config-bench:/config:ro
+    - ../target/bench-ignite-libs:/opt/ignite/apache-ignite/libs/ext:ro
+  networks:
+    - vindex-bench-net
+
+services:
+  vindex-bench-node-1:
+    <<: *node
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM apacheignite/ignite:2.18.0
+
+        USER root
+
+        RUN apk add --no-cache openjdk17-jre
+
+        ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk
+        ENV PATH=/usr/lib/jvm/java-17-openjdk/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    container_name: vindex-bench-node-1
+    ports:
+      - "10810:10800"
+
+  vindex-bench-node-2:
+    <<: *node
+    container_name: vindex-bench-node-2
+    ports:
+      - "10811:10800"
+    depends_on:
+      - vindex-bench-node-1
+
+networks:
+  vindex-bench-net:
+    name: vindex-bench-net
+    driver: bridge

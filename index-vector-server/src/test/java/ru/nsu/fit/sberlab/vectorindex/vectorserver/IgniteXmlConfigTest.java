@@ -50,6 +50,24 @@ class IgniteXmlConfigTest {
     }
 
     @Test
+    void benchConfigurationGivesEveryIndexItsOwnCacheOfPlainVectors() throws Exception {
+        Path xml = Path.of("../docker/config-bench/ignite-config.xml");
+        LocalIndexServiceImpl service = localIndexService(new FileSystemResource(xml.toFile()));
+
+        List<IndexDefinition> definitions = service.definitions();
+
+        assertThat(definitions).extracting(IndexDefinition::indexId, IndexDefinition::cacheName,
+                IndexDefinition::field, d -> d.spec().dimension(), d -> d.spec().metric(), IndexDefinition::kind)
+                .containsExactly(
+                        tuple("smoke-flat", "bench_smoke_flat", null, 128, Metric.COSINE, AlgorithmKind.FLAT),
+                        tuple("smoke-jvector", "bench_smoke_jvector", null, 128, Metric.COSINE, AlgorithmKind.JVECTOR),
+                        tuple("clip512", "bench_clip512", null, 512, Metric.COSINE, AlgorithmKind.JVECTOR));
+        assertThat(definitions).extracting(IndexDefinition::cacheName).as("truncate needs an own cache per index")
+                .doesNotHaveDuplicates();
+        assertSurvivesSerialization(service);
+    }
+
+    @Test
     void existingDockerConfigurationsStillDefineTheLegacyDemoIndex() throws Exception {
         for (String path : List.of("../docker/config/ignite-config.xml", "../docker/config-2vm/ignite-config.xml")) {
             Path xml = Path.of(path);

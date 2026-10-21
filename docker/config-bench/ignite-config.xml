@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Узел стенда VectorDBBench (этап D). У каждого индекса свой кэш: truncate очищает весь кэш и
+  запрещён для кэша нескольких индексов. Значение кэша — сам float[] (поле не задано), ключ — Long:
+  так пишет пакетная загрузка PUT /indexes/{id}/vectors.
+    smoke-flat     — bench_smoke_flat,    128, COSINE, FLAT    (проверка: воспроизводит точных соседей);
+    smoke-jvector  — bench_smoke_jvector, 128, COSINE, JVECTOR;
+    clip512        — bench_clip512,       512, COSINE, JVECTOR (полный прогон 608k CLIP).
+  Автоматические пересборки во время загрузки отключены порогами: структуру строит барьер
+  загрузки (optimize стенда), как Qdrant строит HNSW после upsert.
+-->
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:util="http://www.springframework.org/schema/util"
+       xmlns:context="http://www.springframework.org/schema/context"
+       xsi:schemaLocation="
+           http://www.springframework.org/schema/beans
+           http://www.springframework.org/schema/beans/spring-beans.xsd
+           http://www.springframework.org/schema/util
+           http://www.springframework.org/schema/util/spring-util.xsd
+           http://www.springframework.org/schema/context
+           http://www.springframework.org/schema/context/spring-context.xsd">
+
+    <context:property-placeholder/>
+
+    <bean id="benchJvector" class="ru.nsu.fit.sberlab.vectorindex.node.index.JVectorProperties">
+        <property name="m" value="16"/>
+        <property name="efConstruction" value="200"/>
+        <property name="efSearch" value="1"/>
+        <property name="neighborOverflow" value="1.2"/>
+        <property name="alpha" value="1.2"/>
+        <property name="addHierarchy" value="true"/>
+        <property name="refineFinalGraph" value="true"/>
+        <property name="addRebuildRatio" value="1000"/>
+        <property name="deleteRebuildRatio" value="1000"/>
+        <property name="minAdditionsBeforeRebuild" value="1000000000"/>
+    </bean>
+
+    <bean id="benchCache" abstract="true" class="org.apache.ignite.configuration.CacheConfiguration">
+        <property name="cacheMode" value="PARTITIONED"/>
+        <property name="atomicityMode" value="ATOMIC"/>
+        <property name="backups" value="1"/>
+        <property name="affinity">
+            <bean class="org.apache.ignite.cache.affinity.rendezvous.RendezvousAffinityFunction">
+                <constructor-arg value="false"/>
+                <constructor-arg value="32"/>
+            </bean>
+        </property>
+    </bean>
+
+    <bean class="org.apache.ignite.configuration.IgniteConfiguration">
+        <property name="includeEventTypes">
+            <list>
+                <util:constant static-field="org.apache.ignite.events.EventType.EVT_CACHE_OBJECT_PUT"/>
+                <util:constant static-field="org.apache.ignite.events.EventType.EVT_CACHE_OBJECT_REMOVED"/>
+                <util:constant static-field="org.apache.ignite.events.EventType.EVT_NODE_JOINED"/>
+                <util:constant static-field="org.apache.ignite.events.EventType.EVT_NODE_LEFT"/>
+                <util:constant static-field="org.apache.ignite.events.EventType.EVT_NODE_FAILED"/>
+                <util:constant static-field="org.apache.ignite.events.EventType.EVT_CACHE_REBALANCE_STOPPED"/>
+            </list>
+        </property>
+
+        <property name="cacheConfiguration">
+            <list>
+                <bean parent="benchCache"><property name="name" value="bench_smoke_flat"/></bean>
+                <bean parent="benchCache"><property name="name" value="bench_smoke_jvector"/></bean>
+                <bean parent="benchCache"><property name="name" value="bench_clip512"/></bean>
+            </list>
+        </property>
+
+        <property name="serviceConfiguration">
+            <list>
+                <bean class="org.apache.ignite.services.ServiceConfiguration">
+                    <property name="name" value="LocalIndexService"/>
+                    <property name="maxPerNodeCount" value="1"/>
+                    <property name="totalCount" value="0"/>
+                    <property name="service">
+                        <bean class="ru.nsu.fit.sberlab.vectorindex.node.service.LocalIndexServiceImpl">
+                            <property name="indexes">
+                                <list>
+                                    <bean class="ru.nsu.fit.sberlab.vectorindex.node.index.VectorIndexConfiguration">
+                                        <property name="name" value="smoke-flat"/>
+                                        <property name="cacheName" value="bench_smoke_flat"/>
+                                        <property name="dimension" value="128"/>
+                                        <property name="metric" value="COSINE"/>
+                                        <property name="algorithm" value="FLAT"/>
+                                        <property name="jvectorProperties" ref="benchJvector"/>
+                                    </bean>
+                                    <bean class="ru.nsu.fit.sberlab.vectorindex.node.index.VectorIndexConfiguration">
+                                        <property name="name" value="smoke-jvector"/>
+                                        <property name="cacheName" value="bench_smoke_jvector"/>
+                                        <property name="dimension" value="128"/>
+                                        <property name="metric" value="COSINE"/>
+                                        <property name="algorithm" value="JVECTOR"/>
+                                        <property name="jvectorProperties" ref="benchJvector"/>
+                                    </bean>
+                                    <bean class="ru.nsu.fit.sberlab.vectorindex.node.index.VectorIndexConfiguration">
+                                        <property name="name" value="clip512"/>
+                                        <property name="cacheName" value="bench_clip512"/>
+                                        <property name="dimension" value="512"/>
+                                        <property name="metric" value="COSINE"/>
+                                        <property name="algorithm" value="JVECTOR"/>
+                                        <property name="jvectorProperties" ref="benchJvector"/>
+                                    </bean>
+                                </list>
+                            </property>
+                        </bean>
+                    </property>
+                </bean>
+
+                <bean class="org.apache.ignite.services.ServiceConfiguration">
+                    <property name="name" value="SearchAggregationService"/>
+                    <property name="maxPerNodeCount" value="1"/>
+                    <property name="totalCount" value="0"/>
+                    <property name="service">
+                        <bean class="ru.nsu.fit.sberlab.vectorindex.node.service.SearchAggregatorServiceImpl"/>
+                    </property>
+                </bean>
+            </list>
+        </property>
+
+        <property name="discoverySpi">
+            <bean class="org.apache.ignite.spi.discovery.tcp.TcpDiscoverySpi">
+                <property name="ipFinder">
+                    <bean class="org.apache.ignite.spi.discovery.tcp.ipfinder.vm.TcpDiscoveryVmIpFinder">
+                        <property name="addresses">
+                            <list>
+                                <value>vindex-bench-node-1:47500..47509</value>
+                                <value>vindex-bench-node-2:47500..47509</value>
+                            </list>
+                        </property>
+                    </bean>
+                </property>
+            </bean>
+        </property>
+
+        <property name="clientConnectorConfiguration">
+            <bean class="org.apache.ignite.configuration.ClientConnectorConfiguration">
+                <property name="port" value="10800"/>
+            </bean>
+        </property>
+    </bean>
+</beans>

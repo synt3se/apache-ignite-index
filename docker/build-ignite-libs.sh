@@ -26,6 +26,8 @@ while [[ $# -gt 0 ]]; do
 done
 
 mkdir -p "$OUT"
+# Maven разрешает относительный outputDirectory от каталога модуля, а не от текущего.
+OUT="$(cd "$OUT" && pwd)"
 echo "[build-ignite-libs] building vector-index-node and its modules (tests skipped)"
 mvn -B -q -f "$ROOT/pom.xml" -pl vector-index-node -am -DskipTests install
 mvn -B -q -f "$ROOT/pom.xml" -pl vector-index-node dependency:copy-dependencies \
