@@ -44,11 +44,17 @@ def write(out_dir: Path, ids: np.ndarray, train: np.ndarray, query_ids: np.ndarr
           metric: str) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     gt_positions = exact_neighbors(train.astype(np.float64), queries.astype(np.float64), metric, GT_WIDTH)
-    pl.DataFrame({"id": ids, "emb": [row for row in train.astype(np.float32)]}).write_parquet(out_dir / "train.parquet")
-    pl.DataFrame({"id": query_ids, "emb": [row for row in queries.astype(np.float32)]}).write_parquet(
+    # list<float32> / list<int64>, как во встроенных наборах стенда (не Array фиксированной длины).
+    vectors = pl.List(pl.Float32)
+    pl.DataFrame({"id": pl.Series(ids, dtype=pl.Int64),
+                  "emb": pl.Series([row.tolist() for row in train], dtype=vectors)}).write_parquet(
+        out_dir / "train.parquet")
+    pl.DataFrame({"id": pl.Series(query_ids, dtype=pl.Int64),
+                  "emb": pl.Series([row.tolist() for row in queries], dtype=vectors)}).write_parquet(
         out_dir / "test.parquet")
-    pl.DataFrame({"id": query_ids, "neighbors_id": [ids[row] for row in gt_positions]}).write_parquet(
-        out_dir / "neighbors.parquet")
+    pl.DataFrame({"id": pl.Series(query_ids, dtype=pl.Int64),
+                  "neighbors_id": pl.Series([ids[row].tolist() for row in gt_positions], dtype=pl.List(pl.Int64))
+                  }).write_parquet(out_dir / "neighbors.parquet")
     meta = {"size": int(len(ids)), "dim": int(train.shape[1]), "metric": metric, "queries": int(len(queries)),
             "gt_width": GT_WIDTH}
     (out_dir / "dataset.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")

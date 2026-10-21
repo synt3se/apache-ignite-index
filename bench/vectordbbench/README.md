@@ -59,6 +59,8 @@ vdbbench-venv/Scripts/python -m pip freeze > vdbbench-requirements.lock   # за
 ```
 
 На Windows при клонировании нужен `git -c core.longpaths=true clone ...`, если путь длинный.
+Click в этой версии приводит имена команд к нижнему регистру: команда клиента — `ignitevindex`,
+Qdrant — `qdrantlocal`.
 
 ## Smoke-прогон
 
@@ -66,7 +68,7 @@ vdbbench-venv/Scripts/python -m pip freeze > vdbbench-requirements.lock   # за
 python bench/vectordbbench/make_dataset.py synthetic data-smoke --size 10000 --dim 128 --queries 200 --metric COSINE
 
 export VINDEX_ERROR_LOG=$PWD/vindex-client-errors.jsonl
-vdbbench-venv/Scripts/vectordbbench IgniteVindex --url http://127.0.0.1:8091 --index smoke-flat \
+vdbbench-venv/Scripts/vectordbbench ignitevindex --url http://127.0.0.1:8091 --index smoke-flat \
   --case-type PerformanceCustomDataset --custom-case-name smoke-flat \
   --custom-dataset-name synthetic-10k-128 --custom-dataset-dir "$PWD/data-smoke" \
   --custom-dataset-size 10000 --custom-dataset-dim 128 --custom-dataset-metric-type COSINE \
@@ -80,6 +82,23 @@ python bench/vectordbbench/summarize_run.py --errors vindex-client-errors.jsonl 
 
 Ожидания smoke: у `smoke-flat` recall = 1.0 (Flat воспроизводит точных соседей того же набора с
 исходными ID и той же метрикой), `clean: true` в сводке (нет ошибок клиента и неполных ответов).
+
+### Результат smoke 21.10.2026
+
+Окружение: два узла `apacheignite/ignite:2.18.0` (`sha256:57ae83a8…ac93`) + OpenJDK 17 в Docker
+Desktop 28.1.1, heap 2 ГБ на узел, 32 партиции, backups=1; сервер на JDK 21; VectorDBBench v2.0.0
+(`f505442`), Python 3.13.3, зависимости — `pip freeze` окружения. Набор синтетический:
+10 000 × 128, COSINE, 200 запросов, точные 100 соседей; k = 100; конкурентность 1 и 4 по 10 с.
+
+| Индекс | load_duration (insert + optimize) | барьер | recall@100 / ndcg | serial p99 | QPS c=1 / c=4 |
+|---|---|---|---|---|---|
+| `smoke-flat` | 4,0 с (3,43 + 0,59) | 32/32 оптимизированы, без RESTART, live = 10 000 | 1,0 / 1,0 | 16,2 мс | 83 / 359 |
+| `smoke-jvector`, ef = 128 | 3,9 с (2,87 + 1,08) | 32/32, без RESTART, live = 10 000 | 1,0 / 1,0 | 14,6 мс | 106 / 383 |
+
+Сводка `summarize_run.py`: ошибок клиента 0, неполных ответов 0 из 9 721 поиска на сервере,
+`clean: true`. Flat воспроизводит точных соседей. Recall JVector = 1,0 на этом наборе ожидаем
+(~300 векторов на партицию и k = 100 — обход почти исчерпывающий) и о качестве графа на больших
+наборах ничего не говорит. Это проверка контура, а не измерение: числа зависят от машины.
 
 ## Полный прогон: 608k CLIP-512 и сравнение с Qdrant
 
@@ -96,7 +115,7 @@ python bench/vectordbbench/summarize_run.py --errors vindex-client-errors.jsonl 
 3. Qdrant с закреплённой версией образа (явный тег релиза, не `latest`; digest записывается в
    результаты: `docker image inspect --format '{{index .RepoDigests 0}}' qdrant/qdrant:<тег>`):
    `docker run -d --name qdrant-bench -p 6333:6333 qdrant/qdrant:<тег>` и
-   `vectordbbench QdrantLocal --url http://127.0.0.1:6333 --m 16 --ef-construct 200 --hnsw-ef <то же ef> ...`.
+   `vectordbbench qdrantlocal --url http://127.0.0.1:6333 --m 16 --ef-construct 200 --hnsw-ef <то же ef> ...`.
    Клиент QdrantLocal в v2.0.0 передаёт `m` и `ef_construct` при создании коллекции (QdrantCloud —
    только `m`); фактическая конфигурация сохраняется в сводку:
    `summarize_run.py --qdrant http://127.0.0.1:6333 QdrantLocalCollection`.
