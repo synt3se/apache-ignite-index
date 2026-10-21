@@ -424,16 +424,27 @@ public final class PartitionRuntime<K> implements AutoCloseable {
         }
     }
 
-    /** Записи сверки: переполнение, пропуск, ошибка применения. Повторяется до завершения скана. */
-    public void requestRepair(RepairReason reason) {
+    /**
+     * Запрос сверки: переполнение, пропуск, ошибка применения, барьер. Повторяется до завершения скана.
+     *
+     * @return тикет запроса: он выполнен, когда {@link #repairCompleted()} не меньше него, то есть
+     *         опубликован скан, начатый после этого запроса (скан, начатый раньше, его не закрывает)
+     */
+    public long requestRepair(RepairReason reason) {
         Objects.requireNonNull(reason, "reason");
-        repairRequested.incrementAndGet();
+        long ticket = repairRequested.incrementAndGet();
         repairPendingSince.compareAndSet(NO_PENDING_REPAIR, clock.nanoTime());
+        return ticket;
     }
 
     /** Нужна ли сверка: запросов больше, чем покрыто завершёнными сканами. */
     public boolean repairPending() {
         return repairRequested.get() > repairCompleted;
+    }
+
+    /** Наибольший тикет сверки, закрытый опубликованным сканом. */
+    public long repairCompleted() {
+        return repairCompleted;
     }
 
     // ---------------------------------------------------------------- жизненный цикл

@@ -501,6 +501,21 @@ class PartitionRuntimeTest {
     }
 
     @Test
+    void repairTicketIsClosedOnlyByAScanBegunAfterTheRequest() {
+        ScanSession<Long> old = runtime.beginScan();
+        long ticket = runtime.requestRepair(RepairReason.MANUAL);
+        runtime.publishScan(old);
+        assertThat(runtime.repairCompleted()).as("a scan begun before the request").isLessThan(ticket);
+
+        long next = runtime.requestRepair(RepairReason.APPLIER_OVERFLOW);
+        assertThat(next).as("tickets grow").isGreaterThan(ticket);
+        ScanSession<Long> fresh = runtime.beginScan();
+        runtime.publishScan(fresh);
+        assertThat(runtime.repairCompleted()).isGreaterThanOrEqualTo(next);
+        assertThat(runtime.repairPending()).isFalse();
+    }
+
+    @Test
     void searchDistancesUseTheSharedContract() {
         ready(Map.of(1L, v(1, 0), 2L, v(0, 3)));
         try (ReadView<Long> view = view()) {
