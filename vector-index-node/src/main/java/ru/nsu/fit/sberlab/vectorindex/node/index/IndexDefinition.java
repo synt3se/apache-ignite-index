@@ -84,10 +84,13 @@ public record IndexDefinition(String indexId, String cacheName, String field, Ve
         return fromLegacy("vectors", dimension, type, properties);
     }
 
+    /** Верхняя граница {@code ef}: защита узла от запроса с огромной шириной обхода. */
+    public static final int MAX_EF = 100_000;
+
     /**
-     * Параметры поиска алгоритма из запроса. Неизвестный параметр или чужой тип значения —
-     * {@link IllegalArgumentException}; совместимость с {@code k} (JVector: {@code ef ≥ k})
-     * проверяет алгоритм при поиске.
+     * Параметры поиска алгоритма из запроса. Неизвестный параметр, чужой тип значения или
+     * значение вне диапазона — {@link IllegalArgumentException}, а не арифметическая ошибка;
+     * совместимость с {@code k} (JVector: {@code ef ≥ k}) проверяет алгоритм.
      *
      * @return {@code null} — параметры алгоритма по умолчанию
      */
@@ -104,10 +107,13 @@ public record IndexDefinition(String indexId, String cacheName, String field, Ve
             }
         }
         Object ef = params.get("ef");
-        if (!(ef instanceof Number number) || number.doubleValue() != Math.rint(number.doubleValue())) {
-            throw new IllegalArgumentException("ef must be an integer: " + ef);
+        // Диапазон проверяется по double до любого сужения типа: Long и BigInteger за пределами int
+        // и дробные значения отклоняются явно.
+        double value = ef instanceof Number number ? number.doubleValue() : Double.NaN;
+        if (!(value >= 1 && value <= MAX_EF && value == Math.rint(value))) {
+            throw new IllegalArgumentException("ef must be an integer in 1.." + MAX_EF + ": " + ef);
         }
-        JVectorSearchParams parsed = new JVectorSearchParams(Math.toIntExact(number.longValue()));
+        JVectorSearchParams parsed = new JVectorSearchParams((int) value);
         algorithm.validate(parsed, Math.max(k, 1));
         return parsed;
     }

@@ -76,6 +76,21 @@ class IndexDefinitionTest {
     }
 
     @Test
+    void efOutsideItsRangeIsAnInvalidRequestNotAnArithmeticError() {
+        IndexDefinition jvector = config(c -> {}).toDefinition();
+
+        assertThat(jvector.searchParams(Map.of("ef", IndexDefinition.MAX_EF), 10))
+                .isEqualTo(new JVectorSearchParams(IndexDefinition.MAX_EF));
+        assertThat(jvector.searchParams(Map.of("ef", 10), 10)).as("ef == k").isEqualTo(new JVectorSearchParams(10));
+        for (Object outOfRange : new Object[]{2_147_483_648L, Long.MAX_VALUE, Integer.MAX_VALUE,
+                IndexDefinition.MAX_EF + 1, 0, -1, 1e10, Double.NaN, Double.POSITIVE_INFINITY,
+                new java.math.BigInteger("99999999999999999999")}) {
+            assertThatIllegalArgumentException().as("ef = " + outOfRange)
+                    .isThrownBy(() -> jvector.searchParams(Map.of("ef", outOfRange), 10));
+        }
+    }
+
+    @Test
     void configurationSurvivesSerializationWithNestedSettings() throws Exception {
         VectorIndexConfiguration original = config(c -> {});
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();

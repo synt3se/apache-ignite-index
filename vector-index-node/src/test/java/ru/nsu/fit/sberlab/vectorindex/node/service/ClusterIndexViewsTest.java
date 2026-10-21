@@ -18,6 +18,7 @@ import ru.nsu.fit.sberlab.vectorindex.common.dto.IndexStatus;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.VectorSearchRequest;
 import ru.nsu.fit.sberlab.vectorindex.common.indextype.IndexType;
 import ru.nsu.fit.sberlab.vectorindex.node.index.IndexDefinition;
+import ru.nsu.fit.sberlab.vectorindex.node.index.JVectorProperties;
 import ru.nsu.fit.sberlab.vectorindex.node.search.SearchTopology;
 
 /** Кластерная готовность и результаты операций по ответам узлов; проверка запроса поиска. */
@@ -144,6 +145,18 @@ class ClusterIndexViewsTest {
         withParams.params.put("ef", 10);
         assertThatIllegalArgumentException().as("FLAT has no search parameters")
                 .isThrownBy(() -> SearchAggregatorServiceImpl.query(definition, withParams));
+
+        JVectorProperties properties = new JVectorProperties();
+        properties.setM(16);
+        properties.setEfConstruction(64);
+        properties.setEfSearch(2);
+        properties.setNeighborOverflow(1.2f);
+        properties.setAlpha(1.2f);
+        IndexDefinition jvector = IndexDefinition.legacy(2, IndexType.JVECTOR_INDEX, properties);
+        VectorSearchRequest overflow = request(new float[]{1, 0}, 3);
+        overflow.params.put("ef", 2_147_483_648L);
+        assertThatIllegalArgumentException().as("ef beyond int is INVALID_REQUEST, not ArithmeticException")
+                .isThrownBy(() -> SearchAggregatorServiceImpl.query(jvector, overflow));
     }
 
     private IndexStatus status() {

@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
@@ -74,6 +75,16 @@ public class GlobalExceptionHandler {
 
         return new ResponseEntity<>(response, HttpStatus.NOT_FOUND);
     }
+    /** Нечитаемое тело (например, {@code k} или {@code timeoutMs} вне своего типа) — ошибка запроса, а не 500. */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<Map<String, Object>> handleUnreadable(HttpMessageNotReadableException ex) {
+        Map<String, Object> response = new HashMap<>();
+        response.put("status", HttpStatus.BAD_REQUEST.value());
+        response.put("error", "INVALID_REQUEST");
+        response.put("message", ex.getMostSpecificCause().getMessage());
+        return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+    }
+
     @ExceptionHandler(IndexRequestException.class)
     public ResponseEntity<Map<String, Object>> handleIndexRequest(IndexRequestException ex) {
         HttpStatus status = ex.error() == SearchError.UNKNOWN_INDEX ? HttpStatus.NOT_FOUND : HttpStatus.BAD_REQUEST;
