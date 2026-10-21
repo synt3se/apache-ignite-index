@@ -25,6 +25,7 @@ import org.apache.ignite.lang.IgnitePredicate;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.IndexHit;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.IndexNodeStatus;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.KeyType;
+import ru.nsu.fit.sberlab.vectorindex.common.dto.NodeBarrierProgress;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.NodeSearchResult;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.NodeStats;
 import ru.nsu.fit.sberlab.vectorindex.core.ApplyResult;
@@ -57,6 +58,15 @@ public final class IgniteIndexAdapter {
 
     private static final long RECONCILE_DEBOUNCE_NANOS = TimeUnit.SECONDS.toNanos(2);
     private static final long RECONCILE_INTERVAL_MS = 30_000;
+    private static final int MAX_BARRIERS = 16;
+
+    /**
+     * Барьер на узле: экземпляры runtime и тикеты сверки, выданные после завершения принятых
+     * применений, и версия топологии в этот момент.
+     */
+    private record Barrier(long topologyVersion, boolean optimize, Map<Integer, PartitionRuntime<Object>> runtimes,
+                           Map<Integer, Long> tickets) {
+    }
 
     private final IndexDefinition definition;
     private final VectorSource source;
@@ -71,6 +81,17 @@ public final class IgniteIndexAdapter {
     private final Set<PartitionRuntime<Object>> scanQueued = ConcurrentHashMap.newKeySet();
     private final AtomicBoolean reconcileDebounce = new AtomicBoolean();
     private final AtomicBoolean reconcileRunning = new AtomicBoolean();
+    /** Запрошенная, но ещё не выполненная сверка (и полная ли): запрос не теряется, если сверка уже идёт. */
+    private final AtomicBoolean reconcileWanted = new AtomicBoolean();
+    private final AtomicBoolean rebuildWanted = new AtomicBoolean();
+    /** Барьеры загрузки этого индекса на узле (последние {@value #MAX_BARRIERS}). */
+    private final Map<String, Barrier> barriers = java.util.Collections.synchronizedMap(
+            new java.util.LinkedHashMap<>(16, 0.75f, false) {
+                @Override
+                protected boolean removeEldestEntry(Map.Entry<String, Barrier> eldest) {
+                    return size() > MAX_BARRIERS;
+                }
+            });
     private volatile boolean stopped;
     private volatile long bulkPauseUntilMs;
 
@@ -163,6 +184,7 @@ public final class IgniteIndexAdapter {
             runtime.close();
         }
         runtimes.clear();
+        barriers.clear();
     }
 
     // ---------------------------------------------------------------- изменения
@@ -257,17 +279,38 @@ public final class IgniteIndexAdapter {
         safeReconcile(rebuildAll);
     }
 
+    /**
+     * Запрос сверки не теряется, если сверка уже идёт: он запоминается, и идущая сверка делает ещё
+     * один проход (полный, если его просили). На паузе запросы не выполняются; выход из паузы
+     * запрашивает полную сверку сам.
+     */
     private void safeReconcile(boolean rebuildAll) {
-        if (stopped || paused() || !reconcileRunning.compareAndSet(false, true)) {
+        if (stopped || paused()) {
             return;
         }
-        try {
-            reconcile(rebuildAll);
-        } catch (RuntimeException e) {
-            reconcileErrors.increment();
-            log.error("[vindex] reconcile failed; will retry on the next tick", e);
-        } finally {
-            reconcileRunning.set(false);
+        if (rebuildAll) {
+            rebuildWanted.set(true);
+        }
+        reconcileWanted.set(true);
+        while (reconcileWanted.get() && !paused() && reconcileRunning.compareAndSet(false, true)) {
+            try {
+                while (!stopped && !paused() && reconcileWanted.getAndSet(false)) {
+                    boolean full = rebuildWanted.getAndSet(false);
+                    try {
+                        reconcile(full);
+                    } catch (RuntimeException e) {
+                        if (full) {
+                            rebuildWanted.set(true); // полная сверка не потеряна: следующий проход повторит её
+                        }
+                        throw e;
+                    }
+                }
+            } catch (RuntimeException e) {
+                reconcileErrors.increment();
+                log.error("[vindex] reconcile failed; will retry on the next tick", e);
+            } finally {
+                reconcileRunning.set(false);
+            }
         }
     }
 
@@ -397,6 +440,21 @@ public final class IgniteIndexAdapter {
         forceReconcile(true);
     }
 
+    /**
+     * Перед очисткой кэша ({@code truncate}): события игнорируются, сверка спит, идущая сверка и
+     * принятые применения завершены, все runtime закрыты — их незавершённая работа (сканы, сборки,
+     * применения) отклоняется ядром и не попадёт в новое состояние. Выход — {@link #resumeIndexing()},
+     * страховка — истечение паузы.
+     *
+     * @throws IllegalStateException сверка или применения не завершились за {@code timeoutNanos}
+     */
+    public void suspendForTruncate(long pauseTtlMs, long timeoutNanos) {
+        pauseIndexing(pauseTtlMs);
+        awaitQuiet(() -> !reconcileRunning.get() && pendingApplies.get() == 0, timeoutNanos,
+                "reconcile and applies of index " + definition.indexId());
+        clearAll();
+    }
+
     /** Завершает все эпизоды; следующая сверка создаст runtime заново и просканирует партиции. */
     public void clearAll() {
         for (Map.Entry<Integer, PartitionRuntime<Object>> entry : List.copyOf(runtimes.entrySet())) {
@@ -408,6 +466,112 @@ public final class IgniteIndexAdapter {
 
     private boolean paused() {
         return System.currentTimeMillis() < bulkPauseUntilMs;
+    }
+
+    // ---------------------------------------------------------------- барьер загрузки (этап D)
+
+    /**
+     * Начало барьера на узле (ADR-19). Вызывающий гарантирует, что записи подтверждены и писатели
+     * остановлены. Сначала дожидаемся завершения всех принятых применений: обработчик, прочитавший
+     * старое значение до последних записей, иначе применил бы его после начала финального скана, и
+     * его ревизия перекрыла бы прочитанное сканом. Применение, начатое после этого момента, читает
+     * уже окончательное значение. Затем каждому runtime выдаётся новый тикет сверки и ставится
+     * скан; уже идущий скан тикет не закрывает — после его публикации будет ещё проход.
+     *
+     * @throws IllegalStateException применения не завершились за {@code drainTimeoutNanos}
+     */
+    public NodeBarrierProgress beginBarrier(String barrierId, boolean optimize, long drainTimeoutNanos) {
+        awaitQuiet(() -> pendingApplies.get() == 0, drainTimeoutNanos, "applies of index " + definition.indexId());
+        long topology = source.topologyVersion();
+        Map<Integer, PartitionRuntime<Object>> snapshot = new TreeMap<>(runtimes);
+        Map<Integer, Long> tickets = new java.util.HashMap<>();
+        snapshot.forEach((partition, runtime) -> tickets.put(partition, runtime.requestRepair(RepairReason.MANUAL)));
+        barriers.put(barrierId, new Barrier(topology, optimize, Map.copyOf(snapshot), Map.copyOf(tickets)));
+        snapshot.forEach(this::scheduleScan);
+        return barrierProgress(barrierId);
+    }
+
+    /**
+     * Продвижение барьера на узле. Идемпотентно: партиции без завершённого скана, у которых скан не
+     * стоит в очереди, ставятся на скан снова; после скана при {@code optimize} принудительно
+     * запрашивается сборка (в том числе для дельты ниже автоматического порога), пока не будет
+     * построена структура текущего состояния с пустыми active и frozen. Для Flat и пустых партиций
+     * это обычная завершённая сборка, графа не требуется.
+     */
+    public NodeBarrierProgress barrierProgress(String barrierId) {
+        NodeBarrierProgress progress = new NodeBarrierProgress();
+        progress.nodeId = nodeId;
+        Barrier barrier = barriers.get(barrierId);
+        if (barrier == null) {
+            progress.unknownBarrier = true;
+            return progress;
+        }
+        progress.topologyVersion = barrier.topologyVersion();
+        progress.optimize = barrier.optimize();
+        List<Integer> scanned = new ArrayList<>();
+        List<Integer> optimized = new ArrayList<>();
+        List<Integer> failedBuilds = new ArrayList<>();
+        List<Integer> invalidated = new ArrayList<>();
+        List<Integer> foreign = new ArrayList<>();
+        for (Map.Entry<Integer, PartitionRuntime<Object>> entry : new TreeMap<>(barrier.runtimes()).entrySet()) {
+            int partition = entry.getKey();
+            PartitionRuntime<Object> runtime = entry.getValue();
+            if (runtime.isClosed() || runtimes.get(partition) != runtime) {
+                invalidated.add(partition); // смена владельца, выгрузка, очистка: этот runtime больше не текущий
+                continue;
+            }
+            RuntimeStatus st = runtime.status();
+            progress.liveVectors += st.liveCount();
+            if (st.phase() != Phase.READY || st.repairCompleted() < barrier.tickets().get(partition)) {
+                if (!scanQueued.contains(runtime)) {
+                    scheduleScan(partition, runtime);
+                }
+                continue;
+            }
+            scanned.add(partition);
+            if (!barrier.optimize()) {
+                continue;
+            }
+            if (st.optimization() == OptimizationState.BUILT && st.deltaEntries() == 0 && st.frozenLayers() == 0
+                    && !st.scanOpen()) {
+                optimized.add(partition);
+                continue;
+            }
+            if (st.optimization() == OptimizationState.FAILED) {
+                failedBuilds.add(partition);
+            }
+            if (st.optimization() != OptimizationState.BUILDING) {
+                resources.builds.requestOptimization(runtime);
+            }
+        }
+        for (Integer partition : new TreeMap<>(runtimes).keySet()) {
+            if (!barrier.runtimes().containsKey(partition)) {
+                foreign.add(partition);
+            }
+        }
+        progress.partitions = toArray(new ArrayList<>(new TreeMap<>(barrier.runtimes()).keySet()));
+        progress.scannedPartitions = toArray(scanned);
+        progress.optimizedPartitions = toArray(optimized);
+        progress.failedBuildPartitions = toArray(failedBuilds);
+        progress.invalidatedPartitions = toArray(invalidated);
+        progress.foreignPartitions = toArray(foreign);
+        progress.pendingApplies = pendingApplies.get();
+        progress.scansInProgress = scanQueued.size();
+        return progress;
+    }
+
+    private static void awaitQuiet(java.util.function.BooleanSupplier quiet, long timeoutNanos, String what) {
+        long deadline = System.nanoTime() + timeoutNanos;
+        while (!quiet.getAsBoolean()) {
+            if (System.nanoTime() - deadline >= 0) {
+                throw new IllegalStateException(what + " did not finish within "
+                        + TimeUnit.NANOSECONDS.toMillis(timeoutNanos) + " ms");
+            }
+            java.util.concurrent.locks.LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(1));
+            if (Thread.currentThread().isInterrupted()) {
+                throw new IllegalStateException("interrupted while waiting for " + what);
+            }
+        }
     }
 
     // ---------------------------------------------------------------- поиск и статистика

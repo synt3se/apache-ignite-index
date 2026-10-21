@@ -8,6 +8,7 @@ import static org.awaitility.Awaitility.await;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 import java.util.UUID;
 import java.util.function.Function;
@@ -37,6 +38,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import ru.nsu.fit.sberlab.vectorindex.common.dto.Incompleteness;
+import ru.nsu.fit.sberlab.vectorindex.common.dto.IndexBarrier;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.IndexHit;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.IndexOperationResult;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.IndexStatus;
@@ -275,7 +277,73 @@ class UniversalIndexIT {
         assertThat(status.observedReady).isFalse();
     }
 
+    @Test
+    void barrierAfterConfirmedWritesMakesThemSearchableOnBuiltStructuresAndTruncateStartsOver() {
+        List<VectorIndexConfiguration> indexes = List.of(
+                index("bench", "sift", null, 16, Metric.SQUARED_L2, AlgorithmKind.JVECTOR),
+                index("title", "docs", "title", 8, Metric.COSINE, AlgorithmKind.FLAT),
+                index("body", "docs", "body", 4, Metric.SQUARED_L2, AlgorithmKind.FLAT));
+        Ignite a = Ignition.start(cfg("u1", services(indexes)));
+        Ignition.start(cfg("u2", services(indexes)));
+        SearchAggregationService service = service();
+        ExactModel<Long> model = new ExactModel<>(Metric.SQUARED_L2, 16);
+        Map<Long, float[]> batch = new java.util.HashMap<>();
+        Random random = new Random(5);
+        for (long id = 0; id < 400; id++) {
+            float[] v = random(random, 16);
+            batch.put(id, v);
+            model.upsert(id, v);
+        }
+        a.<Long, float[]>cache("sift").putAll(batch);      // записи подтверждены
+
+        IndexBarrier done = awaitBarrier(service, "bench");
+
+        assertThat(done.liveVectors).isEqualTo(400);
+        assertThat(done.optimizedPartitions).as("every partition built, empty ones too").isEqualTo(32);
+        assertThat(done.failedBuildPartitions).isEmpty();
+        IndexStatus status = service.status("bench");
+        assertThat(status.optimizationBuilt).isEqualTo(32);
+        assertThat(status.deltaEntries).isZero();
+        assertThat(status.frozenLayers).isZero();
+        float[] query = random(random, 16);
+        VectorSearchResponse exact = service.search(exact("bench", query, 10));
+        assertThat(exact.status).isEqualTo(SearchStatus.COMPLETE);
+        assertThat(exact.hits).extracting(h -> h.key).containsExactlyElementsOf(model.topK(query, 10));
+        VectorSearchRequest ann = new VectorSearchRequest("bench", query, 10);
+        ann.params.put("ef", 64);
+        ann.allowPartial = false;
+        assertThat(service.search(ann).hits).hasSize(10);
+
+        IndexOperationResult truncated = service.truncate("bench");
+        assertThat(truncated.confirmed).isTrue();
+        assertThat(truncated.nodes).extracting(n -> n.outcome).containsOnly(IndexOperationResult.Outcome.DONE);
+        assertThat(awaitBarrier(service, "bench").liveVectors).isZero();
+        assertThat(service.search(exact("bench", query, 10)).hits).isEmpty();
+
+        IndexOperationResult shared = service.truncate("title");
+        assertThat(shared.refused).as("cache docs is shared by title and body").isTrue();
+        assertThat(shared.message).contains("body");
+    }
+
     // ------------------------------------------------------------ helpers
+
+    /**
+     * Протокол клиента бенчмарка: барьер с оптимизацией до COMPLETE; RESTART (например, runtime
+     * ещё не созданы сразу после старта узлов) — новый барьер; FAILED — сразу ошибка.
+     */
+    private static IndexBarrier awaitBarrier(SearchAggregationService service, String indexId) {
+        IndexBarrier[] last = {null};
+        await().atMost(ofSeconds(60)).pollInterval(java.time.Duration.ofMillis(200)).untilAsserted(() -> {
+            last[0] = last[0] == null || last[0].state == IndexBarrier.State.RESTART
+                    ? service.beginBarrier(indexId, true)
+                    : service.barrierProgress(indexId, last[0].barrierId);
+            if (last[0].state == IndexBarrier.State.FAILED) {
+                throw new IllegalStateException("barrier failed: " + last[0].message);
+            }
+            assertThat(last[0].state).as(last[0].message).isEqualTo(IndexBarrier.State.COMPLETE);
+        });
+        return last[0];
+    }
 
     private SearchAggregationService service() {
         client = Ignition.startClient(new ClientConfiguration()

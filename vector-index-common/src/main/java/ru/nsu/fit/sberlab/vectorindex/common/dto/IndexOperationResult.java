@@ -49,6 +49,10 @@ public class IndexOperationResult implements Serializable {
     public int expectedNodes;
     public List<NodeOutcome> nodes = new ArrayList<>();
     public boolean confirmed;
+    /** Почему операция отклонена или не подтверждена; {@code null} — подробности в {@link #nodes}. */
+    public String message;
+    /** Операция отклонена до выполнения (например, {@code truncate} кэша, общего для нескольких индексов). */
+    public boolean refused;
 
     public IndexOperationResult() {
     }

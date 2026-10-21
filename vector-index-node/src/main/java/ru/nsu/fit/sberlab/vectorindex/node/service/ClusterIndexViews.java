@@ -1,10 +1,16 @@
 package ru.nsu.fit.sberlab.vectorindex.node.service;
 
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.TreeSet;
 
+import ru.nsu.fit.sberlab.vectorindex.common.dto.IndexBarrier;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.IndexNodeStatus;
+import ru.nsu.fit.sberlab.vectorindex.common.dto.NodeBarrierProgress;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.IndexOperationResult;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.IndexOperationResult.NodeOutcome;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.IndexOperationResult.Outcome;
@@ -88,6 +94,96 @@ final class ClusterIndexViews {
                 && status.unknownNodes.isEmpty() && status.unloadedNodes.isEmpty()
                 && status.unknownIndexNodes.isEmpty() && status.mismatchedNodes.isEmpty();
         return status;
+    }
+
+    /**
+     * Барьер загрузки по кластеру. {@code COMPLETE} — каждая ожидаемая партиция у назначенного
+     * владельца прошла скан после тикета (и оптимизацию, если запрошена), применений и сканов нет,
+     * все серверы ответили. Смена топологии, замена runtime, партиция у владельца без барьера или
+     * узел, потерявший барьер, — {@code RESTART}; отказ узла (индекс неизвестен, выгружен, другое
+     * определение, применения не завершились) — {@code FAILED}.
+     */
+    static IndexBarrier barrier(String indexId, String fingerprint, String barrierId, SearchTopology.Snapshot current,
+                                Collection<String> serverNodes, Map<String, NodeBarrierProgress> progress,
+                                boolean begin) {
+        IndexBarrier barrier = new IndexBarrier();
+        barrier.barrierId = barrierId;
+        barrier.indexId = indexId;
+        barrier.fingerprint = fingerprint;
+        barrier.topologyVersion = current.version();
+        barrier.expectedPartitions = current.partitions();
+        List<String> errors = new ArrayList<>();
+        List<String> restarts = new ArrayList<>();
+        TreeSet<Integer> failedBuilds = new TreeSet<>();
+        for (String node : serverNodes) {
+            NodeBarrierProgress p = progress.get(node);
+            if (p == null) {
+                barrier.unknownNodes.add(node);
+                continue;
+            }
+            barrier.nodes.add(p);
+            if (p.error != null) {
+                errors.add(node + ": " + p.error);
+                continue;
+            }
+            if (p.unknownBarrier) {
+                restarts.add(node + " does not know the barrier");
+            } else if (p.topologyVersion != current.version()) {
+                restarts.add(node + " issued tickets at topology " + p.topologyVersion + ", now " + current.version());
+            } else if (p.invalidatedPartitions.length > 0 || p.foreignPartitions.length > 0) {
+                restarts.add(node + " changed runtimes of partitions " + Arrays.toString(p.invalidatedPartitions)
+                        + " / " + Arrays.toString(p.foreignPartitions));
+            }
+            barrier.optimize |= p.optimize;
+            barrier.liveVectors += p.liveVectors;
+            barrier.pendingApplies += p.pendingApplies;
+            barrier.scansInProgress += p.scansInProgress;
+            for (int partition : p.failedBuildPartitions) {
+                failedBuilds.add(partition);
+            }
+        }
+        Map<Integer, String> owners = new HashMap<>();
+        current.assignment().forEach((node, parts) -> {
+            for (int partition : parts) {
+                owners.put(partition, node);
+            }
+        });
+        TreeSet<Integer> waiting = new TreeSet<>();
+        for (int partition = 0; partition < current.partitions(); partition++) {
+            String owner = owners.get(partition);
+            NodeBarrierProgress p = owner == null ? null : progress.get(owner);
+            if (p == null || p.error != null || p.unknownBarrier) {
+                waiting.add(partition);
+                continue;
+            }
+            if (!contains(p.partitions, partition)) {
+                restarts.add("partition " + partition + " is owned by " + owner + " without a barrier ticket");
+                waiting.add(partition);
+                continue;
+            }
+            boolean scanned = contains(p.scannedPartitions, partition);
+            boolean optimized = contains(p.optimizedPartitions, partition);
+            barrier.scannedPartitions += scanned ? 1 : 0;
+            barrier.optimizedPartitions += optimized ? 1 : 0;
+            if (!scanned || (p.optimize && !optimized)) {
+                waiting.add(partition);
+            }
+        }
+        barrier.waitingPartitions = toArray(waiting);
+        barrier.failedBuildPartitions = toArray(failedBuilds);
+        if (!errors.isEmpty()) {
+            barrier.state = IndexBarrier.State.FAILED;
+            barrier.message = String.join("; ", errors);
+        } else if (!restarts.isEmpty()) {
+            barrier.state = IndexBarrier.State.RESTART;
+            barrier.message = String.join("; ", restarts);
+        } else if (waiting.isEmpty() && barrier.unknownNodes.isEmpty() && barrier.pendingApplies == 0
+                && barrier.scansInProgress == 0 && current.partitions() > 0) {
+            barrier.state = IndexBarrier.State.COMPLETE;
+        } else {
+            barrier.state = begin ? IndexBarrier.State.STARTED : IndexBarrier.State.IN_PROGRESS;
+        }
+        return barrier;
     }
 
     /**

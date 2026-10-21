@@ -10,7 +10,9 @@ import java.util.Map;
 
 import org.junit.jupiter.api.Test;
 
+import ru.nsu.fit.sberlab.vectorindex.common.dto.IndexBarrier;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.IndexNodeStatus;
+import ru.nsu.fit.sberlab.vectorindex.common.dto.NodeBarrierProgress;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.IndexOperationResult;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.IndexOperationResult.NodeOutcome;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.IndexOperationResult.Outcome;
@@ -157,6 +159,78 @@ class ClusterIndexViewsTest {
         overflow.params.put("ef", 2_147_483_648L);
         assertThatIllegalArgumentException().as("ef beyond int is INVALID_REQUEST, not ArithmeticException")
                 .isThrownBy(() -> SearchAggregatorServiceImpl.query(jvector, overflow));
+    }
+
+    @Test
+    void barrierCompletesOnlyWhenEveryAssignedOwnerScannedAndOptimizedItsPartitions() {
+        assignment.put("a", new int[]{0, 1});
+        assignment.put("b", new int[]{2, 3});
+        Map<String, NodeBarrierProgress> progress = new LinkedHashMap<>();
+        progress.put("a", barrierNode(new int[]{0, 1}, new int[]{0, 1}, new int[]{0, 1}));
+        progress.put("b", barrierNode(new int[]{2, 3}, new int[]{2, 3}, new int[]{2}));
+
+        IndexBarrier waiting = barrier(progress, List.of("a", "b"));
+        assertThat(waiting.state).isEqualTo(IndexBarrier.State.IN_PROGRESS);
+        assertThat(waiting.waitingPartitions).containsExactly(3);
+        assertThat(waiting.scannedPartitions).isEqualTo(4);
+        assertThat(waiting.optimizedPartitions).isEqualTo(3);
+
+        progress.put("b", barrierNode(new int[]{2, 3}, new int[]{2, 3}, new int[]{2, 3}));
+        assertThat(barrier(progress, List.of("a", "b")).state).isEqualTo(IndexBarrier.State.COMPLETE);
+
+        progress.get("a").pendingApplies = 1;
+        assertThat(barrier(progress, List.of("a", "b")).state).isEqualTo(IndexBarrier.State.IN_PROGRESS);
+        progress.get("a").pendingApplies = 0;
+
+        assertThat(barrier(progress, List.of("a", "b", "c")).unknownNodes).as("a silent server").containsExactly("c");
+        assertThat(barrier(progress, List.of("a", "b", "c")).state).isEqualTo(IndexBarrier.State.IN_PROGRESS);
+    }
+
+    @Test
+    void topologyChangeReplacedRuntimeOrLostBarrierRestartIt() {
+        assignment.put("a", new int[]{0, 1});
+        Map<String, NodeBarrierProgress> progress = new LinkedHashMap<>();
+        NodeBarrierProgress a = barrierNode(new int[]{0, 1}, new int[]{0, 1}, new int[]{0, 1});
+        progress.put("a", a);
+        assertThat(barrier(progress, List.of("a")).state).isEqualTo(IndexBarrier.State.COMPLETE);
+
+        a.topologyVersion = 0;                           // тикеты выданы на другой топологии
+        assertThat(barrier(progress, List.of("a")).state).isEqualTo(IndexBarrier.State.RESTART);
+        a.topologyVersion = 1;
+
+        a.invalidatedPartitions = new int[]{1};
+        assertThat(barrier(progress, List.of("a")).state).isEqualTo(IndexBarrier.State.RESTART);
+        a.invalidatedPartitions = new int[0];
+
+        a.partitions = new int[]{0};                     // партиция 1 у владельца без тикета
+        assertThat(barrier(progress, List.of("a")).state).isEqualTo(IndexBarrier.State.RESTART);
+        a.partitions = new int[]{0, 1};
+
+        NodeBarrierProgress lost = new NodeBarrierProgress();
+        lost.unknownBarrier = true;
+        progress.put("a", lost);
+        assertThat(barrier(progress, List.of("a")).state).isEqualTo(IndexBarrier.State.RESTART);
+
+        NodeBarrierProgress refused = new NodeBarrierProgress();
+        refused.error = "DEFINITION_MISMATCH";
+        progress.put("a", refused);
+        IndexBarrier failed = barrier(progress, List.of("a"));
+        assertThat(failed.state).isEqualTo(IndexBarrier.State.FAILED);
+        assertThat(failed.message).contains("DEFINITION_MISMATCH");
+    }
+
+    private IndexBarrier barrier(Map<String, NodeBarrierProgress> progress, List<String> servers) {
+        return ClusterIndexViews.barrier("images", FP, "b", snapshot(), servers, progress, false);
+    }
+
+    private static NodeBarrierProgress barrierNode(int[] partitions, int[] scanned, int[] optimized) {
+        NodeBarrierProgress p = new NodeBarrierProgress();
+        p.optimize = true;
+        p.topologyVersion = 1;
+        p.partitions = partitions;
+        p.scannedPartitions = scanned;
+        p.optimizedPartitions = optimized;
+        return p;
     }
 
     private IndexStatus status() {

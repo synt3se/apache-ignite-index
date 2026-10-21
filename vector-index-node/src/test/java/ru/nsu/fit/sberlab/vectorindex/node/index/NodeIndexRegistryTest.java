@@ -21,6 +21,7 @@ import org.junit.jupiter.api.Timeout;
 
 import ru.nsu.fit.sberlab.vectorindex.common.dto.IndexNodeStatus;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.IndexOperationResult.Outcome;
+import ru.nsu.fit.sberlab.vectorindex.common.dto.NodeBarrierProgress;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.NodeSearchResult;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.NodeStats;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.PartitionFailure;
@@ -197,6 +198,29 @@ class NodeIndexRegistryTest {
 
         assertThat(housekeeper.scheduled).hasSize(2).allSatisfy(task -> assertThat(task.isCancelled()).isTrue());
         assertThat(closed).hasValue(1);
+    }
+
+    @Test
+    void barrierIsRefusedForUnknownUnloadedAndMismatchedIndexes() {
+        registry = registry(TITLE, BODY);
+        source("title").put(2, 1, 0);
+        rebuild("title");
+        registry.unload("body");
+        long timeout = TimeUnit.SECONDS.toNanos(1);
+
+        assertThat(registry.beginBarrier("nope", "x", "b", false, timeout).error).isEqualTo("NO_INDEX");
+        assertThat(registry.beginBarrier("title", BODY.fingerprint(), "b", false, timeout).error)
+                .isEqualTo("DEFINITION_MISMATCH");
+        assertThat(registry.beginBarrier("body", BODY.fingerprint(), "b", false, timeout).error)
+                .isEqualTo("INDEX_UNLOADED");
+
+        NodeBarrierProgress started = registry.beginBarrier("title", TITLE.fingerprint(), "b", false, timeout);
+        assertThat(started.error).isNull();
+        assertThat(started.partitions).containsExactly(0);
+        scans.runAll();
+        NodeBarrierProgress done = registry.barrierProgress("title", TITLE.fingerprint(), "b");
+        assertThat(done.scannedPartitions).containsExactly(0);
+        assertThat(done.liveVectors).isEqualTo(1);
     }
 
     @Test

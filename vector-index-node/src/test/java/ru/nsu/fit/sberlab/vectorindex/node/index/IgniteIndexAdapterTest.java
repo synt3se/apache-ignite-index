@@ -2,6 +2,7 @@ package ru.nsu.fit.sberlab.vectorindex.node.index;
 
 import static java.time.Duration.ofSeconds;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 import static org.awaitility.Awaitility.await;
 
@@ -12,6 +13,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import org.apache.ignite.logger.NullLogger;
 import org.junit.jupiter.api.DisplayName;
@@ -20,6 +22,7 @@ import org.junit.jupiter.api.Timeout;
 
 import ru.nsu.fit.sberlab.vectorindex.common.dto.IndexHit;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.KeyType;
+import ru.nsu.fit.sberlab.vectorindex.common.dto.NodeBarrierProgress;
 import ru.nsu.fit.sberlab.vectorindex.common.indextype.IndexType;
 import ru.nsu.fit.sberlab.vectorindex.core.Phase;
 import ru.nsu.fit.sberlab.vectorindex.core.maintenance.Backoff;
@@ -388,6 +391,177 @@ class IgniteIndexAdapterTest {
         }
     }
 
+    // ------------------------------------------------------------ барьер загрузки (этап D)
+
+    @Test
+    @DisplayName("Barrier: an apply that read the old value before the last write must finish before the final scan")
+    void barrierWaitsForAnApplyThatReadTheOldValueBeforeTheFinalScan() throws Exception {
+        try (Fixture fixture = new Fixture()) {
+            fixture.source.put(10, 1, 0);
+            fixture.rebuildAll();
+            FakeVectorSource.ScanBarrier stale = fixture.source.blockAfterReadOf(10L);
+            fixture.source.put(10, 0, 1);                    // v1
+            fixture.adapter.onKeyChanged(10L);                // обработчик прочитал v1 и задержался
+            assertThat(stale.finishedReading.await(3, TimeUnit.SECONDS)).isTrue();
+            fixture.source.put(10, -1, 0);                   // v2 — последняя запись; её событие потеряно
+
+            Future<NodeBarrierProgress> begin = fixture.scanWorker.submit(() ->
+                    fixture.adapter.beginBarrier("b1", false, TimeUnit.SECONDS.toNanos(5)));
+            assertThatThrownBy(() -> begin.get(200, TimeUnit.MILLISECONDS))
+                    .as("no tickets while an older apply is still running").isInstanceOf(TimeoutException.class);
+            assertThat(fixture.scans.pending()).isZero();
+
+            stale.release.countDown();                        // v1 применён до выдачи тикета
+            assertThat(begin.get(3, TimeUnit.SECONDS).error).isNull();
+            fixture.scans.runAll();                           // финальный скан читает v2
+
+            assertThat(fixture.adapter.barrierProgress("b1").scannedPartitions).containsExactly(0);
+            assertThat(fixture.adapter.searchLocal(new float[]{-1, 0}, 1))
+                    .extracting(h -> h.key, h -> h.distance).containsExactly(tuple(10L, 0.0));
+        }
+    }
+
+    @Test
+    void ticketIssuedDuringAnOldScanIsClosedOnlyByTheNextScan() throws Exception {
+        try (Fixture fixture = new Fixture()) {
+            fixture.source.put(10, 1, 0);
+            fixture.rebuildAll();
+            FakeVectorSource.ScanBarrier old = fixture.source.blockNextScanAfterItsLastEntry();
+            fixture.adapter.forceReconcile(true);
+            Future<?> inFlight = fixture.scanWorker.submit(fixture.scans::runNext);
+            assertThat(old.finishedReading.await(3, TimeUnit.SECONDS)).isTrue();
+            fixture.source.put(10, 0, 1);                    // после того, как старый скан прочитал ключ
+
+            assertThat(fixture.adapter.beginBarrier("b2", false, TimeUnit.SECONDS.toNanos(5)).error).isNull();
+            old.release.countDown();
+            inFlight.get(3, TimeUnit.SECONDS);
+
+            assertThat(fixture.adapter.barrierProgress("b2").scannedPartitions)
+                    .as("the scan begun before the ticket does not close it").isEmpty();
+            fixture.scans.runAll();
+            assertThat(fixture.adapter.barrierProgress("b2").scannedPartitions).containsExactly(0);
+            assertThat(fixture.adapter.searchLocal(new float[]{0, 1}, 1))
+                    .extracting(h -> h.key, h -> h.distance).containsExactly(tuple(10L, 0.0));
+        }
+    }
+
+    @Test
+    void replacingTheRuntimeInvalidatesTheBarrier() throws Exception {
+        try (Fixture fixture = new Fixture()) {
+            fixture.source.put(10, 1, 0);
+            fixture.rebuildAll();
+            fixture.adapter.beginBarrier("b3", false, TimeUnit.SECONDS.toNanos(5));
+            fixture.scans.runAll();
+            assertThat(fixture.adapter.barrierProgress("b3").scannedPartitions).containsExactly(0);
+
+            fixture.source.owned.set(new int[0]);
+            fixture.adapter.forceReconcile(false);             // эпизод владения закрыт
+            fixture.source.owned.set(new int[]{0, 1});
+            fixture.adapter.forceReconcile(false);             // новый runtime партиции 0 и пришедшая партиция 1
+            fixture.scans.runAll();
+
+            NodeBarrierProgress progress = fixture.adapter.barrierProgress("b3");
+            assertThat(progress.invalidatedPartitions).as("replaced runtime").containsExactly(0);
+            assertThat(progress.foreignPartitions).as("partition without a ticket").containsExactly(1);
+            assertThat(progress.scannedPartitions).isEmpty();
+            assertThat(fixture.adapter.barrierProgress("unknown").unknownBarrier).isTrue();
+        }
+    }
+
+    @Test
+    @DisplayName("Barrier forces a build of a delta below the automatic threshold; empty FLAT partitions complete too")
+    void barrierForcesABuildOfASmallDeltaAndCompletesEmptyPartitions() throws Exception {
+        JVectorProperties neverAutomatic = new JVectorProperties();
+        neverAutomatic.setMinAdditionsBeforeRebuild(10_000);
+        neverAutomatic.setAddRebuildRatio(10);
+        neverAutomatic.setDeleteRebuildRatio(10);
+        IndexDefinition flat = IndexDefinition.of("vectors", "vectors", "vector", 2,
+                ru.nsu.fit.sberlab.vectorindex.core.Metric.COSINE, AlgorithmKind.FLAT, neverAutomatic);
+        try (Fixture fixture = new Fixture(flat)) {
+            fixture.source.owned.set(new int[]{0, 1});        // партиция 1 пустая
+            fixture.source.put(10, 1, 0);
+            fixture.rebuildAll();
+            fixture.source.put(12, 0, 1);
+            fixture.eventAndAwaitApplied(12, 1);               // маленькая дельта ниже порога
+            fixture.builds.runAll();
+            assertThat(fixture.builds.pending()).isZero();
+
+            fixture.adapter.beginBarrier("b4", true, TimeUnit.SECONDS.toNanos(5));
+            fixture.scans.runAll();
+            NodeBarrierProgress scanned = fixture.adapter.barrierProgress("b4");
+            assertThat(scanned.scannedPartitions).containsExactly(0, 1);
+            assertThat(scanned.optimizedPartitions).isEmpty();
+            assertThat(fixture.builds.pending()).as("builds are forced by the barrier").isPositive();
+
+            fixture.builds.runAll();
+            NodeBarrierProgress optimized = fixture.adapter.barrierProgress("b4");
+            assertThat(optimized.optimizedPartitions).containsExactly(0, 1);
+            assertThat(fixture.adapter.localStatus().deltaEntries).isZero();
+            assertThat(fixture.adapter.localStatus().optimizationBuilt).isEqualTo(2);
+            assertThat(fixture.adapter.searchLocal(new float[]{0, 1}, 1)).extracting(h -> h.key).containsExactly(12L);
+        }
+    }
+
+    @Test
+    void forcedReconcileIsNotLostWhileAnotherReconcileRuns() throws Exception {
+        try (Fixture fixture = new Fixture()) {
+            fixture.source.put(10, 1, 0);
+            fixture.rebuildAll();
+            long requestedBefore = fixture.adapter.runtime(0).status().repairRequested();
+            FakeVectorSource.ScanBarrier running = fixture.source.blockNextOwnershipQuery();
+            Future<?> periodic = fixture.scanWorker.submit(() -> fixture.adapter.forceReconcile(false));
+            assertThat(running.finishedReading.await(3, TimeUnit.SECONDS)).isTrue();
+
+            fixture.adapter.forceReconcile(true);              // сверка занята: запрос запоминается
+            running.release.countDown();
+            periodic.get(3, TimeUnit.SECONDS);
+
+            assertThat(fixture.adapter.runtime(0).status().repairRequested())
+                    .as("the full reconcile ran after the busy one").isEqualTo(requestedBefore + 1);
+            assertThat(fixture.scans.pending()).isEqualTo(1);
+        }
+    }
+
+    @Test
+    void barrierFailsExplicitlyWhenAppliesDoNotFinish() throws Exception {
+        try (Fixture fixture = new Fixture()) {
+            fixture.source.put(10, 1, 0);
+            fixture.rebuildAll();
+            long requestedBefore = fixture.adapter.runtime(0).status().repairRequested();
+            fixture.blockApplier();
+            fixture.adapter.onKeyChanged(10L);
+
+            assertThatThrownBy(() -> fixture.adapter.beginBarrier("b5", false, TimeUnit.MILLISECONDS.toNanos(100)))
+                    .isInstanceOf(IllegalStateException.class).hasMessageContaining("did not finish");
+            assertThat(fixture.adapter.runtime(0).status().repairRequested()).as("no tickets issued")
+                    .isEqualTo(requestedBefore);
+            assertThat(fixture.adapter.barrierProgress("b5").unknownBarrier).isTrue();
+        }
+    }
+
+    @Test
+    void truncateSuspensionClosesRuntimesAndIgnoresEventsUntilResume() throws Exception {
+        try (Fixture fixture = new Fixture()) {
+            fixture.source.put(10, 1, 0);
+            fixture.rebuildAll();
+            var before = fixture.adapter.runtime(0);
+
+            fixture.adapter.suspendForTruncate(60_000, TimeUnit.SECONDS.toNanos(5));
+            assertThat(before.isClosed()).isTrue();
+            assertThat(fixture.adapter.runtime(0)).isNull();
+            fixture.source.values.clear();                     // кэш очищен
+            fixture.adapter.onKeyChanged(10L);                 // события на паузе игнорируются
+            fixture.adapter.forceReconcile(false);             // сверка на паузе не создаёт runtime
+            assertThat(fixture.adapter.runtime(0)).isNull();
+
+            fixture.adapter.resumeIndexing();
+            fixture.scans.runAll();
+            assertThat(fixture.adapter.runtime(0)).isNotSameAs(before);
+            assertThat(fixture.adapter.runtime(0).phase()).isEqualTo(Phase.READY);
+            assertThat(fixture.adapter.searchLocal(new float[]{1, 0}, 10)).isEmpty();
+        }
+    }
+
     // ------------------------------------------------------------ fixture
 
     private static final class Fixture implements AutoCloseable {
@@ -406,13 +580,16 @@ class IgniteIndexAdapterTest {
         private final CountDownLatch applierRelease = new CountDownLatch(1);
 
         Fixture() {
+            this(IndexDefinition.fromLegacy("vectors", 2, IndexType.BRUTE_FORCE_INDEX, new JVectorProperties()));
+        }
+
+        Fixture(IndexDefinition definition) {
             BuildService buildService = new BuildService(builds, delayed,
                     Backoff.exponential(Duration.ofSeconds(1), Duration.ofSeconds(8)),
                     RuntimeHarness.BUILD_POOL, RuntimeHarness.BUILD_POOL);
             NodeResources resources = new NodeResources(applier, scans, Runnable::run, delayed, null, buildService,
                     List.of(applier::close));
-            adapter = new IgniteIndexAdapter(IndexDefinition.fromLegacy("vectors", 2, IndexType.BRUTE_FORCE_INDEX,
-                    new JVectorProperties()), source, resources, clock, new NullLogger());
+            adapter = new IgniteIndexAdapter(definition, source, resources, clock, new NullLogger());
         }
 
         void rebuildAll() {

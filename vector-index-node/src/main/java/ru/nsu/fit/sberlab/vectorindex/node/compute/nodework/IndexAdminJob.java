@@ -12,17 +12,27 @@ import ru.nsu.fit.sberlab.vectorindex.node.index.NodeIndexRegistry;
 public class IndexAdminJob implements IgniteCallable<NodeOutcome> {
     private static final long serialVersionUID = 1L;
 
-    public enum Operation { UNLOAD, REBUILD }
+    /** {@code SUSPEND}/{@code RESUME} — фазы {@code truncate} вокруг очистки кэша. */
+    public enum Operation { UNLOAD, REBUILD, SUSPEND, RESUME }
+
+    /** Страховка паузы {@code truncate}: если RESUME не придёт, пауза истечёт сама. */
+    static final long TRUNCATE_PAUSE_TTL_MS = 10 * 60_000;
 
     @IgniteInstanceResource
     private transient Ignite ignite;
 
     private final Operation operation;
     private final String indexId;
+    private final long timeoutNanos;
 
     public IndexAdminJob(Operation operation, String indexId) {
+        this(operation, indexId, 0);
+    }
+
+    public IndexAdminJob(Operation operation, String indexId, long timeoutNanos) {
         this.operation = operation;
         this.indexId = indexId;
+        this.timeoutNanos = timeoutNanos;
     }
 
     @Override
@@ -33,7 +43,12 @@ public class IndexAdminJob implements IgniteCallable<NodeOutcome> {
             return new NodeOutcome(node, Outcome.UNKNOWN_INDEX, "index registry is not started on this node");
         }
         try {
-            Outcome outcome = operation == Operation.UNLOAD ? registry.unload(indexId) : registry.rebuild(indexId);
+            Outcome outcome = switch (operation) {
+                case UNLOAD -> registry.unload(indexId);
+                case REBUILD -> registry.rebuild(indexId);
+                case SUSPEND -> registry.suspendForTruncate(indexId, TRUNCATE_PAUSE_TTL_MS, timeoutNanos);
+                case RESUME -> registry.resumeAfterTruncate(indexId);
+            };
             return new NodeOutcome(node, outcome, null);
         } catch (RuntimeException e) {
             return new NodeOutcome(node, Outcome.FAILED, e.getMessage());

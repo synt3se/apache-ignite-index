@@ -15,6 +15,7 @@ import org.apache.ignite.Ignite;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.IndexInfo;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.IndexNodeStatus;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.IndexOperationResult.Outcome;
+import ru.nsu.fit.sberlab.vectorindex.common.dto.NodeBarrierProgress;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.NodeSearchResult;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.NodeStats;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.PartitionFailure;
@@ -206,6 +207,76 @@ public final class NodeIndexRegistry implements AutoCloseable {
         Budget budget = Budget.remaining(NanoClock.SYSTEM, request.budgetNanos());
         return adapter.search(request.partitions(), request.query(), request.k(),
                 definition.searchParams(request.params(), request.k()), request.exact(), budget);
+    }
+
+    /** Начало барьера загрузки на узле; отказ (неизвестный, выгруженный, другое определение, таймаут) — в {@code error}. */
+    public NodeBarrierProgress beginBarrier(String indexId, String fingerprint, String barrierId, boolean optimize,
+                                           long drainTimeoutNanos) {
+        NodeBarrierProgress refused = barrierRefusal(indexId, fingerprint);
+        if (refused != null) {
+            return refused;
+        }
+        try {
+            return adapter(indexId).beginBarrier(barrierId, optimize, drainTimeoutNanos);
+        } catch (IllegalStateException notQuiet) {
+            return barrierError(notQuiet.getMessage());
+        }
+    }
+
+    /** Продвижение барьера на узле (идемпотентно). */
+    public NodeBarrierProgress barrierProgress(String indexId, String fingerprint, String barrierId) {
+        NodeBarrierProgress refused = barrierRefusal(indexId, fingerprint);
+        return refused != null ? refused : adapter(indexId).barrierProgress(barrierId);
+    }
+
+    private NodeBarrierProgress barrierRefusal(String indexId, String fingerprint) {
+        IndexDefinition definition = definition(indexId);
+        if (definition == null) {
+            return barrierError(PartitionFailure.Reason.NO_INDEX.name());
+        }
+        if (!definition.fingerprint().equals(fingerprint)) {
+            return barrierError(PartitionFailure.Reason.DEFINITION_MISMATCH.name());
+        }
+        return adapter(indexId) == null ? barrierError(PartitionFailure.Reason.INDEX_UNLOADED.name()) : null;
+    }
+
+    private NodeBarrierProgress barrierError(String error) {
+        NodeBarrierProgress progress = new NodeBarrierProgress();
+        progress.nodeId = nodeId;
+        progress.error = error;
+        return progress;
+    }
+
+    /** Подготовка к очистке кэша индекса: пауза, завершение сверки и применений, закрытие runtime. */
+    public Outcome suspendForTruncate(String indexId, long pauseTtlMs, long timeoutNanos) {
+        IgniteIndexAdapter adapter = adapterOrThrow(indexId);
+        if (adapter == null) {
+            return Outcome.UNKNOWN_INDEX;
+        }
+        adapter.suspendForTruncate(pauseTtlMs, timeoutNanos);
+        return Outcome.DONE;
+    }
+
+    /** После очистки кэша: выход из паузы и полная сверка (новые runtime). */
+    public Outcome resumeAfterTruncate(String indexId) {
+        IgniteIndexAdapter adapter = adapterOrThrow(indexId);
+        if (adapter == null) {
+            return Outcome.UNKNOWN_INDEX;
+        }
+        adapter.resumeIndexing();
+        return Outcome.DONE;
+    }
+
+    /** {@code null} — индекс неизвестен; выгруженный — {@link IllegalStateException}. */
+    private IgniteIndexAdapter adapterOrThrow(String indexId) {
+        if (definition(indexId) == null) {
+            return null;
+        }
+        IgniteIndexAdapter adapter = loaded.get(indexId);
+        if (adapter == null) {
+            throw new IllegalStateException("index '" + indexId + "' is unloaded on this node");
+        }
+        return adapter;
     }
 
     /** Готовность индекса на узле, включая выгруженный и неизвестный. */

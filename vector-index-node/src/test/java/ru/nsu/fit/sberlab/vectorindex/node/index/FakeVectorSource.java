@@ -20,6 +20,8 @@ final class FakeVectorSource implements VectorSource {
     final AtomicLong topology = new AtomicLong(1);
     private final AtomicReference<ScanBarrier> nextScan = new AtomicReference<>();
     private final Map<Object, ScanBarrier> blockedReads = new ConcurrentHashMap<>();
+    private final Map<Object, ScanBarrier> staleReads = new ConcurrentHashMap<>();
+    private final AtomicReference<ScanBarrier> nextOwnership = new AtomicReference<>();
     private final List<ScanBarrier> barriers = new ArrayList<>();
 
     void put(long key, float... vector) {
@@ -63,6 +65,29 @@ final class FakeVectorSource implements VectorSource {
         return barrier;
     }
 
+    /**
+     * Следующее чтение ключа берёт текущее значение и только потом останавливается: обработчик
+     * «прочитал старое значение и задержался», пока источник уже изменился.
+     */
+    ScanBarrier blockAfterReadOf(Object key) {
+        ScanBarrier barrier = new ScanBarrier();
+        synchronized (barriers) {
+            barriers.add(barrier);
+        }
+        staleReads.put(key, barrier);
+        return barrier;
+    }
+
+    /** Следующий запрос владения остановится внутри сверки, пока тест его не отпустит. */
+    ScanBarrier blockNextOwnershipQuery() {
+        ScanBarrier barrier = new ScanBarrier();
+        synchronized (barriers) {
+            barriers.add(barrier);
+        }
+        nextOwnership.set(barrier);
+        return barrier;
+    }
+
     void releaseAllBarriers() {
         synchronized (barriers) {
             barriers.forEach(barrier -> barrier.release.countDown());
@@ -75,6 +100,11 @@ final class FakeVectorSource implements VectorSource {
 
     @Override
     public int[] ownedPrimaryPartitions() {
+        ScanBarrier barrier = nextOwnership.getAndSet(null);
+        if (barrier != null) {
+            barrier.finishedReading.countDown();
+            await(barrier.release);
+        }
         return owned.get().clone();
     }
 
@@ -103,7 +133,13 @@ final class FakeVectorSource implements VectorSource {
             barrier.finishedReading.countDown();
             await(barrier.release);
         }
-        return copy(values.getOrDefault(key, SourceValue.ABSENT));
+        SourceValue current = copy(values.getOrDefault(key, SourceValue.ABSENT));
+        ScanBarrier stale = staleReads.remove(key);
+        if (stale != null) {
+            stale.finishedReading.countDown();
+            await(stale.release);
+        }
+        return current;
     }
 
     @Override

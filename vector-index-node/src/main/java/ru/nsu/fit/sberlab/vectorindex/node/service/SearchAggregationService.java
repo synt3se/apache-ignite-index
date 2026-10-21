@@ -4,6 +4,7 @@ import java.util.List;
 
 import org.apache.ignite.services.Service;
 
+import ru.nsu.fit.sberlab.vectorindex.common.dto.IndexBarrier;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.IndexInfo;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.IndexOperationResult;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.IndexStatus;
@@ -34,4 +35,20 @@ public interface SearchAggregationService extends Service {
 
     /** Полная сверка индекса на всех серверах; {@code null} — координатор не знает индекса. */
     IndexOperationResult rebuild(String indexId);
+
+    /**
+     * Начало барьера загрузки (вызывающий подтвердил записи и остановил писателей); на каждом
+     * сервере — завершение применений и выдача тикетов сверки. {@code null} — индекс неизвестен.
+     */
+    IndexBarrier beginBarrier(String indexId, boolean optimize);
+
+    /** Продвижение барьера (идемпотентно, двигает сканы и принудительную оптимизацию). */
+    IndexBarrier barrierProgress(String indexId, String barrierId);
+
+    /**
+     * Очистка кэша индекса и самого индекса на всех серверах: пауза и закрытие runtime, очистка
+     * кэша, полная сверка. Отклоняется, если кэш используют и другие индексы. {@code null} —
+     * индекс неизвестен.
+     */
+    IndexOperationResult truncate(String indexId);
 }

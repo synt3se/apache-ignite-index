@@ -19,7 +19,9 @@ import org.apache.ignite.lang.IgniteCallable;
 import org.apache.ignite.resources.IgniteInstanceResource;
 import org.apache.ignite.services.ServiceContext;
 
+import ru.nsu.fit.sberlab.vectorindex.common.dto.IndexBarrier;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.IndexInfo;
+import ru.nsu.fit.sberlab.vectorindex.common.dto.NodeBarrierProgress;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.IndexNodeStatus;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.IndexOperationResult;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.IndexOperationResult.NodeOutcome;
@@ -31,6 +33,7 @@ import ru.nsu.fit.sberlab.vectorindex.common.dto.VectorSearchResponse;
 import ru.nsu.fit.sberlab.vectorindex.core.Budget;
 import ru.nsu.fit.sberlab.vectorindex.core.NanoClock;
 import ru.nsu.fit.sberlab.vectorindex.node.compute.nodework.IndexAdminJob;
+import ru.nsu.fit.sberlab.vectorindex.node.compute.nodework.IndexBarrierJob;
 import ru.nsu.fit.sberlab.vectorindex.node.compute.nodework.IndexStatusJob;
 import ru.nsu.fit.sberlab.vectorindex.node.index.IndexDefinition;
 import ru.nsu.fit.sberlab.vectorindex.node.index.NodeIndexRegistry;
@@ -59,12 +62,15 @@ public class SearchAggregatorServiceImpl implements SearchAggregationService {
     private transient Map<String, SearchCoordinator> coordinators;
     private transient long defaultTimeoutNanos;
     private transient long adminTimeoutNanos;
+    private transient long barrierDrainTimeoutNanos;
 
     @Override
     public void init(ServiceContext ctx) {
         coordinators = new ConcurrentHashMap<>();
         defaultTimeoutNanos = TimeUnit.MILLISECONDS.toNanos(Long.getLong("vector.search.timeout-ms", 2_000L));
         adminTimeoutNanos = TimeUnit.MILLISECONDS.toNanos(Long.getLong("vector.admin.timeout-ms", 10_000L));
+        // Меньше таймаута опроса узлов: узел должен успеть ответить отказом, а не промолчать.
+        barrierDrainTimeoutNanos = adminTimeoutNanos / 2;
     }
 
     @Override public void execute(ServiceContext ctx) {}
@@ -137,14 +143,84 @@ public class SearchAggregatorServiceImpl implements SearchAggregationService {
         return operation(indexId, IndexAdminJob.Operation.REBUILD, EnumSet.of(Outcome.DONE));
     }
 
-    private IndexOperationResult operation(String indexId, IndexAdminJob.Operation operation,
-                                           Collection<Outcome> accepted) {
-        if (registry().definition(indexId) == null) {
+    @Override
+    public IndexBarrier beginBarrier(String indexId, boolean optimize) {
+        IndexDefinition definition = registry().definition(indexId);
+        if (definition == null) {
             return null;
         }
+        String barrierId = java.util.UUID.randomUUID().toString();
+        return barrier(definition, barrierId, true, node -> new IndexBarrierJob(true, indexId,
+                definition.fingerprint(), barrierId, optimize, barrierDrainTimeoutNanos));
+    }
+
+    @Override
+    public IndexBarrier barrierProgress(String indexId, String barrierId) {
+        IndexDefinition definition = registry().definition(indexId);
+        if (definition == null) {
+            return null;
+        }
+        return barrier(definition, barrierId, false, node -> new IndexBarrierJob(false, indexId,
+                definition.fingerprint(), barrierId, false, 0));
+    }
+
+    private IndexBarrier barrier(IndexDefinition definition, String barrierId, boolean begin,
+                                 Function<ClusterNode, IgniteCallable<NodeBarrierProgress>> job) {
+        Collection<ClusterNode> servers = ignite.cluster().forServers().nodes();
+        Map<String, NodeBarrierProgress> progress = perNode(servers, job, new LinkedHashMap<>());
+        // Назначение берётся после ответов: смена топологии во время опроса видна как другая версия.
+        var current = new IgniteSearchTopology(ignite, definition.cacheName()).snapshot();
+        return ClusterIndexViews.barrier(definition.indexId(), definition.fingerprint(), barrierId, current,
+                ids(servers), progress, begin);
+    }
+
+    @Override
+    public IndexOperationResult truncate(String indexId) {
+        NodeIndexRegistry registry = registry();
+        IndexDefinition definition = registry.definition(indexId);
+        if (definition == null) {
+            return null;
+        }
+        List<String> sharing = registry.indexes().stream()
+                .filter(info -> info.cacheName.equals(definition.cacheName()) && !info.indexId.equals(indexId))
+                .map(info -> info.indexId).toList();
+        if (!sharing.isEmpty()) {
+            IndexOperationResult refused = new IndexOperationResult();
+            refused.indexId = indexId;
+            refused.operation = "TRUNCATE";
+            refused.refused = true;
+            refused.message = "cache '" + definition.cacheName() + "' is shared with indexes " + sharing
+                    + ": truncate would clear them too";
+            return refused;
+        }
+        IndexOperationResult suspended = operation(indexId, IndexAdminJob.Operation.SUSPEND, EnumSet.of(Outcome.DONE),
+                barrierDrainTimeoutNanos);
+        if (!suspended.confirmed) {
+            operation(indexId, IndexAdminJob.Operation.RESUME, EnumSet.of(Outcome.DONE), 0);
+            suspended.operation = "TRUNCATE";
+            suspended.message = "suspend was not confirmed by every server; the cache was not cleared";
+            return suspended;
+        }
+        ignite.cache(definition.cacheName()).clear();
+        IndexOperationResult resumed = operation(indexId, IndexAdminJob.Operation.RESUME, EnumSet.of(Outcome.DONE), 0);
+        resumed.operation = "TRUNCATE";
+        if (!resumed.confirmed) {
+            resumed.message = "the cache was cleared, but resume was not confirmed by every server";
+        }
+        return resumed;
+    }
+
+    private IndexOperationResult operation(String indexId, IndexAdminJob.Operation operation,
+                                           Collection<Outcome> accepted) {
+        return registry().definition(indexId) == null ? null : operation(indexId, operation, accepted, 0);
+    }
+
+    private IndexOperationResult operation(String indexId, IndexAdminJob.Operation operation,
+                                           Collection<Outcome> accepted, long timeoutNanos) {
         Collection<ClusterNode> servers = ignite.cluster().forServers().nodes();
         Map<String, String> errors = new LinkedHashMap<>();
-        Map<String, NodeOutcome> outcomes = perNode(servers, node -> new IndexAdminJob(operation, indexId), errors);
+        Map<String, NodeOutcome> outcomes = perNode(servers,
+                node -> new IndexAdminJob(operation, indexId, timeoutNanos), errors);
         errors.forEach((node, error) -> outcomes.put(node, new NodeOutcome(node,
                 error.startsWith("timeout") ? Outcome.NO_RESPONSE : Outcome.FAILED, error)));
         return ClusterIndexViews.operation(indexId, operation.name(), ids(servers), outcomes, accepted);
