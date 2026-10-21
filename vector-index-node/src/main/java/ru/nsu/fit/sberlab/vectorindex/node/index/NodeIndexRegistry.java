@@ -71,17 +71,37 @@ public final class NodeIndexRegistry implements AutoCloseable {
     /** Создаёт общие ресурсы, загружает все настроенные индексы и регистрируется в {@code nodeLocalMap}. */
     public static NodeIndexRegistry start(Ignite ignite, List<IndexDefinition> definitions) {
         NodeResources resources = NodeResources.create("vindex");
+        NodeIndexRegistry registry = load(definitions, resources,
+                definition -> new IgniteIndexAdapter(ignite, definition, resources),
+                String.valueOf(ignite.cluster().localNode().consistentId()), ignite);
+        ignite.cluster().nodeLocalMap().put(KEY, registry);
+        return registry;
+    }
+
+    /**
+     * Создаёт реестр и загружает все индексы; при любой ошибке запуска откатывается полностью:
+     * останавливает все созданные адаптеры, включая частично запущенный (его подписки и
+     * периодические задания), и закрывает общие ресурсы. Наружу уходит исходная ошибка.
+     */
+    static NodeIndexRegistry load(List<IndexDefinition> definitions, NodeResources resources,
+                                  Function<IndexDefinition, IgniteIndexAdapter> factory, String nodeId, Ignite ignite) {
         NodeIndexRegistry registry;
         try {
-            registry = new NodeIndexRegistry(definitions, resources,
-                    definition -> new IgniteIndexAdapter(ignite, definition, resources),
-                    String.valueOf(ignite.cluster().localNode().consistentId()), ignite);
-            registry.loadAll();
-        } catch (RuntimeException e) {
+            registry = new NodeIndexRegistry(definitions, resources, factory, nodeId, ignite);
+        } catch (RuntimeException | Error e) {
             resources.close();
             throw e;
         }
-        ignite.cluster().nodeLocalMap().put(KEY, registry);
+        try {
+            registry.loadAll();
+        } catch (RuntimeException | Error e) {
+            try {
+                registry.close();
+            } catch (RuntimeException cleanupFailed) {
+                e.addSuppressed(cleanupFailed);
+            }
+            throw e;
+        }
         return registry;
     }
 
@@ -90,11 +110,12 @@ public final class NodeIndexRegistry implements AutoCloseable {
         return ignite == null ? null : (NodeIndexRegistry) ignite.cluster().nodeLocalMap().get(KEY);
     }
 
-    void loadAll() {
+    private void loadAll() {
         for (String indexId : order) {
             IgniteIndexAdapter adapter = factory.apply(configured.get(indexId));
-            adapter.start();
+            // До start: если запуск упадёт на полпути, close() остановит и этот адаптер.
             loaded.put(indexId, adapter);
+            adapter.start();
         }
     }
 
@@ -244,12 +265,25 @@ public final class NodeIndexRegistry implements AutoCloseable {
                 // nodeLocalMap ушёл вместе с узлом
             }
         }
+        // Ошибка остановки одного индекса не оставляет запущенными остальные и общие пулы.
+        RuntimeException failure = null;
         for (String indexId : order) {
             IgniteIndexAdapter adapter = loaded.remove(indexId);
             if (adapter != null) {
-                adapter.stop();
+                try {
+                    adapter.stop();
+                } catch (RuntimeException e) {
+                    if (failure == null) {
+                        failure = e;
+                    } else {
+                        failure.addSuppressed(e);
+                    }
+                }
             }
         }
         resources.close();
+        if (failure != null) {
+            throw failure;
+        }
     }
 }

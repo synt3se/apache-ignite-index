@@ -2,6 +2,7 @@ package ru.nsu.fit.sberlab.vectorindex.node.index;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 
 import java.time.Duration;
@@ -14,6 +15,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.ignite.logger.NullLogger;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
@@ -155,6 +157,49 @@ class NodeIndexRegistryTest {
     }
 
     @Test
+    @DisplayName("A failed start of the second index stops the partially started one and everything before it")
+    void partialStartIsRolledBackCompletely() {
+        RecordingScheduler housekeeper = new RecordingScheduler();
+        housekeeper.failPeriodicCall = 2;                  // второй индекс: первое задание есть, второе — отказ
+        AtomicInteger closed = new AtomicInteger();
+        NodeResources withHousekeeper = new NodeResources(applier, scans, Runnable::run, delayed, housekeeper,
+                resources.builds, List.of(applier::close, closed::incrementAndGet, housekeeper::shutdownNow));
+        IndexDefinition third = IndexDefinition.of("third", "docs", "x", 2, Metric.COSINE, AlgorithmKind.FLAT, null);
+        List<String> attempted = new java.util.ArrayList<>();
+
+        assertThatThrownBy(() -> NodeIndexRegistry.load(List.of(TITLE, BODY, third), withHousekeeper, definition -> {
+            attempted.add(definition.indexId());
+            return new IgniteIndexAdapter(definition, source(definition.indexId()), withHousekeeper, clock,
+                    new NullLogger());
+        }, "node-a", null)).isInstanceOf(java.util.concurrent.RejectedExecutionException.class);
+
+        assertThat(attempted).as("loading stops at the failed index").containsExactly("title", "body");
+        assertThat(housekeeper.scheduled).as("title: 2 tasks, body: the one scheduled before the failure").hasSize(3)
+                .allSatisfy(task -> assertThat(task.isCancelled()).isTrue());
+        assertThat(closed).as("shared resources are closed once").hasValue(1);
+        assertThat(housekeeper.isShutdown()).isTrue();
+    }
+
+    @Test
+    void aFactoryFailureStopsTheIndexesAlreadyStarted() {
+        RecordingScheduler housekeeper = new RecordingScheduler();
+        AtomicInteger closed = new AtomicInteger();
+        NodeResources withHousekeeper = new NodeResources(applier, scans, Runnable::run, delayed, housekeeper,
+                resources.builds, List.of(closed::incrementAndGet, housekeeper::shutdownNow));
+
+        assertThatThrownBy(() -> NodeIndexRegistry.load(List.of(TITLE, BODY), withHousekeeper, definition -> {
+            if (definition == BODY) {
+                throw new IllegalStateException("cache 'docs' is not configured on this node");
+            }
+            return new IgniteIndexAdapter(definition, source(definition.indexId()), withHousekeeper, clock,
+                    new NullLogger());
+        }, "node-a", null)).isInstanceOf(IllegalStateException.class);
+
+        assertThat(housekeeper.scheduled).hasSize(2).allSatisfy(task -> assertThat(task.isCancelled()).isTrue());
+        assertThat(closed).hasValue(1);
+    }
+
+    @Test
     void duplicateIndexNamesAreRejected() {
         assertThatIllegalArgumentException().isThrownBy(() -> registry(TITLE, TITLE));
         assertThatIllegalArgumentException().isThrownBy(() -> registry());
@@ -163,14 +208,12 @@ class NodeIndexRegistryTest {
     // ------------------------------------------------------------ helpers
 
     private NodeIndexRegistry registry(IndexDefinition... definitions) {
-        NodeIndexRegistry created = new NodeIndexRegistry(List.of(definitions), resources, definition -> {
+        return NodeIndexRegistry.load(List.of(definitions), resources, definition -> {
             IgniteIndexAdapter adapter = new IgniteIndexAdapter(definition, source(definition.indexId()), resources,
                     clock, new NullLogger());
             this.created.put(definition.indexId(), adapter);
             return adapter;
         }, "node-a", null);
-        created.loadAll();
-        return created;
     }
 
     private FakeVectorSource source(String indexId) {
@@ -190,6 +233,35 @@ class NodeIndexRegistryTest {
     private static List<PartitionFailure.Reason> reasons(NodeSearchResult result) {
         assertThat(result.searchedPartitions).isEmpty();
         return result.failedPartitions.stream().map(failure -> failure.reason).toList();
+    }
+
+    /** Планировщик, который запоминает задания и отказывает на заданном периодическом вызове. */
+    private static final class RecordingScheduler extends java.util.concurrent.ScheduledThreadPoolExecutor {
+        final List<java.util.concurrent.ScheduledFuture<?>> scheduled = new java.util.concurrent.CopyOnWriteArrayList<>();
+        int failPeriodicCall = -1;
+        private int periodicCalls;
+
+        RecordingScheduler() {
+            super(1);
+        }
+
+        @Override
+        public java.util.concurrent.ScheduledFuture<?> schedule(Runnable command, long delay, TimeUnit unit) {
+            java.util.concurrent.ScheduledFuture<?> future = super.schedule(command, 1, TimeUnit.HOURS);
+            scheduled.add(future);
+            return future;
+        }
+
+        @Override
+        public java.util.concurrent.ScheduledFuture<?> scheduleWithFixedDelay(Runnable command, long initialDelay,
+                                                                              long delay, TimeUnit unit) {
+            if (++periodicCalls == failPeriodicCall) {
+                throw new java.util.concurrent.RejectedExecutionException("simulated start failure");
+            }
+            java.util.concurrent.ScheduledFuture<?> future = super.scheduleWithFixedDelay(command, 1, 1, TimeUnit.HOURS);
+            scheduled.add(future);
+            return future;
+        }
     }
 
     private void flushApplier() throws InterruptedException {
