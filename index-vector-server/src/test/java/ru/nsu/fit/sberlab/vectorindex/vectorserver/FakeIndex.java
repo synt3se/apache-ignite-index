@@ -6,6 +6,7 @@ import java.util.Map;
 import ru.nsu.fit.sberlab.vectorindex.common.VectorObject;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.AddRequest;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.ClusterStats;
+import ru.nsu.fit.sberlab.vectorindex.common.dto.IndexBarrier;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.IndexOperationResult;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.IndexStatus;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.Neighbor;
@@ -29,6 +30,11 @@ public class FakeIndex implements Index {
     @Override public IndexOperationResult rebuild(String indexId) { return operation; }
     @Override public IndexStatus status(String indexId) { return status; }
     @Override public ClusterStats stats() { return stats; }
+    @Override public IndexOperationResult truncate(String indexId) { return operation; }
+    @Override public IndexBarrier beginBarrier(String indexId, boolean optimize) { return barrier; }
+    @Override public IndexBarrier barrierProgress(String indexId, String barrierId) { return barrier; }
+
+    public IndexBarrier barrier;
 
     @Override public void add(long id, AddRequest request) { throw new UnsupportedOperationException(); }
     @Override public boolean delete(long id) { throw new UnsupportedOperationException(); }

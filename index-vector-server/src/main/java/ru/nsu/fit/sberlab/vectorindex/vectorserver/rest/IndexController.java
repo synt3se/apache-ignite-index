@@ -1,16 +1,20 @@
 package ru.nsu.fit.sberlab.vectorindex.vectorserver.rest;
 
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import ru.nsu.fit.sberlab.vectorindex.common.dto.IndexBarrier;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.IndexInfo;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.IndexOperationResult;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.IndexStatus;
@@ -68,6 +72,49 @@ public class IndexController {
     @PostMapping("/{indexId}/unload")
     public ResponseEntity<IndexOperationResult> unload(@PathVariable String indexId) {
         return operation(indexId, index.unload(indexId));
+    }
+
+    /** Пакетная загрузка {@code Long → float[]}; весь батч проверяется до записи (ошибка — 400/404). */
+    @PutMapping("/{indexId}/vectors")
+    public Map<String, Object> upload(@PathVariable String indexId, @RequestBody VectorBatchBody body) {
+        int written = index.upload(indexId, body.ids(), body.vectors());
+        return Map.of("indexId", indexId, "written", written);
+    }
+
+    /**
+     * Очистка кэша индекса и самого индекса: 409 — кэш используют и другие индексы, 503 — не все
+     * серверы подтвердили фазы.
+     */
+    @PostMapping("/{indexId}/truncate")
+    public ResponseEntity<IndexOperationResult> truncate(@PathVariable String indexId) {
+        IndexOperationResult result = index.truncate(indexId);
+        if (result != null && result.refused) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(result);
+        }
+        return operation(indexId, result);
+    }
+
+    /**
+     * Барьер загрузки (этап D): вызывать после подтверждения всех записей. Ответ — состояние
+     * барьера; {@code RESTART} — начать новый, {@code FAILED} — прервать загрузку.
+     */
+    @PostMapping("/{indexId}/barriers")
+    public IndexBarrier beginBarrier(@PathVariable String indexId,
+                                     @RequestParam(defaultValue = "true") boolean optimize) {
+        return known(indexId, index.beginBarrier(indexId, optimize));
+    }
+
+    /** Продвижение барьера (идемпотентно): опрашивать до {@code COMPLETE}. */
+    @PostMapping("/{indexId}/barriers/{barrierId}/progress")
+    public IndexBarrier barrierProgress(@PathVariable String indexId, @PathVariable String barrierId) {
+        return known(indexId, index.barrierProgress(indexId, barrierId));
+    }
+
+    private static IndexBarrier known(String indexId, IndexBarrier barrier) {
+        if (barrier == null) {
+            throw new ResourceNotFoundException("unknown index: " + indexId);
+        }
+        return barrier;
     }
 
     static HttpStatus httpStatus(VectorSearchResponse response) {

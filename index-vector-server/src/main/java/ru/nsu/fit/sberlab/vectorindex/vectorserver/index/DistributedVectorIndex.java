@@ -20,6 +20,7 @@ import ru.nsu.fit.sberlab.vectorindex.node.search.Awaiter;
 import ru.nsu.fit.sberlab.vectorindex.vectorserver.search.ClientDocumentStore;
 import ru.nsu.fit.sberlab.vectorindex.vectorserver.search.DemoHydrator;
 import ru.nsu.fit.sberlab.vectorindex.vectorserver.search.IndexSearchClient;
+import ru.nsu.fit.sberlab.vectorindex.vectorserver.search.VectorUploader;
 import java.util.concurrent.TimeUnit;
 import java.util.HashMap;
 import java.util.Map;
@@ -48,6 +49,9 @@ public class DistributedVectorIndex implements Index {
     private final String defaultIndex;
     private final long adminTimeoutMs;
     private final IndexSearchClient searchClient;
+    private final VectorUploader uploader;
+    /** Определения индексов кластера; обновляются, когда индекс не найден. */
+    private final Map<String, IndexInfo> catalog = new java.util.concurrent.ConcurrentHashMap<>();
 
     /** Для бенчмарк-раннеров вне Spring: индекс по умолчанию и таймауты сервера по умолчанию. */
     public DistributedVectorIndex(IgniteClient igniteClient, String cacheName, int dimension, MeterRegistry registry) {
@@ -76,6 +80,19 @@ public class DistributedVectorIndex implements Index {
                 (request, timeoutMs) -> aggregator(timeoutMs).search(request),
                 new DemoHydrator(new ClientDocumentStore(cache), Awaiter.BLOCKING, NanoClock.SYSTEM),
                 NanoClock.SYSTEM, TimeUnit.MILLISECONDS.toNanos(searchTimeoutMs));
+        this.uploader = new VectorUploader(this::indexInfo,
+                (target, batch) -> igniteClient.<Long, float[]>cache(target).putAll(batch));
+    }
+
+    private IndexInfo indexInfo(String indexId) {
+        IndexInfo info = catalog.get(indexId);
+        if (info == null) {
+            for (IndexInfo fresh : indexes()) {
+                catalog.put(fresh.indexId, fresh);
+            }
+            info = catalog.get(indexId);
+        }
+        return info;
     }
 
     private void validateVector(float[] vector) {
@@ -427,5 +444,25 @@ public class DistributedVectorIndex implements Index {
     @Override
     public IndexOperationResult rebuild(String indexId) {
         return aggregator(adminTimeoutMs).rebuild(indexId);
+    }
+
+    @Override
+    public int upload(String indexId, long[] ids, float[][] vectors) {
+        return uploader.upload(indexId, ids, vectors);
+    }
+
+    @Override
+    public IndexOperationResult truncate(String indexId) {
+        return aggregator(adminTimeoutMs).truncate(indexId);
+    }
+
+    @Override
+    public IndexBarrier beginBarrier(String indexId, boolean optimize) {
+        return aggregator(adminTimeoutMs).beginBarrier(indexId, optimize);
+    }
+
+    @Override
+    public IndexBarrier barrierProgress(String indexId, String barrierId) {
+        return aggregator(adminTimeoutMs).barrierProgress(indexId, barrierId);
     }
 }

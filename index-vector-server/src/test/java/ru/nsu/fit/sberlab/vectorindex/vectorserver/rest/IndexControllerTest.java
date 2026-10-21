@@ -96,6 +96,30 @@ class IndexControllerTest {
         assertThatThrownBy(() -> controller.status("nope")).isInstanceOf(ResourceNotFoundException.class);
     }
 
+    @Test
+    void truncateIsRefusedForASharedCacheAndBarriersOfUnknownIndexesAre404() {
+        IndexOperationResult refused = new IndexOperationResult();
+        refused.refused = true;
+        refused.message = "cache 'docs' is shared with indexes [body]";
+        index.operation = refused;
+        assertThat(controller.truncate("title").getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+
+        IndexOperationResult confirmed = new IndexOperationResult();
+        confirmed.confirmed = true;
+        index.operation = confirmed;
+        assertThat(controller.truncate("bench").getStatusCode()).isEqualTo(HttpStatus.OK);
+        confirmed.confirmed = false;
+        assertThat(controller.truncate("bench").getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+
+        ru.nsu.fit.sberlab.vectorindex.common.dto.IndexBarrier barrier = new ru.nsu.fit.sberlab.vectorindex.common.dto.IndexBarrier();
+        barrier.state = ru.nsu.fit.sberlab.vectorindex.common.dto.IndexBarrier.State.STARTED;
+        index.barrier = barrier;
+        assertThat(controller.beginBarrier("bench", true).state)
+                .isEqualTo(ru.nsu.fit.sberlab.vectorindex.common.dto.IndexBarrier.State.STARTED);
+        index.barrier = null;
+        assertThatThrownBy(() -> controller.barrierProgress("nope", "b")).isInstanceOf(ResourceNotFoundException.class);
+    }
+
     private static IndexSearchBody body(boolean allowPartial) {
         return new IndexSearchBody(new float[]{1, 0}, 3, false, Map.of("ef", 64), allowPartial, 500L);
     }

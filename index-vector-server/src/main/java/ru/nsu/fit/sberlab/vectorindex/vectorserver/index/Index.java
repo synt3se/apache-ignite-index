@@ -4,6 +4,7 @@ import ru.nsu.fit.sberlab.vectorindex.common.dto.SearchResponse;
 import ru.nsu.fit.sberlab.vectorindex.common.VectorObject;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.AddRequest;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.ClusterStats;
+import ru.nsu.fit.sberlab.vectorindex.common.dto.IndexBarrier;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.IndexInfo;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.IndexOperationResult;
 import ru.nsu.fit.sberlab.vectorindex.common.dto.IndexStatus;
@@ -57,5 +58,25 @@ public interface Index {
     /** {@code null} — индекс неизвестен. */
     default IndexOperationResult rebuild(String indexId) {
         throw new UnsupportedOperationException("index rebuild requires aggregator service");
+    }
+
+    /** Пакетная запись векторов с внешними ID в кэш индекса; весь батч проверяется до записи. */
+    default int upload(String indexId, long[] ids, float[][] vectors) {
+        throw new UnsupportedOperationException("batch upload requires a cluster index");
+    }
+
+    /** Очистка кэша индекса и самого индекса; {@code null} — индекс неизвестен. */
+    default IndexOperationResult truncate(String indexId) {
+        throw new UnsupportedOperationException("truncate requires aggregator service");
+    }
+
+    /** Начало барьера загрузки; {@code null} — индекс неизвестен. */
+    default IndexBarrier beginBarrier(String indexId, boolean optimize) {
+        throw new UnsupportedOperationException("barrier requires aggregator service");
+    }
+
+    /** Продвижение барьера загрузки; {@code null} — индекс неизвестен. */
+    default IndexBarrier barrierProgress(String indexId, String barrierId) {
+        throw new UnsupportedOperationException("barrier requires aggregator service");
     }
 }
